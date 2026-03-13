@@ -45,6 +45,19 @@ class TestParseValidSpecs:
         assert spec.facet.field == "country"
         assert spec.facet.columns == 4
 
+    def test_grouped_bar(self):
+        spec = parse_chart(load_yaml("grouped_bar.yaml"))
+        assert spec.marks == "bar"
+        assert spec.color == "product"
+        assert spec.cols == "country"
+
+    def test_multi_line(self):
+        spec = parse_chart(load_yaml("multi_line.yaml"))
+        assert spec.marks == "line"
+        assert spec.color == "country"
+        assert spec.data.time_grain is not None
+        assert spec.data.time_grain.field == "week"
+
     def test_heatmap_with_quantitative_color(self):
         spec = parse_chart(load_yaml("heatmap.yaml"))
         assert spec.marks == "rect"
