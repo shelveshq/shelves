@@ -13,13 +13,14 @@ Phase 3: types come from Cube.dev metadata, but the interface stays the same.
 
 from __future__ import annotations
 
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 from src.schema.chart_schema import DataSource
 
 VegaLiteType = Literal["quantitative", "temporal", "nominal", "ordinal"]
 
 
+@runtime_checkable
 class FieldTypeResolver(Protocol):
     """Protocol for resolving field names to Vega-Lite types."""
 
