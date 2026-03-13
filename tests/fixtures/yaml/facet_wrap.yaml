@@ -1,0 +1,18 @@
+sheet: "Revenue Trend by Country"
+data:
+  model: orders
+  measures: [revenue]
+  dimensions: [country, month]
+  time_grain:
+    field: month
+    grain: month
+
+cols: month
+rows: revenue
+marks: line
+tooltip: [month, country, revenue]
+
+facet:
+  field: country
+  columns: 4
+  sort: descending

@@ -1,0 +1,12 @@
+sheet: "Revenue vs Order Count"
+data:
+  model: orders
+  measures: [revenue, order_count]
+  dimensions: [country]
+
+cols: revenue
+rows: order_count
+marks: circle
+color: country
+size: revenue
+tooltip: [country, revenue, order_count]

@@ -1,0 +1,14 @@
+sheet: "Revenue by Country"
+data:
+  model: orders
+  measures: [revenue]
+  dimensions: [country]
+
+cols: country
+rows: revenue
+marks: bar
+color: country
+sort:
+  field: revenue
+  order: descending
+tooltip: [country, revenue]

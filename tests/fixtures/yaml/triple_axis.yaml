@@ -1,0 +1,28 @@
+# Phase 1a fixture — triple axis (bar + line + area overlaid)
+sheet: "Revenue, ARPU & Margin"
+data:
+  model: orders
+  measures: [revenue, arpu, margin_pct]
+  dimensions: [week]
+  time_grain:
+    field: week
+    grain: week
+
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    color: "#4A90D9"
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          point: true
+        color: "#E5A84B"
+      - measure: margin_pct
+        mark: area
+        opacity: 0.3
+        color: "#5BBD72"
+    axis: independent
+
+tooltip: [week, revenue, arpu, margin_pct]

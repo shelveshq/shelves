@@ -1,0 +1,13 @@
+sheet: "Weekly Revenue Trend"
+data:
+  model: orders
+  measures: [revenue]
+  dimensions: [week]
+  time_grain:
+    field: week
+    grain: week
+
+cols: week
+rows: revenue
+marks: line
+tooltip: [week, revenue]

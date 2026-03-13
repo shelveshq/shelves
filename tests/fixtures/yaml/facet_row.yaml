@@ -1,0 +1,20 @@
+sheet: "Revenue by Country, by Region"
+data:
+  model: orders
+  measures: [revenue]
+  dimensions: [country, region]
+
+cols: country
+rows: revenue
+marks: bar
+color: country
+sort:
+  field: revenue
+  order: descending
+tooltip: [country, region, revenue]
+
+facet:
+  row: region
+  resolve:
+    scale:
+      y: independent

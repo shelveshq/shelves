@@ -1,0 +1,27 @@
+# Phase 1a fixture — layers + facet by region
+sheet: "Revenue & ARPU by Week, by Region"
+data:
+  model: orders
+  measures: [revenue, arpu]
+  dimensions: [region, week]
+  time_grain:
+    field: week
+    grain: week
+
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    color: "#4A90D9"
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+        color: "#E5A84B"
+    axis: independent
+
+facet:
+  row: region
+
+tooltip: [week, region, revenue, arpu]

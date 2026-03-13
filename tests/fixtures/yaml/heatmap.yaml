@@ -1,0 +1,13 @@
+sheet: "Revenue Heatmap"
+data:
+  model: orders
+  measures: [revenue]
+  dimensions: [country, product]
+
+cols: product
+rows: country
+marks: rect
+color:
+  field: revenue
+  type: quantitative
+tooltip: [country, product, revenue]
