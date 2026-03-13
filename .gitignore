@@ -1,0 +1,11 @@
+.vscode/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.claude/
+.pytest_cache/
+docs/plans/
+docs/foundational/

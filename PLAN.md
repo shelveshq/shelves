@@ -291,11 +291,14 @@ charter/
 │   ├── test_layers.py                   # Phase 1a: layer tests
 │   └── test_render.py
 │
-└── docs/
-    ├── DSL_Specification.md
-    ├── Architecture.md
-    ├── Vision.md
-    └── DESIGN_final_multi_measure.md
+└── docs/                                # Tool Documentation goes here, ignore foundational or plans subfolder
+    ├── foundational                     # Foundational Documentation, not for users
+    |  ├── DSL_Specification.md
+    |  ├── Architecture.md
+    |  ├── Vision.md
+    |  └── Measure Design.md
+    └── plans                            # Plans made by coding assistants, not for users again
+
 ```
 
 ---
