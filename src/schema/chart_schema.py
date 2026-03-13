@@ -100,6 +100,42 @@ class ShelfFilter(BaseModel):
     values: list[str | int | float] | None = None
     range: list[str | int | float] | None = Field(None, min_length=2, max_length=2)
 
+    @model_validator(mode="after")
+    def _validate_operator_and_values(self) -> "ShelfFilter":
+        """
+        Enforce that each operator uses the correct value field:
+
+        - in / not_in  -> requires `values`, forbids `value` and `range`
+        - between      -> requires `range`, forbids `value` and `values`
+        - eq / neq / gt / lt / gte / lte -> requires `value`,
+          forbids `values` and `range`
+        """
+        op = self.operator
+        has_value = self.value is not None
+        has_values = self.values is not None
+        has_range = self.range is not None
+
+        if op in ("in", "not_in"):
+            if not has_values:
+                raise ValueError("Filter operator 'in'/'not_in' requires 'values' to be set.")
+            if has_value or has_range:
+                raise ValueError("Filter operator 'in'/'not_in' only supports 'values'; 'value' and 'range' must be omitted.")
+
+        elif op == "between":
+            if not has_range:
+                raise ValueError("Filter operator 'between' requires 'range' to be set.")
+            if has_value or has_values:
+                raise ValueError("Filter operator 'between' only supports 'range'; 'value' and 'values' must be omitted.")
+
+        else:
+            # eq, neq, gt, lt, gte, lte
+            if not has_value:
+                raise ValueError(f"Filter operator '{op}' requires 'value' to be set.")
+            if has_values or has_range:
+                raise ValueError(f"Filter operator '{op}' only supports 'value'; 'values' and 'range' must be omitted.")
+
+        return self
+
 
 # ─── Sort ─────────────────────────────────────────────────────────
 
