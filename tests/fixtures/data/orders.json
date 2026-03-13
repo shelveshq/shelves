@@ -1,0 +1,122 @@
+[
+  {
+    "country": "US",
+    "product": "Widget",
+    "region": "NA",
+    "week": "2024-01-01",
+    "month": "2024-01",
+    "revenue": 45000,
+    "order_count": 320,
+    "arpu": 140.63
+  },
+  {
+    "country": "US",
+    "product": "Gadget",
+    "region": "NA",
+    "week": "2024-01-01",
+    "month": "2024-01",
+    "revenue": 32000,
+    "order_count": 210,
+    "arpu": 152.38
+  },
+  {
+    "country": "UK",
+    "product": "Widget",
+    "region": "EMEA",
+    "week": "2024-01-01",
+    "month": "2024-01",
+    "revenue": 28000,
+    "order_count": 195,
+    "arpu": 143.59
+  },
+  {
+    "country": "UK",
+    "product": "Gadget",
+    "region": "EMEA",
+    "week": "2024-01-01",
+    "month": "2024-01",
+    "revenue": 19000,
+    "order_count": 140,
+    "arpu": 135.71
+  },
+  {
+    "country": "FR",
+    "product": "Widget",
+    "region": "EMEA",
+    "week": "2024-01-01",
+    "month": "2024-01",
+    "revenue": 22000,
+    "order_count": 160,
+    "arpu": 137.5
+  },
+  {
+    "country": "FR",
+    "product": "Gadget",
+    "region": "EMEA",
+    "week": "2024-01-01",
+    "month": "2024-01",
+    "revenue": 15000,
+    "order_count": 110,
+    "arpu": 136.36
+  },
+  {
+    "country": "DE",
+    "product": "Widget",
+    "region": "EMEA",
+    "week": "2024-01-01",
+    "month": "2024-01",
+    "revenue": 25000,
+    "order_count": 180,
+    "arpu": 138.89
+  },
+  {
+    "country": "DE",
+    "product": "Gadget",
+    "region": "EMEA",
+    "week": "2024-01-01",
+    "month": "2024-01",
+    "revenue": 18000,
+    "order_count": 130,
+    "arpu": 138.46
+  },
+  {
+    "country": "JP",
+    "product": "Widget",
+    "region": "APAC",
+    "week": "2024-01-01",
+    "month": "2024-01",
+    "revenue": 35000,
+    "order_count": 250,
+    "arpu": 140.0
+  },
+  {
+    "country": "JP",
+    "product": "Gadget",
+    "region": "APAC",
+    "week": "2024-01-01",
+    "month": "2024-01",
+    "revenue": 24000,
+    "order_count": 170,
+    "arpu": 141.18
+  },
+  {
+    "country": "US",
+    "product": "Widget",
+    "region": "NA",
+    "week": "2024-01-08",
+    "month": "2024-02",
+    "revenue": 48000,
+    "order_count": 340,
+    "arpu": 141.18
+  },
+  {
+    "country": "UK",
+    "product": "Widget",
+    "region": "EMEA",
+    "week": "2024-01-08",
+    "month": "2024-02",
+    "revenue": 30000,
+    "order_count": 200,
+    "arpu": 150.0
+  }
+]

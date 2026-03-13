@@ -1,0 +1,26 @@
+# Phase 1a fixture — two stacked panels, first has layers
+sheet: "Revenue+ARPU Panel, Orders Panel"
+data:
+  model: orders
+  measures: [revenue, arpu, order_count]
+  dimensions: [week]
+  time_grain:
+    field: week
+    grain: week
+
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+        color: "#666666"
+    axis: independent
+
+  - measure: order_count
+    mark: line
+
+tooltip: [week, revenue, arpu, order_count]

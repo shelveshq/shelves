@@ -1,0 +1,25 @@
+# Phase 1a fixture — dual axis (revenue bars + ARPU line)
+sheet: "Revenue & ARPU by Week"
+data:
+  model: orders
+  measures: [revenue, arpu]
+  dimensions: [country, week]
+  time_grain:
+    field: week
+    grain: week
+
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    color: country
+    detail: country
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+        color: "#666666"
+    axis: independent
+
+tooltip: [week, country, revenue, arpu]

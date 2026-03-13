@@ -1,0 +1,20 @@
+sheet: "Revenue and Orders"
+data:
+  model: orders
+  measures: [revenue, order_count]
+  dimensions: [country, week]
+  time_grain:
+    field: week
+    grain: week
+
+cols: week
+
+rows:
+  - measure: revenue
+    mark: bar
+    color: country
+  - measure: order_count
+    mark: line
+    color: country
+
+tooltip: [week, country]

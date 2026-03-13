@@ -1,0 +1,43 @@
+"""
+Single-Measure Chart Compiler
+
+Handles the simple case: both rows and cols are string field names.
+Produces a single-mark Vega-Lite spec with encoding channels.
+
+This is the Phase 1 compilation path, unchanged from the original.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from src.schema.chart_schema import ChartSpec
+from src.schema.field_types import DataBlockResolver
+from src.translator.marks import build_mark
+from src.translator.encodings import build_encodings
+from src.translator.filters import build_transforms
+from src.translator.sort import apply_sort
+
+VegaLiteSpec = dict[str, Any]
+
+
+def compile_single(spec: ChartSpec, resolver: DataBlockResolver) -> VegaLiteSpec:
+    """Compile a single-measure ChartSpec into a Vega-Lite spec dict."""
+
+    inner: VegaLiteSpec = {}
+
+    # Mark (required for single-measure charts, enforced by schema validator)
+    inner["mark"] = build_mark(spec.marks)
+
+    # Encoding channels
+    inner["encoding"] = build_encodings(spec, resolver)
+
+    # Sort — mutates encoding dict in place
+    apply_sort(inner["encoding"], spec.sort)
+
+    # Transforms (filters)
+    transforms = build_transforms(spec.filters)
+    if transforms:
+        inner["transform"] = transforms
+
+    return inner

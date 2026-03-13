@@ -1,0 +1,11 @@
+sheet: "Revenue by Country and Product"
+data:
+  model: orders
+  measures: [revenue]
+  dimensions: [country, product]
+
+cols: country
+rows: revenue
+marks: bar
+color: product
+tooltip: [country, product, revenue]
