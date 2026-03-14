@@ -15,6 +15,4 @@ tooltip: [country, region, revenue]
 
 facet:
   row: region
-  resolve:
-    scale:
-      y: independent
+  axis: independent
