@@ -143,28 +143,26 @@ class FieldSort(BaseModel):
     """Sort by a field's values (ascending/descending or custom order)."""
     field: str
     order: SortOrder | list[str]
+    channel: Literal["x", "y"] = "x"
 
 
-class EncodingSort(BaseModel):
-    """Sort by another encoding channel's values."""
-    encoding: Literal["x", "y"]
+class AxisSort(BaseModel):
+    """Sort by another axis's values (e.g., sort x by y values)."""
+    axis: Literal["x", "y"]
     order: SortOrder
+    channel: Literal["x", "y"] = "x"
 
 
-SortSpec = Union[FieldSort, EncodingSort]
+SortSpec = Union[FieldSort, AxisSort]
 
 
 # ─── Facet ────────────────────────────────────────────────────────
-
-class FacetResolve(BaseModel):
-    scale: dict[str, ScaleResolve] | None = None
-
 
 class RowColumnFacet(BaseModel):
     """Facet by row, column, or both (grid)."""
     row: str | None = None
     column: str | None = None
-    resolve: FacetResolve | None = None
+    axis: ScaleResolve | None = None
 
     @model_validator(mode="after")
     def at_least_one_channel(self):
@@ -178,7 +176,7 @@ class WrapFacet(BaseModel):
     field: str
     columns: int = Field(gt=0)
     sort: SortOrder | None = None
-    resolve: FacetResolve | None = None
+    axis: ScaleResolve | None = None
 
 
 FacetSpec = Union[WrapFacet, RowColumnFacet]

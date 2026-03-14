@@ -10,9 +10,11 @@ Four modes:
   3. Grid facet:   facet.row + facet.column → both channels
   4. Wrap facet:   facet.field + facet.columns → {facet: {...}, columns: N, spec: inner}
 
-PHASE 1b NOTE:
-  This function is agnostic about what's inside inner_spec.
-  Single mark (Phase 1) or layer list (Phase 1b) — wrapping is identical.
+axis: independent on any facet type produces the VL resolve structure:
+  {"resolve": {"scale": {"y": "independent"}}}
+
+This function is agnostic about what's inside inner_spec.
+Single mark (Phase 1) or layer list (Phase 1b) — wrapping is identical.
 """
 
 from __future__ import annotations
@@ -42,8 +44,8 @@ def apply_facet(inner_spec: VegaLiteSpec, facet: FacetSpec) -> VegaLiteSpec:
             "columns": facet.columns,
             "spec": inner_spec,
         }
-        if facet.resolve:
-            result["resolve"] = facet.resolve.model_dump(exclude_none=True)
+        if facet.axis:
+            result["resolve"] = _build_resolve(facet.axis)
         return result
 
     # Row/column/grid facet
@@ -58,9 +60,18 @@ def apply_facet(inner_spec: VegaLiteSpec, facet: FacetSpec) -> VegaLiteSpec:
             "facet": facet_channels,
             "spec": inner_spec,
         }
-        if facet.resolve:
-            result["resolve"] = facet.resolve.model_dump(exclude_none=True)
+        if facet.axis:
+            result["resolve"] = _build_resolve(facet.axis)
         return result
 
     # Fallback — shouldn't reach here if schema validation passed
     return {**inner_spec}
+
+
+def _build_resolve(axis: str) -> dict[str, Any]:
+    """Translate DSL axis keyword to VL resolve structure.
+
+    axis: independent → {"scale": {"y": "independent"}}
+    axis: shared      → {"scale": {"y": "shared"}}
+    """
+    return {"scale": {"y": axis}}
