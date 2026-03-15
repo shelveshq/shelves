@@ -16,7 +16,7 @@ Typical pipeline:
     html   = render_html(bound)
 """
 
-from src.schema.chart_schema import parse_chart, ChartSpec
+from src.schema.chart_schema import parse_chart, ChartSpec, DSL_VERSION
 from src.translator.translate import translate_chart
 from src.theme.merge import merge_theme
 from src.data.bind import bind_data
@@ -29,4 +29,5 @@ __all__ = [
     "bind_data",
     "render_html",
     "ChartSpec",
+    "DSL_VERSION",
 ]

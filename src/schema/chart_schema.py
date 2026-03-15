@@ -16,6 +16,10 @@ Phase 1a activates:
 
 from __future__ import annotations
 
+# DSL version — bump when the grammar changes.
+# Follows semver: major = breaking, minor = additive, patch = fixes.
+DSL_VERSION = "0.1.0"
+
 import re
 from typing import Literal, Union
 
@@ -272,6 +276,11 @@ class ChartSpec(BaseModel):
     Top-level marks/color/detail/size act as inheritable defaults for
     measure entries and their layers.
     """
+
+    version: str | None = Field(
+        None,
+        description="DSL version this spec targets (e.g. '0.1.0'). Optional; used for forwards-compatibility checks.",
+    )
 
     sheet: str = Field(min_length=1)
     description: str | None = None
