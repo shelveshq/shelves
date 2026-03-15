@@ -23,6 +23,10 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 
+# DSL version — bump when the grammar changes.
+# Follows semver: major = breaking, minor = additive, patch = fixes.
+DSL_VERSION = "0.1.0"
+
 # ─── Primitives ────────────────────────────────────────────────────
 
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{3,8}$")
@@ -272,6 +276,11 @@ class ChartSpec(BaseModel):
     Top-level marks/color/detail/size act as inheritable defaults for
     measure entries and their layers.
     """
+
+    version: str | None = Field(
+        None,
+        description="DSL version this spec targets (e.g. '0.1.0'). Optional; used for forwards-compatibility checks.",
+    )
 
     sheet: str = Field(min_length=1)
     description: str | None = None
