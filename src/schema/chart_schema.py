@@ -16,16 +16,16 @@ Phase 1a activates:
 
 from __future__ import annotations
 
-# DSL version — bump when the grammar changes.
-# Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = "0.1.0"
-
 import re
 from typing import Literal, Union
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
+
+# DSL version — bump when the grammar changes.
+# Follows semver: major = breaking, minor = additive, patch = fixes.
+DSL_VERSION = "0.1.0"
 
 # ─── Primitives ────────────────────────────────────────────────────
 
