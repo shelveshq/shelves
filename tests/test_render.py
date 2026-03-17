@@ -37,7 +37,7 @@ class TestRenderHTML:
     def test_includes_cdn_scripts(self):
         html = render_html({"mark": "point"})
         assert "cdn.jsdelivr.net/npm/vega@5" in html
-        assert "cdn.jsdelivr.net/npm/vega-lite@5" in html
+        assert "cdn.jsdelivr.net/npm/vega-lite@6" in html
         assert "cdn.jsdelivr.net/npm/vega-embed@6" in html
 
     def test_default_title_when_none(self):

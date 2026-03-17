@@ -26,7 +26,7 @@ def render_html(spec: dict, title: str | None = None) -> str:
   <meta charset="utf-8" />
   <title>{page_title}</title>
   <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@6"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
   <style>
     body {{
