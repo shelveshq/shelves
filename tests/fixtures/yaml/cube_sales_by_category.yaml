@@ -1,0 +1,14 @@
+sheet: "Net Sales by Category"
+data:
+  model: orders
+  measures: [net_sales]
+  dimensions: [category]
+
+cols: category
+rows: net_sales
+marks: bar
+color: category
+sort:
+  field: net_sales
+  order: descending
+  channel: y

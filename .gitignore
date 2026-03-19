@@ -9,5 +9,4 @@ build/
 .pytest_cache/
 docs/plans/
 docs/foundational/
-CLAUDE.md
-PLAN.md
+/model
