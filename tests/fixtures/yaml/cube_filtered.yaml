@@ -1,0 +1,13 @@
+sheet: "Consumer Sales by Category"
+data:
+  model: orders
+  measures: [net_sales]
+  dimensions: [category]
+
+cols: category
+rows: net_sales
+marks: bar
+filters:
+  - field: segment
+    operator: eq
+    value: "Consumer"

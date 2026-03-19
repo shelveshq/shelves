@@ -1,0 +1,12 @@
+sheet: "Monthly Sales Trend"
+data:
+  model: orders
+  measures: [net_sales]
+  dimensions: [order_date]
+  time_grain:
+    field: order_date
+    grain: month
+
+cols: order_date
+rows: net_sales
+marks: line
