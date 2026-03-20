@@ -37,6 +37,37 @@ The data file should be a JSON array of row objects:
 
 Output defaults to `output/<sheet-name-slug>.html`.
 
+## Using data models
+
+Instead of declaring measures and dimensions in every chart, define them once in a model file:
+
+```yaml
+# models/orders.yaml
+model: orders
+label: Orders
+measures:
+  revenue:
+    label: Revenue
+    format: "$,.0f"
+dimensions:
+  country:
+    label: Country
+  week:
+    type: temporal
+    label: Week
+    defaultGrain: week
+```
+
+Then reference the model by name in your chart:
+
+```yaml
+sheet: "Revenue by Country"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+```
+
 ## Python API
 
 ```python

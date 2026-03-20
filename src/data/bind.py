@@ -52,6 +52,22 @@ def resolve_data(
     if rows is not None:
         return bind_data(spec, rows)
 
+    # Model-based spec — data source handled by CLI or caller
+    if isinstance(chart_spec.data, str):
+        from src.models.loader import load_model
+
+        model = load_model(chart_spec.data)
+        if model.source and model.source.type == "cube":
+            from src.data.cube_client import fetch_from_cube_model
+
+            fetched = fetch_from_cube_model(model, chart_spec.filters)
+            return bind_data(spec, fetched)
+        raise ValueError(
+            f"No data provided for model '{chart_spec.data}'. "
+            "Pass --data or configure a Cube source in the model."
+        )
+
+    # Legacy DataSource — fetch from Cube.dev
     from src.data.cube_client import fetch_from_cube
 
     fetched = fetch_from_cube(chart_spec.data, chart_spec.filters)

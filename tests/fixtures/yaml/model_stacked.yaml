@@ -1,0 +1,7 @@
+sheet: "Key Metrics"
+data: orders
+cols: week.month
+marks: line
+rows:
+  - measure: revenue
+  - measure: order_count

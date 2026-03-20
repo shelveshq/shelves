@@ -67,10 +67,24 @@ def _build(yaml_path: Path, data_path: Path | None, no_theme: bool, state: _Stat
         if not no_theme:
             vl_spec = merge_theme(vl_spec)
 
-        # Data: inline JSON if --data provided, otherwise try Cube
+        # Data: inline JSON if --data provided, otherwise try model source or Cube
         if data_path:
             rows = json.loads(data_path.read_text())
             vl_spec = resolve_data(vl_spec, spec, rows=rows)
+        elif isinstance(spec.data, str):
+            # Model-based spec: try to auto-load from model's source
+            from src.models.loader import load_model
+
+            model = load_model(spec.data)
+            if model.source and model.source.type == "inline":
+                model_data_path = Path(model.source.path)
+                if model_data_path.exists():
+                    rows = json.loads(model_data_path.read_text())
+                    vl_spec = resolve_data(vl_spec, spec, rows=rows)
+                else:
+                    print(f"Warning: model source path {model_data_path} not found")
+            else:
+                vl_spec = resolve_data(vl_spec, spec)
         else:
             vl_spec = resolve_data(vl_spec, spec)
 

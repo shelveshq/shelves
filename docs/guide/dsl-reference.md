@@ -1,6 +1,6 @@
 # Charter DSL Reference
 
-**DSL Version: 0.1.0**
+**DSL Version: 0.2.0**
 
 This document is the authoritative reference for the Charter YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -91,6 +91,34 @@ rows:
 
 ---
 
+## Temporal dot notation
+
+When using a data model, temporal fields support dot notation to specify the time grain:
+
+```yaml
+data: orders
+cols: order_date.month    # month grain
+rows: revenue
+marks: line
+```
+
+Supported grains: `day`, `week`, `month`, `quarter`, `year`.
+
+The dot notation resolves to:
+- `field`: the base field name (e.g. `order_date`)
+- `timeUnit`: the Vega-Lite time unit (e.g. `yearmonth`)
+- `axis.format`: auto-injected from the model's per-grain format map (if defined)
+
+Without dot notation, a temporal field uses its `defaultGrain` from the model:
+
+```yaml
+cols: order_date    # uses defaultGrain from model (e.g. "month")
+```
+
+Dot notation is only valid for fields declared as `type: temporal` in the model. Using it on measures or nominal dimensions raises an error.
+
+---
+
 ## Marks
 
 The `marks` field specifies how data points are drawn.
@@ -119,6 +147,16 @@ marks:
 
 ## Data block
 
+### Model shorthand (recommended)
+
+```yaml
+data: orders
+```
+
+When `data` is a string, it references a data model file (`models/orders.yaml`). The model defines all measures, dimensions, field types, labels, and formats. No need to redeclare them in every chart.
+
+### Verbose form (legacy)
+
 ```yaml
 data:
   model: orders
@@ -129,12 +167,14 @@ data:
     grain: week
 ```
 
+The verbose form still works. Use it when you don't have a model file or need to override field declarations.
+
 - **model** — name of the semantic data model.
 - **measures** — fields treated as quantitative (numbers).
 - **dimensions** — fields treated as nominal (categories).
-- **time_grain** — marks one dimension as temporal. The `field` must be listed in `dimensions`. Supported grains: `day`, `week`, `month`, `quarter`, `year`.
+- **time_grain** — marks one dimension as temporal.
 
-Field type resolution: measures resolve to `quantitative`, dimensions to `nominal`, the `time_grain.field` to `temporal`.
+Field type resolution: measures → `quantitative`, dimensions → `nominal`, `time_grain.field` → `temporal`.
 
 ---
 
@@ -447,6 +487,20 @@ rows:
 tooltip: [week, country]
 ```
 
+### Model-based chart (data shorthand)
+
+```yaml
+sheet: "Monthly Revenue Trend"
+data: orders
+cols: week.month
+rows: revenue
+marks: line
+color: country
+tooltip: [week.month, country, revenue]
+```
+
+Uses the `orders` data model for field definitions. `week.month` applies the month grain to the `week` temporal dimension. Labels, formats, and sort defaults come from the model automatically.
+
 ### Faceted chart
 
 ```yaml
@@ -516,4 +570,5 @@ kpi:
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.1.0** | Current | Single-measure charts, multi-measure stacked panels (repeat/concat), filters, sort, facet, themes, data binding, HTML rendering. Layers and KPI parsed but not compiled. |
+| **0.2.0** | Current | Data model shorthand (`data: orders`), temporal dot notation (`cols: order_date.month`), auto-injected axis formats from model. |
+| **0.1.0** | Previous | Single-measure charts, multi-measure stacked panels (repeat/concat), filters, sort, facet, themes, data binding, HTML rendering. Layers and KPI parsed but not compiled. |
