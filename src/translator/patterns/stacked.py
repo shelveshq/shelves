@@ -16,16 +16,16 @@ from __future__ import annotations
 from typing import Any
 
 from src.schema.chart_schema import ChartSpec, MeasureEntry, MarkSpec
-from src.schema.field_types import DataBlockResolver
+from src.schema.field_types import FieldTypeResolver
 from src.translator.marks import build_mark
-from src.translator.encodings import build_color, build_tooltip
+from src.translator.encodings import build_color, build_tooltip, build_field_encoding
 from src.translator.filters import build_transforms
 from src.translator.sort import apply_sort
 
 VegaLiteSpec = dict[str, Any]
 
 
-def compile_stacked(spec: ChartSpec, resolver: DataBlockResolver) -> VegaLiteSpec:
+def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpec:
     """Compile a multi-measure stacked spec."""
 
     rows_is_multi = isinstance(spec.rows, list)
@@ -40,18 +40,16 @@ def compile_stacked(spec: ChartSpec, resolver: DataBlockResolver) -> VegaLiteSpe
     if has_layers:
         # Phase 1a: delegate to layers-aware compilation
         from src.translator.patterns.layers import compile_stacked_with_layers
+
         return compile_stacked_with_layers(
             spec, entries, shared_field, shared_axis, measure_axis, concat_key, resolver
         )
 
     # Resolve the shared axis encoding
-    shared_enc = {
-        "field": shared_field,
-        "type": resolver.resolve(shared_field),
-    }
+    shared_enc = build_field_encoding(shared_field, resolver)
 
     # Build transforms (filters apply to all panels)
-    transforms = build_transforms(spec.filters)
+    transforms = build_transforms(spec.filters, resolver)
 
     # Try repeat path: all entries use the same effective mark
     effective_marks = [_resolve_mark(e, spec.marks) for e in entries]
@@ -60,14 +58,27 @@ def compile_stacked(spec: ChartSpec, resolver: DataBlockResolver) -> VegaLiteSpe
     if all_same_mark and not any(e.color or e.detail or e.size for e in entries):
         # Clean repeat: all panels identical except the measure field
         return _compile_repeat(
-            entries, effective_marks[0], shared_enc, shared_axis,
-            measure_axis, spec, resolver, transforms
+            entries,
+            effective_marks[0],
+            shared_enc,
+            shared_axis,
+            measure_axis,
+            spec,
+            resolver,
+            transforms,
         )
 
     # vconcat/hconcat: each panel is its own spec
     return _compile_concat(
-        entries, effective_marks, shared_enc, shared_axis,
-        measure_axis, concat_key, spec, resolver, transforms
+        entries,
+        effective_marks,
+        shared_enc,
+        shared_axis,
+        measure_axis,
+        concat_key,
+        spec,
+        resolver,
+        transforms,
     )
 
 
@@ -77,9 +88,7 @@ def _resolve_mark(entry: MeasureEntry, default_mark: MarkSpec | None) -> MarkSpe
         return entry.mark
     if default_mark is not None:
         return default_mark
-    raise ValueError(
-        f'Measure entry "{entry.measure}" has no mark and no top-level marks default.'
-    )
+    raise ValueError(f'Measure entry "{entry.measure}" has no mark and no top-level marks default.')
 
 
 def _compile_repeat(
@@ -89,7 +98,7 @@ def _compile_repeat(
     shared_axis: str,
     measure_axis: str,
     spec: ChartSpec,
-    resolver: DataBlockResolver,
+    resolver: FieldTypeResolver,
     transforms: list,
 ) -> VegaLiteSpec:
     """Compile to Vega-Lite repeat spec (all panels share the same mark)."""
@@ -119,7 +128,7 @@ def _compile_repeat(
     if transforms:
         inner_spec["transform"] = transforms
 
-    apply_sort(inner_encoding, spec.sort)
+    apply_sort(inner_encoding, spec.sort, resolver)
 
     return {
         "repeat": {repeat_channel: measures},
@@ -135,7 +144,7 @@ def _compile_concat(
     measure_axis: str,
     concat_key: str,
     spec: ChartSpec,
-    resolver: DataBlockResolver,
+    resolver: FieldTypeResolver,
     transforms: list,
 ) -> VegaLiteSpec:
     """Compile to Vega-Lite vconcat/hconcat (panels may differ in mark/color)."""
@@ -183,7 +192,7 @@ def _compile_concat(
         if transforms:
             panel["transform"] = transforms
 
-        apply_sort(panel_encoding, spec.sort)
+        apply_sort(panel_encoding, spec.sort, resolver)
         panels.append(panel)
 
     return {concat_key: panels}

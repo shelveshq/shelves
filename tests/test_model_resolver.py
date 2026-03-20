@@ -71,6 +71,19 @@ class TestResolveType:
         resolver = ModelResolver(orders_model)
         assert resolver.resolve_type("week") == "temporal"
 
+    def test_invalid_grain_raises(self):
+        model = load_model("temporal_explicit_grains", models_dir=FIXTURES_DIR)
+        resolver = ModelResolver(model)
+        # model has grains: [year] only
+        with pytest.raises(ValueError, match="not supported"):
+            resolver.resolve_type("year_field.month")
+
+    def test_valid_grain_passes(self, orders_model):
+        resolver = ModelResolver(orders_model)
+        # orders model has default grains (all five)
+        assert resolver.resolve_type("week.month") == "temporal"
+        assert resolver.resolve_type("week.day") == "temporal"
+
     def test_unknown_field_raises(self, orders_model):
         resolver = ModelResolver(orders_model)
         with pytest.raises(ValueError, match="nonexistent"):

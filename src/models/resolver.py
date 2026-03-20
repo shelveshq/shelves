@@ -124,6 +124,12 @@ class ModelResolver:
                     f'Dot notation is not valid for {dimension.type} dimension "{base}". '
                     f'Grain suffixes (e.g. ".month") are only valid for temporal dimensions.'
                 )
+            if grain is not None and isinstance(dimension, TemporalDimensionDefinition):
+                if grain not in dimension.grains:
+                    raise ValueError(
+                        f'Grain "{grain}" is not supported for temporal field "{base}". '
+                        f"Available grains: {dimension.grains}"
+                    )
             return dimension, grain
 
         if base in self._formulas:

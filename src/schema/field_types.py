@@ -51,3 +51,15 @@ class DataBlockResolver:
             f"Available: measures={sorted(self._measures)}, "
             f"dimensions={sorted(self._dimensions)}"
         )
+
+    def resolve_base_field(self, field_ref: str) -> str:
+        """DataBlockResolver does not support dot notation — return as-is."""
+        return field_ref
+
+    def resolve_time_unit(self, field_ref: str) -> str | None:
+        """DataBlockResolver does not support grain-based timeUnit — return None."""
+        return None
+
+    def resolve_format(self, field_ref: str) -> str | None:
+        """DataBlockResolver does not have model format metadata — return None."""
+        return None

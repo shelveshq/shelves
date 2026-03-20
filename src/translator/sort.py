@@ -19,11 +19,16 @@ from __future__ import annotations
 from typing import Any, Union
 
 from src.schema.chart_schema import FieldSort, AxisSort
+from src.schema.field_types import FieldTypeResolver
 
 SortSpec = Union[FieldSort, AxisSort, None]
 
 
-def apply_sort(encoding: dict[str, Any], sort: SortSpec) -> None:
+def apply_sort(
+    encoding: dict[str, Any],
+    sort: SortSpec,
+    resolver: FieldTypeResolver | None = None,
+) -> None:
     """Mutate encoding dict to apply sort on the target channel."""
 
     if sort is None:
@@ -39,4 +44,5 @@ def apply_sort(encoding: dict[str, Any], sort: SortSpec) -> None:
         if isinstance(sort.order, list):
             target["sort"] = sort.order
         else:
-            target["sort"] = {"field": sort.field, "order": sort.order}
+            field = resolver.resolve_base_field(sort.field) if resolver else sort.field
+            target["sort"] = {"field": field, "order": sort.order}

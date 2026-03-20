@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.schema.chart_schema import ChartSpec
-from src.schema.field_types import DataBlockResolver
+from src.schema.field_types import FieldTypeResolver
 from src.translator.marks import build_mark
 from src.translator.encodings import build_encodings
 from src.translator.filters import build_transforms
@@ -21,7 +21,7 @@ from src.translator.sort import apply_sort
 VegaLiteSpec = dict[str, Any]
 
 
-def compile_single(spec: ChartSpec, resolver: DataBlockResolver) -> VegaLiteSpec:
+def compile_single(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpec:
     """Compile a single-measure ChartSpec into a Vega-Lite spec dict."""
 
     inner: VegaLiteSpec = {}
@@ -33,10 +33,10 @@ def compile_single(spec: ChartSpec, resolver: DataBlockResolver) -> VegaLiteSpec
     inner["encoding"] = build_encodings(spec, resolver)
 
     # Sort — mutates encoding dict in place
-    apply_sort(inner["encoding"], spec.sort)
+    apply_sort(inner["encoding"], spec.sort, resolver)
 
     # Transforms (filters)
-    transforms = build_transforms(spec.filters)
+    transforms = build_transforms(spec.filters, resolver)
     if transforms:
         inner["transform"] = transforms
 

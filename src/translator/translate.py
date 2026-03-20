@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.schema.chart_schema import ChartSpec, MeasureEntry
+from src.schema.chart_schema import ChartSpec
 from src.schema.field_types import DataBlockResolver
 from src.translator.patterns.single import compile_single
 from src.translator.patterns.stacked import compile_stacked
