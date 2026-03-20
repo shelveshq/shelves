@@ -20,6 +20,7 @@ from src.schema.chart_schema import DataSource, ShelfFilter
 
 # ─── Errors ──────────────────────────────────────────────────────────
 
+
 class CubeError(Exception):
     """Base error for Cube.dev client operations."""
 
@@ -33,6 +34,7 @@ class CubeQueryError(CubeError):
 
 
 # ─── Config ──────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class CubeConfig:
@@ -54,8 +56,7 @@ class CubeConfig:
             )
         if not api_token:
             raise CubeConfigError(
-                "CUBE_API_TOKEN environment variable is not set. "
-                "Set it to your Cube API token."
+                "CUBE_API_TOKEN environment variable is not set. Set it to your Cube API token."
             )
 
         # Strip trailing slash for consistent URL joining
@@ -134,22 +135,27 @@ def _translate_filters(
             result.append({"member": member, "operator": "gte", "values": [str(f.range[0])]})
             result.append({"member": member, "operator": "lte", "values": [str(f.range[1])]})
         elif f.operator in ("in", "not_in"):
-            result.append({
-                "member": member,
-                "operator": _FILTER_OP_MAP[f.operator],
-                "values": [str(v) for v in f.values],
-            })
+            result.append(
+                {
+                    "member": member,
+                    "operator": _FILTER_OP_MAP[f.operator],
+                    "values": [str(v) for v in f.values],
+                }
+            )
         else:
-            result.append({
-                "member": member,
-                "operator": _FILTER_OP_MAP[f.operator],
-                "values": [str(f.value)],
-            })
+            result.append(
+                {
+                    "member": member,
+                    "operator": _FILTER_OP_MAP[f.operator],
+                    "values": [str(f.value)],
+                }
+            )
 
     return result
 
 
 # ─── Response Transformer ────────────────────────────────────────────
+
 
 def _strip_prefix(row: dict[str, Any]) -> dict[str, Any]:
     """
@@ -172,6 +178,7 @@ def _strip_prefix(row: dict[str, Any]) -> dict[str, Any]:
 
 
 # ─── Public API ──────────────────────────────────────────────────────
+
 
 def fetch_from_cube(
     data: DataSource,
@@ -209,9 +216,7 @@ def fetch_from_cube(
         response = client.post(url, json={"query": query}, headers=headers)
 
     if response.status_code != 200:
-        raise CubeQueryError(
-            f"Cube API error (HTTP {response.status_code}): {response.text}"
-        )
+        raise CubeQueryError(f"Cube API error (HTTP {response.status_code}): {response.text}")
 
     body = response.json()
     raw_rows = body.get("data", [])
