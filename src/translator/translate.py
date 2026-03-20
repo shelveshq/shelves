@@ -18,7 +18,7 @@ from typing import Any
 from pathlib import Path
 
 from src.schema.chart_schema import ChartSpec
-from src.schema.field_types import DataBlockResolver, FieldTypeResolver
+from src.schema.field_types import FieldTypeResolver
 from src.models.loader import load_model
 from src.models.resolver import ModelResolver
 from src.translator.patterns.single import compile_single
@@ -37,9 +37,8 @@ def translate_chart(
     """
     Compile a validated ChartSpec into a Vega-Lite spec dict.
 
-    When spec.data is a string (model name), loads the model file and
-    creates a ModelResolver. When spec.data is a DataSource object,
-    uses the legacy DataBlockResolver.
+    Loads the DataModel manifest for spec.data and creates a ModelResolver
+    to resolve field names to Vega-Lite types.
 
     Args:
         spec: Validated ChartSpec.
@@ -49,12 +48,8 @@ def translate_chart(
     Returns:
         A Vega-Lite spec dict (no data, no theme).
     """
-    # Create the appropriate resolver
-    if isinstance(spec.data, str):
-        model = load_model(spec.data, models_dir=models_dir)
-        resolver: FieldTypeResolver = ModelResolver(model)
-    else:
-        resolver = DataBlockResolver(spec.data)
+    model = load_model(spec.data, models_dir=models_dir)
+    resolver: FieldTypeResolver = ModelResolver(model)
 
     # Determine which compilation path to use
     rows_is_multi = isinstance(spec.rows, list)

@@ -1,12 +1,6 @@
 # Phase 1a fixture — two stacked panels, first has layers
 sheet: "Revenue+ARPU Panel, Orders Panel"
-data:
-  model: orders
-  measures: [revenue, arpu, order_count]
-  dimensions: [week]
-  time_grain:
-    field: week
-    grain: week
+data: orders
 
 cols: week
 rows:

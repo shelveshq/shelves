@@ -53,8 +53,8 @@ def main():
     elif args.data:
         rows = json.loads(Path(args.data).read_text())
         vl_spec = resolve_data(vl_spec, spec, rows=rows)
-    elif isinstance(spec.data, str):
-        # Model-based spec: try to auto-load from model's source
+    else:
+        # Try to auto-load from model's configured source
         from src.models.loader import load_model
 
         model = load_model(spec.data)
@@ -68,8 +68,6 @@ def main():
         else:
             # Cube source or no source — try Cube.dev
             vl_spec = resolve_data(vl_spec, spec)
-    else:
-        vl_spec = resolve_data(vl_spec, spec)
 
     # Render
     html = render_html(vl_spec, title=spec.sheet)

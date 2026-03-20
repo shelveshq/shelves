@@ -1,9 +1,8 @@
 """
-Tests for KAN-200: Model-based chart spec translation.
+Tests for model-based chart spec translation.
 
-Tests that `data: "orders"` (string shorthand) parses correctly,
-routes through ModelResolver, and produces correct Vega-Lite output.
-Also verifies backward compatibility with legacy DataSource form.
+Tests that `data: "orders"` parses correctly, routes through
+ModelResolver, and produces correct Vega-Lite output.
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from src.schema.chart_schema import DSL_VERSION, DataSource, parse_chart
+from src.schema.chart_schema import DSL_VERSION, parse_chart
 from src.translator.translate import translate_chart
 from src.models.loader import clear_model_cache
 
@@ -40,13 +39,8 @@ class TestModelParse:
         assert spec.data == "orders"
         assert isinstance(spec.data, str)
 
-    def test_legacy_data_source_parses(self):
-        yaml_str = load_yaml("simple_bar.yaml")
-        spec = parse_chart(yaml_str)
-        assert isinstance(spec.data, DataSource)
-
     def test_dsl_version(self):
-        assert DSL_VERSION == "0.2.0"
+        assert DSL_VERSION == "0.3.0"
 
 
 class TestModelTranslate:

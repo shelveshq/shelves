@@ -2,8 +2,7 @@
 Model-Aware Field Resolver
 
 Resolves field types, labels, format strings, time units, and sort defaults
-from a loaded DataModel. Satisfies the FieldTypeResolver protocol so it can
-be used as a drop-in replacement for DataBlockResolver.
+from a loaded DataModel. Satisfies the FieldTypeResolver protocol.
 
 Key feature: dot-notation field references (e.g. "order_date.month") where
 the suffix is a temporal grain, not a sub-field. Dot notation is ONLY valid
@@ -48,8 +47,7 @@ class ModelResolver:
     """
     Resolves field metadata from a DataModel manifest.
 
-    Satisfies the FieldTypeResolver protocol via the resolve() method,
-    making it a drop-in replacement for DataBlockResolver.
+    Satisfies the FieldTypeResolver protocol via the resolve() method.
 
     Supports dot-notation field references for temporal grains:
       "order_date"       → uses defaultGrain from model

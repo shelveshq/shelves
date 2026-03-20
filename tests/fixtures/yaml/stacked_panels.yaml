@@ -1,11 +1,5 @@
 sheet: "Key Metrics by Week"
-data:
-  model: orders
-  measures: [revenue, order_count, arpu]
-  dimensions: [week]
-  time_grain:
-    field: week
-    grain: week
+data: orders
 
 cols: week
 marks: line

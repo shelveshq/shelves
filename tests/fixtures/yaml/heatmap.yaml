@@ -1,8 +1,5 @@
 sheet: "Revenue Heatmap"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country, product]
+data: orders
 
 cols: product
 rows: country

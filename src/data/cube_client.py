@@ -1,8 +1,8 @@
 """
 Cube.dev REST API Client
 
-Translates the DSL data block into a Cube query, executes it via HTTP,
-and returns tabular rows with unprefixed field names.
+Extracts the fields a chart actually uses from the ChartSpec, classifies them
+via ModelResolver, builds a Cube query, and fetches rows with unprefixed keys.
 
 Phase 3: replaces inline JSON data for charts backed by a semantic model.
 """
@@ -15,7 +15,8 @@ from typing import Any
 
 import httpx
 
-from src.schema.chart_schema import DataSource, ShelfFilter
+from src.schema.chart_schema import ChartSpec, HEX_COLOR_RE, MeasureEntry, ShelfFilter
+from src.models.schema import DataModel
 
 
 # ─── Errors ──────────────────────────────────────────────────────────
@@ -63,6 +64,54 @@ class CubeConfig:
         return cls(api_url=api_url.rstrip("/"), api_token=api_token)
 
 
+# ─── Field Extraction ────────────────────────────────────────────────
+
+
+def _collect_chart_fields(spec: ChartSpec) -> set[str]:
+    """
+    Extract the set of field names a chart actually references.
+
+    Walks rows, cols, color, detail, and filters to collect every field
+    the chart needs — this is what gets sent to Cube.
+    """
+    fields: set[str] = set()
+
+    def _add_shelf(shelf: str | list[MeasureEntry] | None) -> None:
+        if shelf is None:
+            return
+        if isinstance(shelf, str):
+            fields.add(shelf)
+        else:
+            for entry in shelf:
+                fields.add(entry.measure)
+                if (
+                    entry.color
+                    and isinstance(entry.color, str)
+                    and not HEX_COLOR_RE.match(entry.color)
+                ):
+                    fields.add(entry.color)
+                if entry.detail:
+                    fields.add(entry.detail)
+
+    _add_shelf(spec.rows)
+    _add_shelf(spec.cols)
+
+    if spec.color:
+        if isinstance(spec.color, str) and not HEX_COLOR_RE.match(spec.color):
+            fields.add(spec.color)
+        elif hasattr(spec.color, "field"):
+            fields.add(spec.color.field)
+
+    if spec.detail:
+        fields.add(spec.detail)
+
+    if spec.filters:
+        for f in spec.filters:
+            fields.add(f.field)
+
+    return fields
+
+
 # ─── Query Builder ───────────────────────────────────────────────────
 
 # DSL filter operator → Cube filter operator
@@ -79,41 +128,53 @@ _FILTER_OP_MAP = {
 
 
 def build_cube_query(
-    data: DataSource,
-    filters: list[ShelfFilter] | None = None,
+    cube_name: str,
+    chart_spec: ChartSpec,
+    resolver: Any,
 ) -> dict[str, Any]:
     """
-    Build a Cube REST API query dict from the DSL data block.
+    Build a Cube REST API query dict from chart fields.
 
-    Prefixes all field names with the model name (e.g. "orders.net_sales")
-    since the Cube API requires fully-qualified member names.
+    Extracts the fields the chart uses, classifies each via the resolver
+    (measure → measures, temporal dim → timeDimensions, other → dimensions),
+    and prefixes with the cube name for the Cube API.
     """
-    model = data.model
+    fields = _collect_chart_fields(chart_spec)
 
-    # Measures — always prefixed
-    measures = [f"{model}.{m}" for m in data.measures]
+    measures: list[str] = []
+    dimensions: list[str] = []
+    time_dimensions: list[dict[str, str]] = []
 
-    # Dimensions — prefixed, but exclude time_grain field (goes to timeDimensions)
-    time_field = data.time_grain.field if data.time_grain else None
-    dimensions = [f"{model}.{d}" for d in data.dimensions if d != time_field]
+    for field in sorted(fields):  # sorted for deterministic output
+        base_field = resolver.resolve_base_field(field)
+        if resolver.is_measure(field):
+            measures.append(f"{cube_name}.{base_field}")
+        elif resolver.resolve_time_unit(field) is not None:
+            # Temporal dimension — extract grain from the resolver
+            grain = field.split(".", 1)[1] if "." in field else None
+            # Use the explicit grain or the model's defaultGrain
+            dim_def = resolver._get_dimension(base_field)
+            effective_grain = grain if grain else dim_def.defaultGrain
+            time_dimensions.append(
+                {
+                    "dimension": f"{cube_name}.{base_field}",
+                    "granularity": effective_grain,
+                }
+            )
+        else:
+            dimensions.append(f"{cube_name}.{base_field}")
 
     query: dict[str, Any] = {
         "measures": measures,
         "dimensions": dimensions,
     }
 
-    # Time dimensions
-    if data.time_grain:
-        query["timeDimensions"] = [
-            {
-                "dimension": f"{model}.{data.time_grain.field}",
-                "granularity": data.time_grain.grain,
-            }
-        ]
+    if time_dimensions:
+        query["timeDimensions"] = time_dimensions
 
     # Filters
-    if filters:
-        cube_filters = _translate_filters(filters, model)
+    if chart_spec.filters:
+        cube_filters = _translate_filters(chart_spec.filters, cube_name)
         if cube_filters:
             query["filters"] = cube_filters
 
@@ -122,13 +183,13 @@ def build_cube_query(
 
 def _translate_filters(
     filters: list[ShelfFilter],
-    model: str,
+    cube_name: str,
 ) -> list[dict[str, Any]]:
     """Convert DSL ShelfFilter list to Cube filter format."""
     result = []
 
     for f in filters:
-        member = f"{model}.{f.field}"
+        member = f"{cube_name}.{f.field}"
 
         if f.operator == "between":
             # Cube has no generic 'between' — emit gte + lte pair
@@ -162,9 +223,7 @@ def _strip_prefix(row: dict[str, Any]) -> dict[str, Any]:
     Strip cube name prefix from Cube response keys.
 
     "orders.net_sales" → "net_sales"
-    "orders.order_date.month" → "order_date.month" (split on first dot only... but
-    actually Cube uses the format "cube.field" for dimensions and "cube.field.granularity"
-    for time dimensions — we want to strip just the cube prefix).
+    "orders.order_date.month" → "order_date.month"
     """
     result = {}
     for key, value in row.items():
@@ -180,21 +239,22 @@ def _strip_prefix(row: dict[str, Any]) -> dict[str, Any]:
 # ─── Public API ──────────────────────────────────────────────────────
 
 
-def fetch_from_cube(
-    data: DataSource,
-    filters: list[ShelfFilter] | None = None,
+def fetch_from_cube_model(
+    model: DataModel,
+    chart_spec: ChartSpec,
+    resolver: Any,
     config: CubeConfig | None = None,
 ) -> list[dict[str, Any]]:
     """
-    Fetch data from a Cube.dev instance.
+    Fetch data from a Cube.dev instance using a DataModel.
 
-    Builds a query from the DSL data block, executes it against the Cube
-    REST API, and returns rows with unprefixed field names ready for
-    Vega-Lite data binding.
+    Extracts fields from the chart spec, classifies them via the resolver,
+    builds a Cube query, and returns rows with unprefixed field names.
 
     Args:
-        data: The chart's DataSource (model, measures, dimensions, time_grain).
-        filters: Optional DSL filters to push down to Cube.
+        model: The loaded DataModel (must have a CubeSource).
+        chart_spec: The parsed ChartSpec (for field extraction + filters).
+        resolver: ModelResolver for classifying fields.
         config: Cube connection config. If None, reads from environment.
 
     Returns:
@@ -207,7 +267,8 @@ def fetch_from_cube(
     if config is None:
         config = CubeConfig.from_env()
 
-    query = build_cube_query(data, filters)
+    cube_name = model.source.cube
+    query = build_cube_query(cube_name, chart_spec, resolver)
 
     url = f"{config.api_url}/cubejs-api/v1/load"
     headers = {"Authorization": config.api_token}

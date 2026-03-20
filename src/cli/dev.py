@@ -71,8 +71,7 @@ def _build(yaml_path: Path, data_path: Path | None, no_theme: bool, state: _Stat
         if data_path:
             rows = json.loads(data_path.read_text())
             vl_spec = resolve_data(vl_spec, spec, rows=rows)
-        elif isinstance(spec.data, str):
-            # Model-based spec: try to auto-load from model's source
+        else:
             from src.models.loader import load_model
 
             model = load_model(spec.data)
@@ -85,8 +84,6 @@ def _build(yaml_path: Path, data_path: Path | None, no_theme: bool, state: _Stat
                     print(f"Warning: model source path {model_data_path} not found")
             else:
                 vl_spec = resolve_data(vl_spec, spec)
-        else:
-            vl_spec = resolve_data(vl_spec, spec)
 
         # Dev preview: large chart for easy visual inspection
         vl_spec.setdefault("width", 1400)

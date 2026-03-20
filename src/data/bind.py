@@ -15,6 +15,7 @@ Vega-Lite propagates data from parent to faceted children.
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 
 from src.schema.chart_schema import ChartSpec
 
@@ -30,17 +31,20 @@ def resolve_data(
     spec: dict,
     chart_spec: ChartSpec,
     rows: list[dict] | None = None,
+    models_dir: str | Path | None = None,
 ) -> dict:
     """
     Attach data to a Vega-Lite spec, using inline rows or Cube.dev.
 
     If rows are provided, uses them directly (inline mode).
-    Otherwise, fetches from Cube.dev using the chart's data block.
+    Otherwise, loads the model and fetches from its configured source.
 
     Args:
         spec: Compiled Vega-Lite spec (no data yet).
-        chart_spec: The parsed ChartSpec (needed for data block + filters).
-        rows: Pre-fetched rows. If None, queries Cube.dev.
+        chart_spec: The parsed ChartSpec (needed for field extraction + filters).
+        rows: Pre-fetched rows. If None, queries the model's data source.
+        models_dir: Optional path to models directory. Defaults to
+                    <project_root>/models/.
 
     Returns:
         Vega-Lite spec with data attached.
@@ -48,27 +52,24 @@ def resolve_data(
     Raises:
         CubeConfigError: If Cube env vars are missing and no rows provided.
         CubeQueryError: If the Cube API returns an error.
+        ValueError: If the model has no configured data source.
     """
     if rows is not None:
         return bind_data(spec, rows)
 
-    # Model-based spec — data source handled by CLI or caller
-    if isinstance(chart_spec.data, str):
-        from src.models.loader import load_model
+    from src.models.loader import load_model
+    from src.models.resolver import ModelResolver
 
-        model = load_model(chart_spec.data)
-        if model.source and model.source.type == "cube":
-            from src.data.cube_client import fetch_from_cube_model
+    model = load_model(chart_spec.data, models_dir=models_dir)
+    resolver = ModelResolver(model)
 
-            fetched = fetch_from_cube_model(model, chart_spec.filters)
-            return bind_data(spec, fetched)
-        raise ValueError(
-            f"No data provided for model '{chart_spec.data}'. "
-            "Pass --data or configure a Cube source in the model."
-        )
+    if model.source and model.source.type == "cube":
+        from src.data.cube_client import fetch_from_cube_model
 
-    # Legacy DataSource — fetch from Cube.dev
-    from src.data.cube_client import fetch_from_cube
+        fetched = fetch_from_cube_model(model, chart_spec, resolver)
+        return bind_data(spec, fetched)
 
-    fetched = fetch_from_cube(chart_spec.data, chart_spec.filters)
-    return bind_data(spec, fetched)
+    raise ValueError(
+        f"No data provided for model '{chart_spec.data}'. "
+        "Pass --data or configure a Cube source in the model."
+    )

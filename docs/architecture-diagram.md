@@ -7,7 +7,7 @@ flowchart TB
     subgraph INPUT["📥 Input"]
         YAML["YAML Chart Spec<br/>(user-authored)"]
         MODEL_YAML["Model Manifest YAML<br/>(models/*.yaml)"]
-        DATA_JSON["Inline JSON Data<br/>(*.json rows)"]
+        DATA_JSON["Inline JSON rows<br/>(--data flag at runtime)"]
         CUBE_API["Cube.dev REST API<br/>(remote)"]
     end
 
@@ -20,10 +20,9 @@ flowchart TB
     subgraph TRANSLATE["Stage 2: Translate (src/translator/)"]
         translate_chart["translate_chart(spec, models_dir?)<br/>→ VegaLiteSpec dict"]
 
-        subgraph RESOLVER["Resolver Selection"]
+        subgraph RESOLVER["Resolver"]
             direction LR
-            DR["DataBlockResolver<br/>(legacy DataSource)"]
-            MR["ModelResolver<br/>(model name string)"]
+            MR["ModelResolver<br/>(always — data is model name)"]
         end
 
         subgraph ROUTER["Router (translate.py)"]
@@ -54,7 +53,7 @@ flowchart TB
         subgraph DATA["Data (src/data/)"]
             resolve_data["resolve_data(spec, chart_spec, rows?)"]
             bind_data["bind_data(spec, rows)"]
-            cube_client["cube_client.py<br/>fetch_from_cube()"]
+            cube_client["cube_client.py<br/>fetch_from_cube_model()"]
         end
         subgraph RENDER["Render (src/render/)"]
             render_html["render_html(spec, title?)<br/>→ HTML string"]
@@ -73,7 +72,7 @@ flowchart TB
     %% Main flow
     YAML --> parse_chart
     chart_schema --> translate_chart
-    MODEL_YAML -.->|"load_model()"| MR
+    MODEL_YAML -.->|"load_model(spec.data)"| MR
     translate_chart --> RESOLVER
     RESOLVER --> ROUTER
     single --> HELPERS
@@ -108,7 +107,7 @@ classDiagram
         +str|None version
         +str sheet
         +str|None description
-        +DataSpec data
+        +str data
         +ShelfSpec|None cols
         +ShelfSpec|None rows
         +MarkSpec|None marks
@@ -123,23 +122,6 @@ classDiagram
         +KPIConfig|None kpi
         +validate: at_most_one_multi_measure_shelf()
         +validate: single_measure_requires_marks()
-    }
-
-    class DataSpec {
-        <<Union>>
-        str | DataSource
-    }
-
-    class DataSource {
-        +str model
-        +list~str~ measures
-        +list~str~ dimensions
-        +TimeGrainConfig|None time_grain
-    }
-
-    class TimeGrainConfig {
-        +str field
-        +TimeGrain grain
     }
 
     class ShelfSpec {
@@ -250,7 +232,6 @@ classDiagram
         +KPIComparison|None comparison
     }
 
-    ChartSpec --> DataSpec
     ChartSpec --> ShelfSpec : rows, cols
     ChartSpec --> MarkSpec : marks
     ChartSpec --> ColorSpec : color
@@ -259,8 +240,6 @@ classDiagram
     ChartSpec --> FacetSpec : facet
     ChartSpec --> AxisConfig : axis
     ChartSpec --> KPIConfig : kpi
-    DataSpec --> DataSource
-    DataSource --> TimeGrainConfig
     ShelfSpec --> MeasureEntry
     MeasureEntry --> LayerEntry : layer (Phase 1a)
     MeasureEntry --> MarkSpec : mark
@@ -349,20 +328,6 @@ classDiagram
     class FieldTypeResolver {
         <<Protocol>>
         +resolve(field_name: str) VegaLiteType
-        +resolve_base_field(field_ref: str) str
-        +resolve_time_unit(field_ref: str) str|None
-        +resolve_format(field_ref: str) str|None
-    }
-
-    class DataBlockResolver {
-        -DataSource data
-        -set measures
-        -set dimensions
-        -str|None temporal_field
-        +resolve(field_name) VegaLiteType
-        +resolve_base_field(field_ref) str
-        +resolve_time_unit(field_ref) None
-        +resolve_format(field_ref) None
     }
 
     class ModelResolver {
@@ -382,26 +347,18 @@ classDiagram
         -_lookup(ref) tuple
     }
 
-    FieldTypeResolver <|.. DataBlockResolver : implements
     FieldTypeResolver <|.. ModelResolver : implements
 
-    note for DataBlockResolver "Phase 1: Types from ChartSpec\ndata block (measures/dimensions)"
-    note for ModelResolver "Phase 3: Types + labels + formats\n+ time units from DataModel YAML.\nSupports dot notation:\norder_date.month → temporal + yearmonth"
+    note for ModelResolver "Types + labels + formats + time units\nfrom DataModel YAML manifest.\nSupports dot notation:\norder_date.month → temporal + yearmonth"
 ```
 
 ## 5. Translation Routing Decision Tree
 
 ```mermaid
 flowchart TD
-    START["translate_chart(spec)"] --> RESOLVE_DATA{"spec.data type?"}
-
-    RESOLVE_DATA -->|"string (model name)"| LOAD_MODEL["load_model(name, models_dir)<br/>→ DataModel"]
+    START["translate_chart(spec)"] --> LOAD_MODEL["load_model(spec.data, models_dir)<br/>→ DataModel"]
     LOAD_MODEL --> CREATE_MR["ModelResolver(model)"]
-
-    RESOLVE_DATA -->|"DataSource object"| CREATE_DBR["DataBlockResolver(data)"]
-
     CREATE_MR --> ROUTE
-    CREATE_DBR --> ROUTE
 
     ROUTE{"Shelf shape?"}
 
@@ -489,15 +446,10 @@ flowchart TD
 
     HAS_ROWS -->|Yes| BIND["bind_data(spec, rows)<br/>spec['data'] = {values: rows}"]
 
-    HAS_ROWS -->|No| DATA_TYPE{"chart_spec.data type?"}
-
-    DATA_TYPE -->|"string (model name)"| LOAD["load_model(name)"]
+    HAS_ROWS -->|No| LOAD["load_model(chart_spec.data)"]
     LOAD --> SOURCE{"model.source type?"}
-    SOURCE -->|CubeSource| CUBE_MODEL["fetch_from_cube_model(model, filters)"]
-    SOURCE -->|InlineSource| INLINE["Load JSON from path"]
-    SOURCE -->|None| ERR1["ValueError"]
-
-    DATA_TYPE -->|DataSource| CUBE_LEGACY["fetch_from_cube(data, filters)"]
+    SOURCE -->|CubeSource| CUBE_MODEL["fetch_from_cube_model(model, chart_spec, resolver)"]
+    SOURCE -->|None| ERR1["ValueError<br/>(no source configured)"]
 
     subgraph CUBE["Cube.dev Client (cube_client.py)"]
         direction TB
@@ -508,10 +460,8 @@ flowchart TD
     end
 
     CUBE_MODEL --> CUBE
-    CUBE_LEGACY --> CUBE
 
     CUBE --> BIND
-    INLINE --> BIND
 
     BIND --> DONE["VL spec with data.values attached"]
 
@@ -586,7 +536,7 @@ graph TD
 
     subgraph SCHEMA["src/schema/"]
         CS["chart_schema.py<br/>ChartSpec, parse_chart"]
-        FT["field_types.py<br/>DataBlockResolver"]
+        FT["field_types.py<br/>FieldTypeResolver (Protocol)"]
     end
 
     subgraph MODELS["src/models/"]

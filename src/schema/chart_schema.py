@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, model_validator
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = "0.2.0"  # bumped: additive — data shorthand + dot notation
+DSL_VERSION = "0.3.0"  # breaking: removed legacy DataSource inline declaration
 
 # ─── Primitives ────────────────────────────────────────────────────
 
@@ -61,25 +61,6 @@ FilterOperator = Literal[
 SortOrder = Literal["ascending", "descending"]
 ScaleResolve = Literal["independent", "shared"]
 TimeGrain = Literal["day", "week", "month", "quarter", "year"]
-
-
-# ─── Data Source ───────────────────────────────────────────────────
-
-
-class TimeGrainConfig(BaseModel):
-    field: str
-    grain: TimeGrain
-
-
-class DataSource(BaseModel):
-    model: str
-    measures: list[str]
-    dimensions: list[str]
-    time_grain: TimeGrainConfig | None = None
-
-
-# Data can be a string (model name shorthand) or a full DataSource object
-DataSpec = Union[str, DataSource]
 
 
 # ─── Mark Definition ──────────────────────────────────────────────
@@ -330,7 +311,7 @@ class ChartSpec(BaseModel):
 
     sheet: str = Field(min_length=1)
     description: str | None = None
-    data: DataSpec
+    data: str = Field(min_length=1, description="Model name referencing a DataModel manifest.")
 
     # Shelf assignments
     cols: ShelfSpec | None = None

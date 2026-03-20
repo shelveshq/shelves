@@ -1,11 +1,5 @@
 sheet: "Revenue Trend by Country"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country, month]
-  time_grain:
-    field: month
-    grain: month
+data: orders
 
 cols: month
 rows: revenue

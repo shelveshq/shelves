@@ -63,10 +63,7 @@ class TestStackedSchema:
         with pytest.raises(Exception):
             parse_chart("""
 sheet: "Bad"
-data:
-  model: orders
-  measures: [a, b, c]
-  dimensions: []
+data: orders
 rows:
   - measure: a
   - measure: b
@@ -78,13 +75,7 @@ cols:
         """Schema accepts layers, but translator raises NotImplementedError."""
         spec = parse_chart("""
 sheet: "With Layers"
-data:
-  model: orders
-  measures: [revenue, arpu]
-  dimensions: [week]
-  time_grain:
-    field: week
-    grain: week
+data: orders
 cols: week
 rows:
   - measure: revenue

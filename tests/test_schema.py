@@ -19,13 +19,11 @@ class TestParseValidSpecs:
         assert spec.marks == "bar"
         assert spec.cols == "country"
         assert spec.rows == "revenue"
-        assert spec.data.model == "orders"
+        assert spec.data == "orders"
 
-    def test_line_chart_with_time_grain(self):
+    def test_line_chart(self):
         spec = parse_chart(load_yaml("line_chart.yaml"))
-        assert spec.data.time_grain is not None
-        assert spec.data.time_grain.field == "week"
-        assert spec.data.time_grain.grain == "week"
+        assert spec.data == "orders"
 
     def test_scatter_with_size(self):
         spec = parse_chart(load_yaml("scatter.yaml"))
@@ -55,8 +53,7 @@ class TestParseValidSpecs:
         spec = parse_chart(load_yaml("multi_line.yaml"))
         assert spec.marks == "line"
         assert spec.color == "country"
-        assert spec.data.time_grain is not None
-        assert spec.data.time_grain.field == "week"
+        assert spec.data == "orders"
 
     def test_heatmap_with_quantitative_color(self):
         spec = parse_chart(load_yaml("heatmap.yaml"))
@@ -70,10 +67,7 @@ class TestParseInvalidSpecs:
     def test_rejects_missing_sheet(self):
         with pytest.raises(ValidationError):
             parse_chart("""
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country]
+data: orders
 marks: bar
 """)
 
@@ -88,10 +82,7 @@ marks: bar
         with pytest.raises(ValidationError):
             parse_chart("""
 sheet: "Test"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country]
+data: orders
 marks: sparkle
 """)
 
@@ -99,10 +90,7 @@ marks: sparkle
         with pytest.raises(ValidationError):
             parse_chart("""
 sheet: "Test"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country]
+data: orders
 marks: bar
 filters:
   - field: country

@@ -1,6 +1,6 @@
 # Charter DSL Reference
 
-**DSL Version: 0.2.0**
+**DSL Version: 0.3.0**
 
 This document is the authoritative reference for the Charter YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -13,13 +13,7 @@ version: "0.1.0"          # optional — DSL version this spec targets
 sheet: "My Chart Title"    # required — chart name
 description: "..."         # optional
 
-data:
-  model: orders            # semantic model name
-  measures: [revenue]      # quantitative fields
-  dimensions: [country]    # categorical/nominal fields
-  time_grain:              # optional — marks a dimension as temporal
-    field: week
-    grain: week            # day | week | month | quarter | year
+data: orders                 # model name — references a DataModel manifest in models/
 
 cols: <shelf>              # x-axis assignment
 rows: <shelf>              # y-axis assignment
@@ -147,32 +141,14 @@ marks:
 
 ## Data block
 
-### Model shorthand (recommended)
-
 ```yaml
 data: orders
 ```
 
-When `data` is a string, it references a data model file (`models/orders.yaml`). The model defines all measures, dimensions, field types, labels, and formats. No need to redeclare them in every chart.
+A string referencing a data model file (`models/orders.yaml`). The model defines all measures, dimensions, field types, labels, and formats. See `models/` for available models.
 
-### Verbose form (legacy)
-
-```yaml
-data:
-  model: orders
-  measures: [revenue, order_count, arpu]
-  dimensions: [country, week, region]
-  time_grain:
-    field: week
-    grain: week
-```
-
-The verbose form still works. Use it when you don't have a model file or need to override field declarations.
-
-- **model** — name of the semantic data model.
-- **measures** — fields treated as quantitative (numbers).
-- **dimensions** — fields treated as nominal (categories).
-- **time_grain** — marks one dimension as temporal.
+- **Required.** Every chart must reference a model.
+- Temporal dimensions, grain, and format strings are all defined in the model — no need to redeclare per chart.
 
 Field type resolution: measures → `quantitative`, dimensions → `nominal`, `time_grain.field` → `temporal`.
 
@@ -570,5 +546,6 @@ kpi:
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.2.0** | Current | Data model shorthand (`data: orders`), temporal dot notation (`cols: order_date.month`), auto-injected axis formats from model. |
-| **0.1.0** | Previous | Single-measure charts, multi-measure stacked panels (repeat/concat), filters, sort, facet, themes, data binding, HTML rendering. Layers and KPI parsed but not compiled. |
+| **0.3.0** | Current | **Breaking:** removed legacy `DataSource` inline declaration. `data` is now always a model name string. |
+| **0.2.0** | Previous | Data model shorthand (`data: orders`), temporal dot notation (`cols: order_date.month`), auto-injected axis formats from model. |
+| **0.1.0** | — | Single-measure charts, multi-measure stacked panels (repeat/concat), filters, sort, facet, themes, data binding, HTML rendering. Layers and KPI parsed but not compiled. |

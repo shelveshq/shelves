@@ -4,6 +4,9 @@ Tests for the data resolution pipeline — inline and Cube modes.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import httpx
 import pytest
 import respx
@@ -12,9 +15,18 @@ from src.schema.chart_schema import parse_chart
 from src.translator.translate import translate_chart
 from src.theme.merge import merge_theme
 from src.data.bind import resolve_data
-from src.data.cube_client import CubeConfigError
 from src.render.to_html import render_html
+from src.models.loader import clear_model_cache
 from tests.conftest import load_yaml
+
+MODELS_DIR = Path(__file__).parent / "fixtures" / "models"
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    clear_model_cache()
+    yield
+    clear_model_cache()
 
 
 class TestResolveData:
@@ -38,10 +50,9 @@ class TestResolveData:
         result = resolve_data(simple_vl, simple_spec, rows=[])
         assert result["data"]["values"] == []
 
-    def test_cube_config_error_when_no_rows_no_env(self, simple_vl, simple_spec, monkeypatch):
-        monkeypatch.delenv("CUBE_API_URL", raising=False)
-        monkeypatch.delenv("CUBE_API_TOKEN", raising=False)
-        with pytest.raises(CubeConfigError):
+    def test_no_cube_source_raises_when_no_rows(self, simple_vl, simple_spec):
+        # orders model has inline source, not cube — should raise ValueError
+        with pytest.raises(ValueError, match="No data provided"):
             resolve_data(simple_vl, simple_spec)
 
     @respx.mock
@@ -64,8 +75,8 @@ class TestResolveData:
 
         yaml = load_yaml("cube_sales_by_category.yaml")
         spec = parse_chart(yaml)
-        vl = translate_chart(spec)
-        result = resolve_data(vl, spec)
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+        result = resolve_data(vl, spec, models_dir=MODELS_DIR)
 
         assert len(result["data"]["values"]) == 2
         assert result["data"]["values"][0] == {"net_sales": 100, "category": "Furniture"}
@@ -95,9 +106,9 @@ class TestEndToEndPipeline:
 
         yaml = load_yaml("cube_sales_by_category.yaml")
         spec = parse_chart(yaml)
-        vl = translate_chart(spec)
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
         themed = merge_theme(vl)
-        bound = resolve_data(themed, spec)
+        bound = resolve_data(themed, spec, models_dir=MODELS_DIR)
         html = render_html(bound, title=spec.sheet)
 
         # Verify we got a complete HTML page with data
@@ -108,7 +119,7 @@ class TestEndToEndPipeline:
 
     @respx.mock
     def test_time_grain_chart(self, monkeypatch):
-        """YAML with time_grain → Cube timeDimensions → rendered chart."""
+        """YAML with temporal dimension → Cube timeDimensions → rendered chart."""
         monkeypatch.setenv("CUBE_API_URL", "http://localhost:4000")
         monkeypatch.setenv("CUBE_API_TOKEN", "tok")
 
@@ -126,13 +137,12 @@ class TestEndToEndPipeline:
 
         yaml = load_yaml("cube_sales_over_time.yaml")
         spec = parse_chart(yaml)
-        vl = translate_chart(spec)
-        bound = resolve_data(vl, spec)
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+        bound = resolve_data(vl, spec, models_dir=MODELS_DIR)
 
         assert len(bound["data"]["values"]) == 2
 
         # Verify the Cube query used timeDimensions
-        import json
         body = json.loads(route.calls[0].request.content)
         assert "timeDimensions" in body["query"]
         assert body["query"]["timeDimensions"][0]["granularity"] == "month"
@@ -152,13 +162,12 @@ class TestEndToEndPipeline:
 
         yaml = load_yaml("cube_filtered.yaml")
         spec = parse_chart(yaml)
-        vl = translate_chart(spec)
-        bound = resolve_data(vl, spec)
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+        bound = resolve_data(vl, spec, models_dir=MODELS_DIR)
 
         assert len(bound["data"]["values"]) == 1
 
         # Verify filters were sent to Cube
-        import json
         body = json.loads(route.calls[0].request.content)
         assert body["query"]["filters"] == [
             {"member": "orders.segment", "operator": "equals", "values": ["Consumer"]}

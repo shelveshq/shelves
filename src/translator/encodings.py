@@ -32,9 +32,8 @@ def build_field_encoding(field_ref: str, resolver: FieldTypeResolver) -> dict[st
     """
     Build a field encoding dict from a field reference and resolver.
 
-    Handles dot notation: resolves base field, type, timeUnit, and auto-format.
-    Works with both DataBlockResolver (stubs return passthrough/None) and
-    ModelResolver (returns real base field, timeUnit, format).
+    Handles dot notation: resolves base field, type, timeUnit, and auto-format
+    via the ModelResolver.
 
     Returns: {"field": "order_date", "type": "temporal", "timeUnit": "yearmonth"}
     """

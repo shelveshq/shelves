@@ -9,7 +9,7 @@ with actual output assertions.
 """
 
 import pytest
-from src.schema.chart_schema import parse_chart, MeasureEntry, LayerEntry
+from src.schema.chart_schema import parse_chart
 from src.translator.translate import translate_chart
 from tests.conftest import load_yaml
 
@@ -67,13 +67,7 @@ class TestLayerSchemaParsing:
         is handled by the translator, not the schema."""
         spec = parse_chart("""
 sheet: "Test"
-data:
-  model: orders
-  measures: [revenue, arpu]
-  dimensions: [week]
-  time_grain:
-    field: week
-    grain: week
+data: orders
 cols: week
 marks: line
 rows:

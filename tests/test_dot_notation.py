@@ -2,7 +2,7 @@
 Dot Notation Tests
 
 Tests for dot-notation support through the translator layer:
-  - build_field_encoding with ModelResolver and DataBlockResolver
+  - build_field_encoding with ModelResolver
   - All grain-to-timeUnit mappings
   - Auto-format injection from model
   - Filter/sort base field resolution
@@ -15,7 +15,6 @@ import pytest
 from src.models.loader import load_model, clear_model_cache
 from src.models.resolver import ModelResolver
 from src.schema.chart_schema import AxisChannelConfig, ShelfFilter, FieldSort
-from src.schema.field_types import DataBlockResolver
 from src.translator.encodings import build_field_encoding, _auto_inject_format
 from src.translator.filters import build_transforms
 from src.translator.sort import apply_sort
@@ -51,20 +50,6 @@ class TestBuildFieldEncoding:
 
     def test_measure_no_time_unit(self, orders_model):
         resolver = ModelResolver(orders_model)
-        enc = build_field_encoding("revenue", resolver)
-        assert enc == {"field": "revenue", "type": "quantitative"}
-        assert "timeUnit" not in enc
-
-    def test_data_block_resolver_passthrough(self):
-        from src.schema.chart_schema import DataSource, TimeGrainConfig
-
-        data = DataSource(
-            model="orders",
-            measures=["revenue"],
-            dimensions=["week"],
-            time_grain=TimeGrainConfig(field="week", grain="week"),
-        )
-        resolver = DataBlockResolver(data)
         enc = build_field_encoding("revenue", resolver)
         assert enc == {"field": "revenue", "type": "quantitative"}
         assert "timeUnit" not in enc
@@ -129,22 +114,3 @@ class TestStackedDotNotation:
         enc = build_field_encoding("week.month", resolver)
         assert enc["field"] == "week"
         assert enc["timeUnit"] == "yearmonth"
-
-
-# ─── DataBlockResolver stubs ────────────────────────────────────────────────
-
-
-class TestDataBlockResolverStubs:
-    def test_stub_methods(self):
-        from src.schema.chart_schema import DataSource, TimeGrainConfig
-
-        data = DataSource(
-            model="orders",
-            measures=["revenue"],
-            dimensions=["week"],
-            time_grain=TimeGrainConfig(field="week", grain="week"),
-        )
-        resolver = DataBlockResolver(data)
-        assert resolver.resolve_base_field("revenue") == "revenue"
-        assert resolver.resolve_time_unit("revenue") is None
-        assert resolver.resolve_format("revenue") is None

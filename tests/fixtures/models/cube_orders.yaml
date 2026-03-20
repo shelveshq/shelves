@@ -1,0 +1,25 @@
+model: cube_orders
+label: Cube Orders
+description: Cube-backed order data for integration tests
+
+source:
+  type: cube
+  cube: orders
+
+measures:
+  net_sales:
+    label: Net Sales
+    format: "$,.0f"
+    aggregation: sum
+
+dimensions:
+  category:
+    label: Category
+  segment:
+    label: Segment
+  order_date:
+    type: temporal
+    label: Order Date
+    defaultGrain: month
+    format:
+      month: "%b %Y"
