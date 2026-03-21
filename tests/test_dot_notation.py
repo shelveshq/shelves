@@ -15,7 +15,7 @@ import pytest
 from src.models.loader import load_model, clear_model_cache
 from src.models.resolver import ModelResolver
 from src.schema.chart_schema import AxisChannelConfig, ShelfFilter, FieldSort
-from src.translator.encodings import build_field_encoding, _auto_inject_format
+from src.translator.encodings import build_field_encoding, _auto_inject_from_model
 from src.translator.filters import build_transforms
 from src.translator.sort import apply_sort
 
@@ -70,14 +70,16 @@ class TestAutoFormat:
     def test_format_injected_from_model(self, orders_model):
         resolver = ModelResolver(orders_model)
         enc = build_field_encoding("week.month", resolver)
-        _auto_inject_format(enc, "week.month", resolver, None)
+        _auto_inject_from_model(enc, "week.month", resolver, None, channel="x")
         assert enc["axis"]["format"] == "%b %Y"
+        assert enc["axis"]["grid"] is False
+        assert enc["title"] == "Week"
 
     def test_format_not_injected_with_override(self, orders_model):
         resolver = ModelResolver(orders_model)
         enc = build_field_encoding("week.month", resolver)
         axis_cfg = AxisChannelConfig(format="%Y")
-        _auto_inject_format(enc, "week.month", resolver, axis_cfg)
+        _auto_inject_from_model(enc, "week.month", resolver, axis_cfg, channel="x")
         # Chart override should win — format should not be replaced
         assert enc.get("axis", {}).get("format") != "%b %Y"
 

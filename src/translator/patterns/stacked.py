@@ -61,6 +61,7 @@ def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpe
             entries,
             effective_marks[0],
             shared_enc,
+            shared_field,
             shared_axis,
             measure_axis,
             spec,
@@ -73,6 +74,7 @@ def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpe
         entries,
         effective_marks,
         shared_enc,
+        shared_field,
         shared_axis,
         measure_axis,
         concat_key,
@@ -95,6 +97,7 @@ def _compile_repeat(
     entries: list[MeasureEntry],
     mark: MarkSpec,
     shared_enc: dict,
+    shared_field: str,
     shared_axis: str,
     measure_axis: str,
     spec: ChartSpec,
@@ -106,8 +109,15 @@ def _compile_repeat(
     measures = [e.measure for e in entries]
     repeat_channel = "row" if measure_axis == "y" else "column"
 
+    # Build shared axis encoding with title and format from model
+    shared_enc_with_meta: dict[str, Any] = {**shared_enc}
+    shared_enc_with_meta["title"] = resolver.resolve_label(shared_field)
+    shared_fmt = resolver.resolve_format(shared_field)
+    if shared_fmt is not None:
+        shared_enc_with_meta["axis"] = {"format": shared_fmt}
+
     inner_encoding: dict[str, Any] = {
-        shared_axis: shared_enc,
+        shared_axis: shared_enc_with_meta,
         measure_axis: {
             "field": {"repeat": repeat_channel},
             "type": "quantitative",
@@ -140,6 +150,7 @@ def _compile_concat(
     entries: list[MeasureEntry],
     effective_marks: list[MarkSpec],
     shared_enc: dict,
+    shared_field: str,
     shared_axis: str,
     measure_axis: str,
     concat_key: str,
@@ -149,14 +160,31 @@ def _compile_concat(
 ) -> VegaLiteSpec:
     """Compile to Vega-Lite vconcat/hconcat (panels may differ in mark/color)."""
 
+    # Pre-compute shared axis label and format (same for every panel)
+    shared_label = resolver.resolve_label(shared_field)
+    shared_fmt = resolver.resolve_format(shared_field)
+
     panels = []
     for entry, mark in zip(entries, effective_marks):
+        # Build shared axis encoding copy with title and format
+        shared_enc_copy: dict[str, Any] = {**shared_enc}
+        shared_enc_copy["title"] = shared_label
+        if shared_fmt is not None:
+            shared_enc_copy["axis"] = {"format": shared_fmt}
+
+        # Build measure axis encoding with title and format
+        measure_enc: dict[str, Any] = {
+            "field": entry.measure,
+            "type": "quantitative",
+            "title": resolver.resolve_label(entry.measure),
+        }
+        measure_fmt = resolver.resolve_format(entry.measure)
+        if measure_fmt is not None:
+            measure_enc["axis"] = {"format": measure_fmt}
+
         panel_encoding: dict[str, Any] = {
-            shared_axis: {**shared_enc},
-            measure_axis: {
-                "field": entry.measure,
-                "type": "quantitative",
-            },
+            shared_axis: shared_enc_copy,
+            measure_axis: measure_enc,
         }
 
         # Color: entry-level overrides top-level

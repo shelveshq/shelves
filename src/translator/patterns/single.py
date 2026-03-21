@@ -16,7 +16,7 @@ from src.schema.field_types import FieldTypeResolver
 from src.translator.marks import build_mark
 from src.translator.encodings import build_encodings
 from src.translator.filters import build_transforms
-from src.translator.sort import apply_sort
+from src.translator.sort import apply_sort, apply_default_sort_from_model
 
 VegaLiteSpec = dict[str, Any]
 
@@ -32,8 +32,11 @@ def compile_single(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpec
     # Encoding channels
     inner["encoding"] = build_encodings(spec, resolver)
 
-    # Sort — mutates encoding dict in place
+    # Sort — explicit chart sort first
     apply_sort(inner["encoding"], spec.sort, resolver)
+
+    # Default sort from model — only if no explicit sort
+    apply_default_sort_from_model(inner["encoding"], spec.sort, resolver)
 
     # Transforms (filters)
     transforms = build_transforms(spec.filters, resolver)

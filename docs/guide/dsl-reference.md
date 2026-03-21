@@ -339,6 +339,34 @@ axis:
     grid: true
 ```
 
+### Auto-injection from model
+
+When a chart references a data model (`data: orders`), the translator automatically injects:
+
+- **Axis titles** from the model's field `label` (e.g. `revenue` → title "Revenue")
+- **Axis formats** from the model's `format` string (e.g. `"$,.0f"` for revenue)
+- **Temporal formats** from the model's per-grain format map (e.g. `"%b %Y"` for month grain)
+- **Grid defaults**: y-axis grid on, x-axis grid off
+- **Legend titles** from the model's dimension `label`
+- **Tooltip labels and formats** from the model's field `label` and `format`
+- **Default sort** from the model's `defaultSort` (measure) or `sortOrder` (dimension)
+
+All auto-injected values can be overridden by explicit chart-level configuration. The precedence order:
+
+1. Explicit chart config (e.g. `axis.y.title`, `sort:`) — **always wins**
+2. Model field metadata (label, format, defaultSort, sortOrder)
+
+```yaml
+# No axis config needed — model provides titles, formats, and grid defaults
+sheet: "Revenue by Country"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+color: country
+tooltip: [country, revenue]
+```
+
 ---
 
 ## Complete examples

@@ -62,15 +62,27 @@ def build_encodings(spec: ChartSpec, resolver: FieldTypeResolver) -> dict[str, A
     if spec.cols and isinstance(spec.cols, str):
         enc["x"] = build_field_encoding(spec.cols, resolver)
         _apply_axis_config(enc["x"], spec.axis.x if spec.axis else None)
-        _auto_inject_format(enc["x"], spec.cols, resolver, spec.axis.x if spec.axis else None)
+        _auto_inject_from_model(
+            enc["x"],
+            spec.cols,
+            resolver,
+            spec.axis.x if spec.axis else None,
+            channel="x",
+        )
 
     # Y (rows) — must be a string for single-measure path
     if spec.rows and isinstance(spec.rows, str):
         enc["y"] = build_field_encoding(spec.rows, resolver)
         _apply_axis_config(enc["y"], spec.axis.y if spec.axis else None)
-        _auto_inject_format(enc["y"], spec.rows, resolver, spec.axis.y if spec.axis else None)
+        _auto_inject_from_model(
+            enc["y"],
+            spec.rows,
+            resolver,
+            spec.axis.y if spec.axis else None,
+            channel="y",
+        )
 
-    # Color
+    # Color — with legend title auto-injection
     if spec.color is not None:
         enc["color"] = build_color(spec.color, resolver)
 
@@ -82,7 +94,7 @@ def build_encodings(spec: ChartSpec, resolver: FieldTypeResolver) -> dict[str, A
     if spec.size is not None:
         enc["size"] = build_size(spec.size, resolver)
 
-    # Tooltip
+    # Tooltip — with auto-labels and auto-formats
     if spec.tooltip:
         enc["tooltip"] = build_tooltip(spec.tooltip, resolver)
 
@@ -96,16 +108,22 @@ def build_color(
     color: ColorSpec,
     resolver: FieldTypeResolver,
 ) -> dict[str, Any]:
-    """Build a color encoding from a DSL color spec."""
+    """Build a color encoding from a DSL color spec. Auto-injects legend title from model."""
     if isinstance(color, str) and HEX_COLOR_RE.match(color):
         return {"value": color}
     if isinstance(color, str):
-        return build_field_encoding(color, resolver)
+        enc = build_field_encoding(color, resolver)
+        # Auto-inject legend title from model label
+        enc["legend"] = {"title": resolver.resolve_label(color)}
+        return enc
     # ColorFieldMapping
-    return {
+    result = {
         "field": resolver.resolve_base_field(color.field),
         "type": color.type or resolver.resolve(color.field),
     }
+    # Auto-inject legend title
+    result["legend"] = {"title": resolver.resolve_label(color.field)}
+    return result
 
 
 def build_detail(
@@ -130,15 +148,29 @@ def build_tooltip(
     tooltip: TooltipSpec,
     resolver: FieldTypeResolver,
 ) -> list[dict[str, Any]]:
-    """Build tooltip encoding list."""
+    """Build tooltip encoding list with auto-injected titles and formats from model."""
     result = []
     for item in tooltip:
         if isinstance(item, str):
-            result.append(build_field_encoding(item, resolver))
+            entry = build_field_encoding(item, resolver)
+            # Auto-inject title from model label
+            entry["title"] = resolver.resolve_label(item)
+            # Auto-inject format from model
+            fmt = resolver.resolve_format(item)
+            if fmt is not None:
+                entry["format"] = fmt
+            result.append(entry)
         else:
             entry = build_field_encoding(item.field, resolver)
+            # Auto-inject title from model label
+            entry["title"] = resolver.resolve_label(item.field)
+            # Explicit tooltip format overrides model format
             if item.format:
                 entry["format"] = item.format
+            else:
+                fmt = resolver.resolve_format(item.field)
+                if fmt is not None:
+                    entry["format"] = fmt
             result.append(entry)
     return result
 
@@ -167,25 +199,44 @@ def _apply_axis_config(
         encoding_channel["axis"] = axis_props
 
 
-def _auto_inject_format(
+def _auto_inject_from_model(
     encoding_channel: dict[str, Any],
     field_ref: str,
     resolver: FieldTypeResolver,
     axis_cfg: Any | None,
+    channel: str,
 ) -> None:
     """
-    Auto-inject format from model if no chart-level axis format override exists.
+    Auto-inject title, format, and grid defaults from the model into an
+    encoding channel dict.
 
-    Only injects when:
-    1. resolver.resolve_format() returns a non-None format string
-    2. The chart spec doesn't already set axis.format for this channel
+    Injection rules (each skipped if chart spec already sets it):
+      1. title ← resolver.resolve_label(field_ref)
+         Skipped if axis_cfg.title is set.
+      2. axis.format ← resolver.resolve_format(field_ref)
+         Skipped if axis_cfg.format is set.
+         (This is the existing _auto_inject_format logic.)
+      3. axis.grid ← True for y-axis, False for x-axis
+         Skipped if axis_cfg.grid is not None.
+
+    Mutates encoding_channel in place.
     """
-    # Skip if chart already has a format override
-    if axis_cfg is not None and axis_cfg.format:
-        return
+    # Step 1: Auto-inject title
+    if axis_cfg is None or not axis_cfg.title:
+        label = resolver.resolve_label(field_ref)
+        encoding_channel["title"] = label
 
-    model_format = resolver.resolve_format(field_ref)
-    if model_format is not None:
+    # Step 2: Auto-inject format (existing logic from _auto_inject_format)
+    if axis_cfg is None or not axis_cfg.format:
+        model_format = resolver.resolve_format(field_ref)
+        if model_format is not None:
+            axis_props = encoding_channel.get("axis", {})
+            axis_props["format"] = model_format
+            encoding_channel["axis"] = axis_props
+
+    # Step 3: Auto-inject grid defaults
+    if axis_cfg is None or axis_cfg.grid is None:
+        default_grid = channel == "y"  # y-axis grid on, x-axis grid off
         axis_props = encoding_channel.get("axis", {})
-        axis_props["format"] = model_format
+        axis_props["grid"] = default_grid
         encoding_channel["axis"] = axis_props
