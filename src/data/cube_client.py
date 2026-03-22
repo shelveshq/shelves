@@ -156,11 +156,11 @@ def build_cube_query(
         base_field = resolver.resolve_base_field(field)
         if resolver.is_measure(field):
             measures.append(f"{cube_name}.{base_field}")
-        elif resolver.resolve_grain(field) is not None:
+        elif (grain := resolver.resolve_grain(field)) is not None:
             time_dimensions.append(
                 {
                     "dimension": f"{cube_name}.{base_field}",
-                    "granularity": resolver.resolve_grain(field),
+                    "granularity": grain,
                 }
             )
         else:
