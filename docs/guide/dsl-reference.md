@@ -150,7 +150,7 @@ A string referencing a data model file (`models/orders.yaml`). The model defines
 - **Required.** Every chart must reference a model.
 - Temporal dimensions, grain, and format strings are all defined in the model — no need to redeclare per chart.
 
-Field type resolution: measures → `quantitative`, dimensions → `nominal`, `time_grain.field` → `temporal`.
+Field type resolution: measures → `quantitative`, dimensions → `nominal`, fields with `type: temporal` in the model (including dot-notation grains like `order_date.month`) → `temporal`.
 
 ---
 
