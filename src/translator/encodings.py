@@ -117,7 +117,7 @@ def build_color(
         enc["legend"] = {"title": resolver.resolve_label(color)}
         return enc
     # ColorFieldMapping
-    result = {
+    result: dict[str, Any] = {
         "field": resolver.resolve_base_field(color.field),
         "type": color.type or resolver.resolve(color.field),
     }

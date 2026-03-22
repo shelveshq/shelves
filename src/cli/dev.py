@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -116,7 +117,7 @@ class _YAMLWatcher(FileSystemEventHandler):
         self._state = state
 
     def on_modified(self, event):
-        if Path(event.src_path).resolve() == self._yaml_path.resolve():
+        if Path(os.fsdecode(event.src_path)).resolve() == self._yaml_path.resolve():
             _build(self._yaml_path, self._data_path, self._no_theme, self._state)
 
 

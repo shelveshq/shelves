@@ -27,6 +27,7 @@ def compile_single(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpec
     inner: VegaLiteSpec = {}
 
     # Mark (required for single-measure charts, enforced by schema validator)
+    assert spec.marks is not None, "compile_single requires marks (enforced by schema)"
     inner["mark"] = build_mark(spec.marks)
 
     # Encoding channels

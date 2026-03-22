@@ -52,7 +52,7 @@ def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpe
     transforms = build_transforms(spec.filters, resolver)
 
     # Try repeat path: all entries use the same effective mark
-    effective_marks = [_resolve_mark(e, spec.marks) for e in entries]
+    effective_marks: list[MarkSpec] = [_resolve_mark(e, spec.marks) for e in entries]
     all_same_mark = len(set(str(m) for m in effective_marks)) == 1
 
     if all_same_mark and not any(e.color or e.detail or e.size for e in entries):

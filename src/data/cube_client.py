@@ -15,8 +15,14 @@ from typing import Any
 
 import httpx
 
-from src.schema.chart_schema import ChartSpec, HEX_COLOR_RE, MeasureEntry, ShelfFilter
-from src.models.schema import DataModel
+from src.schema.chart_schema import (
+    ChartSpec,
+    ColorFieldMapping,
+    HEX_COLOR_RE,
+    MeasureEntry,
+    ShelfFilter,
+)
+from src.models.schema import CubeSource, DataModel
 
 
 # ─── Errors ──────────────────────────────────────────────────────────
@@ -99,7 +105,7 @@ def _collect_chart_fields(spec: ChartSpec) -> set[str]:
     if spec.color:
         if isinstance(spec.color, str) and not HEX_COLOR_RE.match(spec.color):
             fields.add(spec.color)
-        elif hasattr(spec.color, "field"):
+        elif isinstance(spec.color, ColorFieldMapping):
             fields.add(spec.color.field)
 
     if spec.detail:
@@ -193,9 +199,13 @@ def _translate_filters(
 
         if f.operator == "between":
             # Cube has no generic 'between' — emit gte + lte pair
+            assert f.range is not None, "ShelfFilter with operator='between' must have range set"
             result.append({"member": member, "operator": "gte", "values": [str(f.range[0])]})
             result.append({"member": member, "operator": "lte", "values": [str(f.range[1])]})
         elif f.operator in ("in", "not_in"):
+            assert (
+                f.values is not None
+            ), "ShelfFilter with operator='in'/'not_in' must have values set"
             result.append(
                 {
                     "member": member,
@@ -267,6 +277,7 @@ def fetch_from_cube_model(
     if config is None:
         config = CubeConfig.from_env()
 
+    assert isinstance(model.source, CubeSource), "resolve_data requires a CubeSource"
     cube_name = model.source.cube
     query = build_cube_query(cube_name, chart_spec, resolver)
 
