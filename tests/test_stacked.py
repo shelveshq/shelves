@@ -22,6 +22,7 @@ class TestStackedPanels:
         x_enc = vl["spec"]["encoding"]["x"]
         assert x_enc["title"] == "Week"
         assert x_enc["axis"]["format"] == "%b %d"
+        assert x_enc["axis"]["grid"] is False  # x-axis grid default
 
     def test_stacked_diff_marks_produces_vconcat(self):
         vl = compile_fixture("stacked_diff_marks.yaml")
@@ -45,11 +46,17 @@ class TestStackedPanels:
         assert panel_1["encoding"]["y"]["title"] == "Orders"
         assert panel_1["encoding"]["y"]["axis"]["format"] == ",.0f"
 
-        # NEW: shared axis title and format on both panels
+        # NEW: shared axis title, format, and grid on both panels
         assert panel_0["encoding"]["x"]["title"] == "Week"
         assert panel_1["encoding"]["x"]["title"] == "Week"
         assert panel_0["encoding"]["x"]["axis"]["format"] == "%b %d"
         assert panel_1["encoding"]["x"]["axis"]["format"] == "%b %d"
+        assert panel_0["encoding"]["x"]["axis"]["grid"] is False  # x-axis grid default
+        assert panel_1["encoding"]["x"]["axis"]["grid"] is False
+
+        # NEW: measure axis grid defaults
+        assert panel_0["encoding"]["y"]["axis"]["grid"] is True  # y-axis grid default
+        assert panel_1["encoding"]["y"]["axis"]["grid"] is True
 
         # NEW: color legend title
         assert panel_0["encoding"]["color"]["legend"]["title"] == "Country"

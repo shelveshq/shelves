@@ -23,6 +23,7 @@ from src.schema.chart_schema import (
     ShelfFilter,
 )
 from src.models.schema import CubeSource, DataModel
+from src.schema.field_types import FieldTypeResolver
 
 
 # ─── Errors ──────────────────────────────────────────────────────────
@@ -136,7 +137,7 @@ _FILTER_OP_MAP = {
 def build_cube_query(
     cube_name: str,
     chart_spec: ChartSpec,
-    resolver: Any,
+    resolver: FieldTypeResolver,
 ) -> dict[str, Any]:
     """
     Build a Cube REST API query dict from chart fields.
@@ -155,16 +156,11 @@ def build_cube_query(
         base_field = resolver.resolve_base_field(field)
         if resolver.is_measure(field):
             measures.append(f"{cube_name}.{base_field}")
-        elif resolver.resolve_time_unit(field) is not None:
-            # Temporal dimension — extract grain from the resolver
-            grain = field.split(".", 1)[1] if "." in field else None
-            # Use the explicit grain or the model's defaultGrain
-            dim_def = resolver._get_dimension(base_field)
-            effective_grain = grain if grain else dim_def.defaultGrain
+        elif resolver.resolve_grain(field) is not None:
             time_dimensions.append(
                 {
                     "dimension": f"{cube_name}.{base_field}",
-                    "granularity": effective_grain,
+                    "granularity": resolver.resolve_grain(field),
                 }
             )
         else:
@@ -180,7 +176,7 @@ def build_cube_query(
 
     # Filters
     if chart_spec.filters:
-        cube_filters = _translate_filters(chart_spec.filters, cube_name)
+        cube_filters = _translate_filters(chart_spec.filters, cube_name, resolver)
         if cube_filters:
             query["filters"] = cube_filters
 
@@ -190,12 +186,13 @@ def build_cube_query(
 def _translate_filters(
     filters: list[ShelfFilter],
     cube_name: str,
+    resolver: FieldTypeResolver,
 ) -> list[dict[str, Any]]:
     """Convert DSL ShelfFilter list to Cube filter format."""
     result = []
 
     for f in filters:
-        member = f"{cube_name}.{f.field}"
+        member = f"{cube_name}.{resolver.resolve_base_field(f.field)}"
 
         if f.operator == "between":
             # Cube has no generic 'between' — emit gte + lte pair
@@ -252,7 +249,7 @@ def _strip_prefix(row: dict[str, Any]) -> dict[str, Any]:
 def fetch_from_cube_model(
     model: DataModel,
     chart_spec: ChartSpec,
-    resolver: Any,
+    resolver: FieldTypeResolver,
     config: CubeConfig | None = None,
 ) -> list[dict[str, Any]]:
     """

@@ -289,6 +289,23 @@ class ModelResolver:
 
         return None
 
+    def resolve_grain(self, field_ref: str) -> str | None:
+        """
+        Resolve a field reference to its effective grain string (or None).
+
+        Returns the raw grain name (e.g. "month", "week") suitable for
+        Cube queries. Uses explicit grain from dot notation if present,
+        otherwise falls back to defaultGrain.
+
+        Non-temporal fields return None.
+        """
+        defn, grain = self._lookup(field_ref)
+
+        if not isinstance(defn, TemporalDimensionDefinition):
+            return None
+
+        return grain if grain else defn.defaultGrain
+
     def is_measure(self, field_ref: str) -> bool:
         """True if the base field is a model measure or a formula."""
         base, _ = self._parse_field_ref(field_ref)

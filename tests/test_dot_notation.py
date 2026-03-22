@@ -14,8 +14,8 @@ import pytest
 
 from src.models.loader import load_model, clear_model_cache
 from src.models.resolver import ModelResolver
-from src.schema.chart_schema import AxisChannelConfig, ShelfFilter, FieldSort
-from src.translator.encodings import build_field_encoding, _auto_inject_from_model
+from src.schema.chart_schema import AxisChannelConfig, ColorFieldMapping, ShelfFilter, FieldSort
+from src.translator.encodings import build_color, build_field_encoding, _auto_inject_from_model
 from src.translator.filters import build_transforms
 from src.translator.sort import apply_sort
 
@@ -108,6 +108,24 @@ class TestSortBaseField:
 
 
 # ─── Stacked shared axis ────────────────────────────────────────────────────
+
+
+class TestColorFieldMappingDotNotation:
+    def test_color_field_mapping_includes_time_unit(self, orders_model):
+        resolver = ModelResolver(orders_model)
+        color = ColorFieldMapping(field="week.month")
+        enc = build_color(color, resolver)
+        assert enc["field"] == "week"
+        assert enc["type"] == "temporal"
+        assert enc["timeUnit"] == "yearmonth"
+        assert enc["legend"]["title"] == "Week"
+
+    def test_color_field_mapping_explicit_type_override(self, orders_model):
+        resolver = ModelResolver(orders_model)
+        color = ColorFieldMapping(field="week.month", type="ordinal")
+        enc = build_color(color, resolver)
+        assert enc["type"] == "ordinal"
+        assert enc["timeUnit"] == "yearmonth"
 
 
 class TestStackedDotNotation:

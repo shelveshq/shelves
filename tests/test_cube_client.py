@@ -180,6 +180,23 @@ class TestBuildCubeQuery:
             {"member": "orders.net_sales", "operator": "lte", "values": ["20"]},
         ]
 
+    def test_explicit_grain_time_dimension(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: order_date.day\nrows: net_sales\nmarks: line\n'
+        )
+        query = build_cube_query("orders", spec, cube_resolver)
+        assert query["timeDimensions"] == [{"dimension": "orders.order_date", "granularity": "day"}]
+
+    def test_filter_dot_notation_strips_grain(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: order_date\nrows: net_sales\nmarks: line\n'
+            'filters:\n  - field: order_date.month\n    operator: eq\n    value: "2024-01"\n'
+        )
+        query = build_cube_query("orders", spec, cube_resolver)
+        assert query["filters"] == [
+            {"member": "orders.order_date", "operator": "equals", "values": ["2024-01"]}
+        ]
+
     def test_no_filters_omits_key(self, cube_model, cube_resolver):
         spec = parse_chart(
             'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'

@@ -116,11 +116,10 @@ def build_color(
         # Auto-inject legend title from model label
         enc["legend"] = {"title": resolver.resolve_label(color)}
         return enc
-    # ColorFieldMapping
-    result: dict[str, Any] = {
-        "field": resolver.resolve_base_field(color.field),
-        "type": color.type or resolver.resolve(color.field),
-    }
+    # ColorFieldMapping — use build_field_encoding for timeUnit support
+    result = build_field_encoding(color.field, resolver)
+    if color.type:
+        result["type"] = color.type
     # Auto-inject legend title
     result["legend"] = {"title": resolver.resolve_label(color.field)}
     return result

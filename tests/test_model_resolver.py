@@ -190,6 +190,27 @@ class TestResolveSortDefaults:
         assert resolver.resolve_sort_order("week") is None
 
 
+# ─── resolve_grain ────────────────────────────────────────────────────────────
+
+
+class TestResolveGrain:
+    def test_temporal_explicit_grain(self, orders_model):
+        resolver = ModelResolver(orders_model)
+        assert resolver.resolve_grain("week.month") == "month"
+        assert resolver.resolve_grain("week.day") == "day"
+        assert resolver.resolve_grain("week.year") == "year"
+
+    def test_temporal_default_grain(self, orders_model):
+        resolver = ModelResolver(orders_model)
+        # week's defaultGrain is "week"
+        assert resolver.resolve_grain("week") == "week"
+
+    def test_non_temporal_returns_none(self, orders_model):
+        resolver = ModelResolver(orders_model)
+        assert resolver.resolve_grain("revenue") is None
+        assert resolver.resolve_grain("country") is None
+
+
 # ─── is_measure / is_dimension ────────────────────────────────────────────────
 
 

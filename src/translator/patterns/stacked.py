@@ -18,7 +18,12 @@ from typing import Any
 from src.schema.chart_schema import ChartSpec, MeasureEntry, MarkSpec
 from src.schema.field_types import FieldTypeResolver
 from src.translator.marks import build_mark
-from src.translator.encodings import build_color, build_tooltip, build_field_encoding
+from src.translator.encodings import (
+    _auto_inject_from_model,
+    build_color,
+    build_field_encoding,
+    build_tooltip,
+)
 from src.translator.filters import build_transforms
 from src.translator.sort import apply_sort
 
@@ -109,12 +114,9 @@ def _compile_repeat(
     measures = [e.measure for e in entries]
     repeat_channel = "row" if measure_axis == "y" else "column"
 
-    # Build shared axis encoding with title and format from model
+    # Build shared axis encoding with auto-injected title, format, and grid
     shared_enc_with_meta: dict[str, Any] = {**shared_enc}
-    shared_enc_with_meta["title"] = resolver.resolve_label(shared_field)
-    shared_fmt = resolver.resolve_format(shared_field)
-    if shared_fmt is not None:
-        shared_enc_with_meta["axis"] = {"format": shared_fmt}
+    _auto_inject_from_model(shared_enc_with_meta, shared_field, resolver, None, channel=shared_axis)
 
     inner_encoding: dict[str, Any] = {
         shared_axis: shared_enc_with_meta,
@@ -160,27 +162,15 @@ def _compile_concat(
 ) -> VegaLiteSpec:
     """Compile to Vega-Lite vconcat/hconcat (panels may differ in mark/color)."""
 
-    # Pre-compute shared axis label and format (same for every panel)
-    shared_label = resolver.resolve_label(shared_field)
-    shared_fmt = resolver.resolve_format(shared_field)
-
     panels = []
     for entry, mark in zip(entries, effective_marks):
-        # Build shared axis encoding copy with title and format
+        # Build shared axis encoding with auto-injected title, format, and grid
         shared_enc_copy: dict[str, Any] = {**shared_enc}
-        shared_enc_copy["title"] = shared_label
-        if shared_fmt is not None:
-            shared_enc_copy["axis"] = {"format": shared_fmt}
+        _auto_inject_from_model(shared_enc_copy, shared_field, resolver, None, channel=shared_axis)
 
-        # Build measure axis encoding with title and format
-        measure_enc: dict[str, Any] = {
-            "field": entry.measure,
-            "type": "quantitative",
-            "title": resolver.resolve_label(entry.measure),
-        }
-        measure_fmt = resolver.resolve_format(entry.measure)
-        if measure_fmt is not None:
-            measure_enc["axis"] = {"format": measure_fmt}
+        # Build measure axis encoding with auto-injected title, format, and grid
+        measure_enc: dict[str, Any] = build_field_encoding(entry.measure, resolver)
+        _auto_inject_from_model(measure_enc, entry.measure, resolver, None, channel=measure_axis)
 
         panel_encoding: dict[str, Any] = {
             shared_axis: shared_enc_copy,
