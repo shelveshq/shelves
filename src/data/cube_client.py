@@ -203,9 +203,9 @@ def _translate_filters(
             result.append({"member": member, "operator": "gte", "values": [str(f.range[0])]})
             result.append({"member": member, "operator": "lte", "values": [str(f.range[1])]})
         elif f.operator in ("in", "not_in"):
-            assert (
-                f.values is not None
-            ), "ShelfFilter with operator='in'/'not_in' must have values set"
+            assert f.values is not None, (
+                "ShelfFilter with operator='in'/'not_in' must have values set"
+            )
             result.append(
                 {
                     "member": member,
