@@ -58,6 +58,16 @@ class TestModelTranslate:
         assert vl["encoding"]["y"]["field"] == "revenue"
         assert vl["encoding"]["y"]["type"] == "quantitative"
 
+        # NEW: auto-injected from model
+        assert vl["encoding"]["x"]["title"] == "Country"
+        assert vl["encoding"]["y"]["title"] == "Revenue"
+        assert vl["encoding"]["y"]["axis"]["format"] == "$,.0f"
+        assert vl["encoding"]["y"]["axis"]["grid"] is True
+        assert vl["encoding"]["x"]["axis"]["grid"] is False
+
+        # NEW: default sort from model (country has sortOrder)
+        assert vl["encoding"]["x"]["sort"] == ["US", "UK", "FR", "DE", "JP"]
+
     def test_model_temporal_dot_notation(self):
         yaml_str = load_yaml("model_temporal_dot.yaml")
         spec = parse_chart(yaml_str)
@@ -71,10 +81,17 @@ class TestModelTranslate:
         assert x_enc["type"] == "temporal"
         assert x_enc["timeUnit"] == "yearmonth"
         assert x_enc["axis"]["format"] == "%b %Y"
+        # NEW
+        assert x_enc["title"] == "Week"
+        assert x_enc["axis"]["grid"] is False
 
         y_enc = vl["encoding"]["y"]
         assert y_enc["field"] == "revenue"
         assert y_enc["type"] == "quantitative"
+        # NEW
+        assert y_enc["title"] == "Revenue"
+        assert y_enc["axis"]["format"] == "$,.0f"
+        assert y_enc["axis"]["grid"] is True
 
     def test_model_stacked_panels(self):
         yaml_str = load_yaml("model_stacked.yaml")
@@ -91,6 +108,9 @@ class TestModelTranslate:
         assert x_enc["field"] == "week"
         assert x_enc["type"] == "temporal"
         assert x_enc["timeUnit"] == "yearmonth"
+        # NEW
+        assert x_enc["title"] == "Week"
+        assert x_enc["axis"]["format"] == "%b %Y"
 
         y_enc = inner["encoding"]["y"]
         assert y_enc["field"] == {"repeat": "row"}

@@ -39,7 +39,7 @@ class TestResolveData:
 
     @pytest.fixture
     def simple_vl(self, simple_spec):
-        return translate_chart(simple_spec)
+        return translate_chart(simple_spec, models_dir=MODELS_DIR)
 
     def test_inline_rows_bypass_cube(self, simple_vl, simple_spec):
         rows = [{"category": "A", "net_sales": 100}]

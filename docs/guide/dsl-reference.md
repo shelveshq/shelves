@@ -375,11 +375,7 @@ tooltip: [country, revenue]
 
 ```yaml
 sheet: "Revenue by Country"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country]
-
+data: orders
 cols: country
 rows: revenue
 marks: bar
@@ -394,14 +390,7 @@ tooltip: [country, revenue]
 
 ```yaml
 sheet: "Weekly Revenue Trend"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [week]
-  time_grain:
-    field: week
-    grain: week
-
+data: orders
 cols: week
 rows: revenue
 marks: line
@@ -412,11 +401,7 @@ tooltip: [week, revenue]
 
 ```yaml
 sheet: "Revenue vs Order Count"
-data:
-  model: orders
-  measures: [revenue, order_count]
-  dimensions: [country]
-
+data: orders
 cols: revenue
 rows: order_count
 marks: circle
@@ -429,11 +414,7 @@ tooltip: [country, revenue, order_count]
 
 ```yaml
 sheet: "Revenue Heatmap"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country, product]
-
+data: orders
 cols: product
 rows: country
 marks: rect
@@ -447,22 +428,13 @@ tooltip: [country, product, revenue]
 
 ```yaml
 sheet: "Key Metrics by Week"
-data:
-  model: orders
-  measures: [revenue, order_count, arpu]
-  dimensions: [week]
-  time_grain:
-    field: week
-    grain: week
-
+data: orders
 cols: week
 marks: line
-
 rows:
   - measure: revenue
   - measure: order_count
   - measure: arpu
-
 tooltip: [week]
 ```
 
@@ -470,16 +442,8 @@ tooltip: [week]
 
 ```yaml
 sheet: "Revenue and Orders"
-data:
-  model: orders
-  measures: [revenue, order_count]
-  dimensions: [country, week]
-  time_grain:
-    field: week
-    grain: week
-
+data: orders
 cols: week
-
 rows:
   - measure: revenue
     mark: bar
@@ -487,11 +451,10 @@ rows:
   - measure: order_count
     mark: line
     color: country
-
 tooltip: [week, country]
 ```
 
-### Model-based chart (data shorthand)
+### Model-based chart with dot notation
 
 ```yaml
 sheet: "Monthly Revenue Trend"
@@ -509,19 +472,11 @@ Uses the `orders` data model for field definitions. `week.month` applies the mon
 
 ```yaml
 sheet: "Revenue Trend by Country"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country, month]
-  time_grain:
-    field: month
-    grain: month
-
+data: orders
 cols: month
 rows: revenue
 marks: line
 tooltip: [month, country, revenue]
-
 facet:
   field: country
   columns: 4

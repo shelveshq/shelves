@@ -4,14 +4,7 @@ Facet Tests
 Dedicated tests for facet wrapping logic.
 """
 
-from src.schema.chart_schema import parse_chart
-from src.translator.translate import translate_chart
-from tests.conftest import load_yaml
-
-
-def compile_fixture(name: str) -> dict:
-    spec = parse_chart(load_yaml(name))
-    return translate_chart(spec)
+from tests.conftest import compile_fixture
 
 
 class TestFaceting:
@@ -23,6 +16,11 @@ class TestFaceting:
         assert vl["spec"]["mark"] == "bar"
         assert vl["spec"]["encoding"]["x"]["field"] == "country"
 
+        # NEW: auto-injected titles inside faceted spec
+        assert vl["spec"]["encoding"]["x"]["title"] == "Country"
+        assert vl["spec"]["encoding"]["y"]["title"] == "Revenue"
+        assert vl["spec"]["encoding"]["y"]["axis"]["format"] == "$,.0f"
+
     def test_row_facet_resolve(self):
         vl = compile_fixture("facet_row.yaml")
         assert vl["resolve"]["scale"]["y"] == "independent"
@@ -33,6 +31,12 @@ class TestFaceting:
         assert vl["columns"] == 4
         assert vl["facet"]["sort"] == {"order": "descending"}
         assert vl["spec"]["mark"] == "line"
+
+        # NEW: temporal auto-inject inside faceted spec
+        assert vl["spec"]["encoding"]["x"]["title"] == "Month"
+        assert vl["spec"]["encoding"]["x"]["timeUnit"] == "yearmonth"
+        assert vl["spec"]["encoding"]["x"]["axis"]["format"] == "%b %Y"
+        assert vl["spec"]["encoding"]["y"]["title"] == "Revenue"
 
     def test_non_faceted_has_no_wrapper(self):
         vl = compile_fixture("simple_bar.yaml")
