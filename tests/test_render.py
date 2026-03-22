@@ -12,7 +12,7 @@ from src.theme.merge import merge_theme, load_default_theme
 from src.data.bind import bind_data
 from src.schema.chart_schema import parse_chart
 from src.translator.translate import translate_chart
-from tests.conftest import load_yaml, load_data
+from tests.conftest import load_yaml, load_data, MODELS_DIR
 
 
 # ─── HTML Rendering ──────────────────────────────────────────────
@@ -132,7 +132,7 @@ class TestEndToEnd:
     def test_full_pipeline_simple_bar(self):
         yaml_str = load_yaml("simple_bar.yaml")
         spec = parse_chart(yaml_str)
-        vl = translate_chart(spec)
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
         vl = merge_theme(vl)
         rows = json.loads(load_data("orders.json"))
         vl = bind_data(vl, rows)
@@ -147,7 +147,7 @@ class TestEndToEnd:
     def test_full_pipeline_no_theme(self):
         yaml_str = load_yaml("simple_bar.yaml")
         spec = parse_chart(yaml_str)
-        vl = translate_chart(spec)
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
         # Skip merge_theme
         rows = json.loads(load_data("orders.json"))
         vl = bind_data(vl, rows)
@@ -159,10 +159,33 @@ class TestEndToEnd:
     def test_full_pipeline_no_data(self):
         yaml_str = load_yaml("simple_bar.yaml")
         spec = parse_chart(yaml_str)
-        vl = translate_chart(spec)
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
         vl = merge_theme(vl)
         html_str = render_html(vl, title=spec.sheet)
 
         assert "<!DOCTYPE html>" in html_str
         assert '"values"' not in html_str
+        assert '"config"' in html_str
+
+    def test_full_pipeline_model_auto_inject(self):
+        """End-to-end: parse → translate (with model) → verify auto-injected values → theme → data → HTML."""
+        yaml_str = load_yaml("simple_bar.yaml")
+        spec = parse_chart(yaml_str)
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+
+        # Verify auto-injection is present before theme/data stages
+        assert vl["encoding"]["x"]["title"] == "Country"
+        assert vl["encoding"]["y"]["title"] == "Revenue"
+        assert vl["encoding"]["y"]["axis"]["format"] == "$,.0f"
+        assert vl["encoding"]["color"]["legend"]["title"] == "Country"
+
+        # Continue pipeline
+        vl = merge_theme(vl)
+        rows = json.loads(load_data("orders.json"))
+        vl = bind_data(vl, rows)
+        html_str = render_html(vl, title=spec.sheet)
+
+        assert "<!DOCTYPE html>" in html_str
+        assert "vegaEmbed" in html_str
+        assert '"values"' in html_str
         assert '"config"' in html_str

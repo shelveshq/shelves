@@ -8,10 +8,12 @@ When implementing Phase 1a, replace the NotImplementedError assertions
 with actual output assertions.
 """
 
+import textwrap
+
 import pytest
-from src.schema.chart_schema import parse_chart, MeasureEntry, LayerEntry
+from src.schema.chart_schema import parse_chart
 from src.translator.translate import translate_chart
-from tests.conftest import load_yaml
+from tests.conftest import load_yaml, MODELS_DIR
 
 
 class TestLayerSchemaParsing:
@@ -65,22 +67,19 @@ class TestLayerSchemaParsing:
     def test_layer_inherits_nothing_by_default(self):
         """Layer entries with no mark/color/detail have None — inheritance
         is handled by the translator, not the schema."""
-        spec = parse_chart("""
-sheet: "Test"
-data:
-  model: orders
-  measures: [revenue, arpu]
-  dimensions: [week]
-  time_grain:
-    field: week
-    grain: week
-cols: week
-marks: line
-rows:
-  - measure: revenue
-    layer:
-      - measure: arpu
-""")
+        yaml_str = textwrap.dedent(
+            """
+            sheet: "Test"
+            data: orders
+            cols: week
+            marks: line
+            rows:
+              - measure: revenue
+                layer:
+                  - measure: arpu
+            """
+        )
+        spec = parse_chart(yaml_str)
         layer = spec.rows[0].layer[0]
         assert layer.mark is None
         assert layer.color is None
@@ -94,19 +93,19 @@ class TestLayerCompilationDeferred:
     def test_dual_axis_raises(self):
         spec = parse_chart(load_yaml("dual_axis.yaml"))
         with pytest.raises(NotImplementedError):
-            translate_chart(spec)
+            translate_chart(spec, models_dir=MODELS_DIR)
 
     def test_triple_axis_raises(self):
         spec = parse_chart(load_yaml("triple_axis.yaml"))
         with pytest.raises(NotImplementedError):
-            translate_chart(spec)
+            translate_chart(spec, models_dir=MODELS_DIR)
 
     def test_stacked_layers_raises(self):
         spec = parse_chart(load_yaml("stacked_layers.yaml"))
         with pytest.raises(NotImplementedError):
-            translate_chart(spec)
+            translate_chart(spec, models_dir=MODELS_DIR)
 
     def test_layers_faceted_raises(self):
         spec = parse_chart(load_yaml("layers_faceted.yaml"))
         with pytest.raises(NotImplementedError):
-            translate_chart(spec)
+            translate_chart(spec, models_dir=MODELS_DIR)

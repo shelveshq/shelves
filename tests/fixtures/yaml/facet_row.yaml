@@ -1,8 +1,5 @@
 sheet: "Revenue by Country, by Region"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country, region]
+data: orders
 
 cols: country
 rows: revenue

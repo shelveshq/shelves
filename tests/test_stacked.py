@@ -7,12 +7,7 @@ Tests for multi-measure shelves compiled to repeat or vconcat.
 import pytest
 from src.schema.chart_schema import parse_chart
 from src.translator.translate import translate_chart
-from tests.conftest import load_yaml
-
-
-def compile_fixture(name: str) -> dict:
-    spec = parse_chart(load_yaml(name))
-    return translate_chart(spec)
+from tests.conftest import load_yaml, compile_fixture
 
 
 class TestStackedPanels:
@@ -22,6 +17,12 @@ class TestStackedPanels:
         assert vl["repeat"]["row"] == ["revenue", "order_count", "arpu"]
         assert vl["spec"]["mark"] == "line"
         assert vl["spec"]["encoding"]["x"]["field"] == "week"
+
+        # NEW: shared axis auto-inject
+        x_enc = vl["spec"]["encoding"]["x"]
+        assert x_enc["title"] == "Week"
+        assert x_enc["axis"]["format"] == "%b %d"
+        assert x_enc["axis"]["grid"] is False  # x-axis grid default
 
     def test_stacked_diff_marks_produces_vconcat(self):
         vl = compile_fixture("stacked_diff_marks.yaml")
@@ -39,11 +40,35 @@ class TestStackedPanels:
         assert panel_1["mark"] == "line"
         assert panel_1["encoding"]["y"]["field"] == "order_count"
 
+        # NEW: per-panel auto-injected titles and formats
+        assert panel_0["encoding"]["y"]["title"] == "Revenue"
+        assert panel_0["encoding"]["y"]["axis"]["format"] == "$,.0f"
+        assert panel_1["encoding"]["y"]["title"] == "Orders"
+        assert panel_1["encoding"]["y"]["axis"]["format"] == ",.0f"
+
+        # NEW: shared axis title, format, and grid on both panels
+        assert panel_0["encoding"]["x"]["title"] == "Week"
+        assert panel_1["encoding"]["x"]["title"] == "Week"
+        assert panel_0["encoding"]["x"]["axis"]["format"] == "%b %d"
+        assert panel_1["encoding"]["x"]["axis"]["format"] == "%b %d"
+        assert panel_0["encoding"]["x"]["axis"]["grid"] is False  # x-axis grid default
+        assert panel_1["encoding"]["x"]["axis"]["grid"] is False
+
+        # NEW: measure axis grid defaults
+        assert panel_0["encoding"]["y"]["axis"]["grid"] is True  # y-axis grid default
+        assert panel_1["encoding"]["y"]["axis"]["grid"] is True
+
+        # NEW: color legend title
+        assert panel_0["encoding"]["color"]["legend"]["title"] == "Country"
+        assert panel_1["encoding"]["color"]["legend"]["title"] == "Country"
+
     def test_stacked_shared_x_axis(self):
         vl = compile_fixture("stacked_diff_marks.yaml")
         for panel in vl["vconcat"]:
             assert panel["encoding"]["x"]["field"] == "week"
             assert panel["encoding"]["x"]["type"] == "temporal"
+            # NEW
+            assert panel["encoding"]["x"]["title"] == "Week"
 
 
 class TestStackedSchema:
@@ -63,10 +88,7 @@ class TestStackedSchema:
         with pytest.raises(Exception):
             parse_chart("""
 sheet: "Bad"
-data:
-  model: orders
-  measures: [a, b, c]
-  dimensions: []
+data: orders
 rows:
   - measure: a
   - measure: b
@@ -78,13 +100,7 @@ cols:
         """Schema accepts layers, but translator raises NotImplementedError."""
         spec = parse_chart("""
 sheet: "With Layers"
-data:
-  model: orders
-  measures: [revenue, arpu]
-  dimensions: [week]
-  time_grain:
-    field: week
-    grain: week
+data: orders
 cols: week
 rows:
   - measure: revenue

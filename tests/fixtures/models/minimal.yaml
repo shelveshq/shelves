@@ -1,0 +1,10 @@
+model: minimal
+label: Minimal Model
+
+measures:
+  m1:
+    label: M1
+
+dimensions:
+  d1:
+    label: D1

@@ -83,10 +83,6 @@ def compile_stacked_with_layers(
     )
 
 
-def compile_layer_entry(
-    entry, shared_enc, spec, resolver
-) -> dict[str, Any]:
+def compile_layer_entry(entry, shared_enc, spec, resolver) -> dict[str, Any]:
     """Phase 1a — not yet implemented."""
-    raise NotImplementedError(
-        "Layer compilation is Phase 1a. See module docstring for design."
-    )
+    raise NotImplementedError("Layer compilation is Phase 1a. See module docstring for design.")

@@ -1,11 +1,5 @@
 sheet: "Revenue by Country Over Time"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country, week]
-  time_grain:
-    field: week
-    grain: week
+data: orders
 
 cols: week
 rows: revenue

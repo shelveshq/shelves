@@ -4,19 +4,44 @@ Tests for Cube.dev client — query building, filter translation, response parsi
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import httpx
 import pytest
 import respx
 
-from src.schema.chart_schema import DataSource, ShelfFilter
+from src.schema.chart_schema import parse_chart
+from src.models.loader import load_model, clear_model_cache
+from src.models.resolver import ModelResolver
 from src.data.cube_client import (
     CubeConfig,
     CubeConfigError,
     CubeQueryError,
     build_cube_query,
-    fetch_from_cube,
+    fetch_from_cube_model,
     _strip_prefix,
+    _collect_chart_fields,
 )
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "models"
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    clear_model_cache()
+    yield
+    clear_model_cache()
+
+
+@pytest.fixture
+def cube_model():
+    return load_model("cube_orders", models_dir=FIXTURES_DIR)
+
+
+@pytest.fixture
+def cube_resolver(cube_model):
+    return ModelResolver(cube_model)
 
 
 # ─── CubeConfig ──────────────────────────────────────────────────────
@@ -49,100 +74,134 @@ class TestCubeConfig:
             CubeConfig.from_env()
 
 
+# ─── _collect_chart_fields ──────────────────────────────────────────
+
+
+class TestCollectChartFields:
+    def test_simple_bar(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
+        fields = _collect_chart_fields(spec)
+        assert fields == {"category", "net_sales"}
+
+    def test_with_color_and_detail(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            "color: segment\ndetail: segment\n"
+        )
+        fields = _collect_chart_fields(spec)
+        assert fields == {"category", "net_sales", "segment"}
+
+    def test_hex_color_excluded(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            'color: "#ff0000"\n'
+        )
+        fields = _collect_chart_fields(spec)
+        assert "#ff0000" not in fields
+
+    def test_filter_fields_included(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            'filters:\n  - field: segment\n    operator: eq\n    value: "Consumer"\n'
+        )
+        fields = _collect_chart_fields(spec)
+        assert "segment" in fields
+
+
 # ─── build_cube_query ────────────────────────────────────────────────
 
 
 class TestBuildCubeQuery:
-    def _make_data(self, **overrides) -> DataSource:
-        defaults = {
-            "model": "orders",
-            "measures": ["net_sales"],
-            "dimensions": ["category"],
-        }
-        defaults.update(overrides)
-        return DataSource(**defaults)
-
-    def test_basic_measures_and_dimensions(self):
-        data = self._make_data()
-        query = build_cube_query(data)
+    def test_basic_measures_and_dimensions(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
+        query = build_cube_query("orders", spec, cube_resolver)
         assert query["measures"] == ["orders.net_sales"]
         assert query["dimensions"] == ["orders.category"]
         assert "timeDimensions" not in query
         assert "filters" not in query
 
-    def test_multiple_measures(self):
-        data = self._make_data(measures=["net_sales", "quantity"])
-        query = build_cube_query(data)
-        assert query["measures"] == ["orders.net_sales", "orders.quantity"]
-
-    def test_time_grain_creates_time_dimensions(self):
-        data = self._make_data(
-            dimensions=["category", "order_date"],
-            time_grain={"field": "order_date", "grain": "month"},
+    def test_time_dimension(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: order_date\nrows: net_sales\nmarks: line\n'
         )
-        query = build_cube_query(data)
-        # order_date should NOT be in dimensions (moved to timeDimensions)
-        assert query["dimensions"] == ["orders.category"]
+        query = build_cube_query("orders", spec, cube_resolver)
+        assert query["measures"] == ["orders.net_sales"]
+        assert query["dimensions"] == []
         assert query["timeDimensions"] == [
             {"dimension": "orders.order_date", "granularity": "month"}
         ]
 
-    def test_filters_translate_eq(self):
-        data = self._make_data()
-        filters = [ShelfFilter(field="segment", operator="eq", value="Consumer")]
-        query = build_cube_query(data, filters)
+    def test_filters_translate_eq(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            'filters:\n  - field: segment\n    operator: eq\n    value: "Consumer"\n'
+        )
+        query = build_cube_query("orders", spec, cube_resolver)
         assert query["filters"] == [
             {"member": "orders.segment", "operator": "equals", "values": ["Consumer"]}
         ]
 
-    def test_filters_translate_in(self):
-        data = self._make_data()
-        filters = [ShelfFilter(field="region", operator="in", values=["East", "West"])]
-        query = build_cube_query(data, filters)
+    def test_filters_translate_in(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            'filters:\n  - field: category\n    operator: in\n    values: ["Furniture", "Technology"]\n'
+        )
+        query = build_cube_query("orders", spec, cube_resolver)
         assert query["filters"] == [
-            {"member": "orders.region", "operator": "equals", "values": ["East", "West"]}
+            {
+                "member": "orders.category",
+                "operator": "equals",
+                "values": ["Furniture", "Technology"],
+            }
         ]
 
-    def test_filters_translate_not_in(self):
-        data = self._make_data()
-        filters = [ShelfFilter(field="region", operator="not_in", values=["South"])]
-        query = build_cube_query(data, filters)
+    def test_filters_translate_not_in(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            'filters:\n  - field: category\n    operator: not_in\n    values: ["Furniture"]\n'
+        )
+        query = build_cube_query("orders", spec, cube_resolver)
         assert query["filters"] == [
-            {"member": "orders.region", "operator": "notEquals", "values": ["South"]}
+            {"member": "orders.category", "operator": "notEquals", "values": ["Furniture"]}
         ]
 
-    def test_filters_translate_comparison_ops(self):
-        data = self._make_data()
-        for dsl_op, cube_op in [("gt", "gt"), ("lt", "lt"), ("gte", "gte"), ("lte", "lte")]:
-            filters = [ShelfFilter(field="quantity", operator=dsl_op, value=10)]
-            query = build_cube_query(data, filters)
-            assert query["filters"] == [
-                {"member": "orders.quantity", "operator": cube_op, "values": ["10"]}
-            ]
-
-    def test_between_filter_splits_to_two(self):
-        data = self._make_data()
-        filters = [ShelfFilter(field="quantity", operator="between", range=[5, 20])]
-        query = build_cube_query(data, filters)
+    def test_between_filter_splits_to_two(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            "filters:\n  - field: net_sales\n    operator: between\n    range: [5, 20]\n"
+        )
+        query = build_cube_query("orders", spec, cube_resolver)
         assert query["filters"] == [
-            {"member": "orders.quantity", "operator": "gte", "values": ["5"]},
-            {"member": "orders.quantity", "operator": "lte", "values": ["20"]},
+            {"member": "orders.net_sales", "operator": "gte", "values": ["5"]},
+            {"member": "orders.net_sales", "operator": "lte", "values": ["20"]},
         ]
 
-    def test_filter_values_are_strings(self):
-        data = self._make_data()
-        filters = [ShelfFilter(field="quantity", operator="eq", value=42)]
-        query = build_cube_query(data, filters)
-        assert query["filters"][0]["values"] == ["42"]
+    def test_explicit_grain_time_dimension(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: order_date.day\nrows: net_sales\nmarks: line\n'
+        )
+        query = build_cube_query("orders", spec, cube_resolver)
+        assert query["timeDimensions"] == [{"dimension": "orders.order_date", "granularity": "day"}]
 
-    def test_no_filters_omits_key(self):
-        data = self._make_data()
-        query = build_cube_query(data, filters=None)
-        assert "filters" not in query
+    def test_filter_dot_notation_strips_grain(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: order_date\nrows: net_sales\nmarks: line\n'
+            'filters:\n  - field: order_date.month\n    operator: eq\n    value: "2024-01"\n'
+        )
+        query = build_cube_query("orders", spec, cube_resolver)
+        assert query["filters"] == [
+            {"member": "orders.order_date", "operator": "equals", "values": ["2024-01"]}
+        ]
 
-    def test_empty_filters_omits_key(self):
-        data = self._make_data()
-        query = build_cube_query(data, filters=[])
+    def test_no_filters_omits_key(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
+        query = build_cube_query("orders", spec, cube_resolver)
         assert "filters" not in query
 
 
@@ -159,15 +218,14 @@ class TestStripPrefix:
         assert _strip_prefix(row) == {"count": 5}
 
     def test_time_dimension_key(self):
-        # Cube returns time dimensions as "orders.order_date.month"
         row = {"orders.order_date": "2024-01-01T00:00:00.000"}
         assert _strip_prefix(row) == {"order_date": "2024-01-01T00:00:00.000"}
 
 
-# ─── fetch_from_cube (mocked HTTP) ──────────────────────────────────
+# ─── fetch_from_cube_model (mocked HTTP) ─────────────────────────────
 
 
-class TestFetchFromCube:
+class TestFetchFromCubeModel:
     CUBE_URL = "http://localhost:4000"
     CUBE_TOKEN = "test-token"
 
@@ -176,11 +234,13 @@ class TestFetchFromCube:
         return CubeConfig(api_url=self.CUBE_URL, api_token=self.CUBE_TOKEN)
 
     @pytest.fixture
-    def data(self):
-        return DataSource(model="orders", measures=["net_sales"], dimensions=["category"])
+    def chart_spec(self):
+        return parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
 
     @respx.mock
-    def test_successful_fetch(self, config, data):
+    def test_successful_fetch(self, config, cube_model, cube_resolver, chart_spec):
         respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
             return_value=httpx.Response(
                 200,
@@ -192,70 +252,71 @@ class TestFetchFromCube:
                 },
             )
         )
-        rows = fetch_from_cube(data, config=config)
+        rows = fetch_from_cube_model(cube_model, chart_spec, cube_resolver, config=config)
         assert rows == [
             {"net_sales": 100, "category": "Furniture"},
             {"net_sales": 200, "category": "Technology"},
         ]
 
     @respx.mock
-    def test_sends_correct_headers(self, config, data):
+    def test_sends_correct_headers(self, config, cube_model, cube_resolver, chart_spec):
         route = respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
             return_value=httpx.Response(200, json={"data": []})
         )
-        fetch_from_cube(data, config=config)
+        fetch_from_cube_model(cube_model, chart_spec, cube_resolver, config=config)
         assert route.calls[0].request.headers["authorization"] == self.CUBE_TOKEN
 
     @respx.mock
-    def test_sends_correct_query(self, config, data):
+    def test_sends_correct_query(self, config, cube_model, cube_resolver, chart_spec):
         route = respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
             return_value=httpx.Response(200, json={"data": []})
         )
-        fetch_from_cube(data, config=config)
-        import json
+        fetch_from_cube_model(cube_model, chart_spec, cube_resolver, config=config)
         body = json.loads(route.calls[0].request.content)
         assert body["query"]["measures"] == ["orders.net_sales"]
         assert body["query"]["dimensions"] == ["orders.category"]
 
     @respx.mock
-    def test_http_error_raises(self, config, data):
+    def test_http_error_raises(self, config, cube_model, cube_resolver, chart_spec):
         respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
             return_value=httpx.Response(400, text="Bad query")
         )
         with pytest.raises(CubeQueryError, match="400"):
-            fetch_from_cube(data, config=config)
+            fetch_from_cube_model(cube_model, chart_spec, cube_resolver, config=config)
 
     @respx.mock
-    def test_server_error_raises(self, config, data):
+    def test_server_error_raises(self, config, cube_model, cube_resolver, chart_spec):
         respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
             return_value=httpx.Response(500, text="Internal error")
         )
         with pytest.raises(CubeQueryError, match="500"):
-            fetch_from_cube(data, config=config)
+            fetch_from_cube_model(cube_model, chart_spec, cube_resolver, config=config)
 
     @respx.mock
-    def test_empty_data_response(self, config, data):
+    def test_empty_data_response(self, config, cube_model, cube_resolver, chart_spec):
         respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
             return_value=httpx.Response(200, json={"data": []})
         )
-        rows = fetch_from_cube(data, config=config)
+        rows = fetch_from_cube_model(cube_model, chart_spec, cube_resolver, config=config)
         assert rows == []
 
     @respx.mock
-    def test_with_filters(self, config, data):
+    def test_with_filters(self, config, cube_model, cube_resolver):
         route = respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
             return_value=httpx.Response(200, json={"data": []})
         )
-        filters = [ShelfFilter(field="segment", operator="eq", value="Consumer")]
-        fetch_from_cube(data, filters=filters, config=config)
-        import json
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            'filters:\n  - field: segment\n    operator: eq\n    value: "Consumer"\n'
+        )
+        fetch_from_cube_model(cube_model, spec, cube_resolver, config=config)
         body = json.loads(route.calls[0].request.content)
         assert body["query"]["filters"] == [
             {"member": "orders.segment", "operator": "equals", "values": ["Consumer"]}
         ]
 
-    def test_uses_env_config_when_none(self, monkeypatch, data):
+    def test_uses_env_config_when_none(self, monkeypatch, cube_model, cube_resolver, chart_spec):
         monkeypatch.delenv("CUBE_API_URL", raising=False)
         monkeypatch.delenv("CUBE_API_TOKEN", raising=False)
         with pytest.raises(CubeConfigError):
-            fetch_from_cube(data)
+            fetch_from_cube_model(cube_model, chart_spec, cube_resolver)

@@ -10,3 +10,4 @@ build/
 docs/plans/
 docs/foundational/
 /model
+/.coverage

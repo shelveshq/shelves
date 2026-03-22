@@ -1,12 +1,6 @@
 # Phase 1a fixture — triple axis (bar + line + area overlaid)
 sheet: "Revenue, ARPU & Margin"
-data:
-  model: orders
-  measures: [revenue, arpu, margin_pct]
-  dimensions: [week]
-  time_grain:
-    field: week
-    grain: week
+data: orders
 
 cols: week
 rows:

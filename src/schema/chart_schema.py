@@ -25,20 +25,37 @@ from pydantic import BaseModel, Field, model_validator
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = "0.1.0"
+DSL_VERSION = "0.3.0"  # breaking: removed legacy DataSource inline declaration
 
 # ─── Primitives ────────────────────────────────────────────────────
 
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{3,8}$")
 
 MarkType = Literal[
-    "bar", "line", "area", "circle", "square",
-    "text", "point", "rule", "tick", "rect", "arc",
+    "bar",
+    "line",
+    "area",
+    "circle",
+    "square",
+    "text",
+    "point",
+    "rule",
+    "tick",
+    "rect",
+    "arc",
     "geoshape",
 ]
 
 FilterOperator = Literal[
-    "in", "not_in", "eq", "neq", "gt", "lt", "gte", "lte", "between",
+    "in",
+    "not_in",
+    "eq",
+    "neq",
+    "gt",
+    "lt",
+    "gte",
+    "lte",
+    "between",
 ]
 
 SortOrder = Literal["ascending", "descending"]
@@ -46,24 +63,12 @@ ScaleResolve = Literal["independent", "shared"]
 TimeGrain = Literal["day", "week", "month", "quarter", "year"]
 
 
-# ─── Data Source ───────────────────────────────────────────────────
-
-class TimeGrainConfig(BaseModel):
-    field: str
-    grain: TimeGrain
-
-
-class DataSource(BaseModel):
-    model: str
-    measures: list[str]
-    dimensions: list[str]
-    time_grain: TimeGrainConfig | None = None
-
-
 # ─── Mark Definition ──────────────────────────────────────────────
+
 
 class MarkObject(BaseModel):
     """Extended mark with style properties."""
+
     type: MarkType
     style: Literal["solid", "dashed", "dotted"] | None = None
     point: bool | None = None
@@ -76,8 +81,10 @@ MarkSpec = Union[MarkType, MarkObject]
 
 # ─── Color Encoding ──────────────────────────────────────────────
 
+
 class ColorFieldMapping(BaseModel):
     """Explicit color field with optional type override."""
+
     field: str
     type: Literal["quantitative", "nominal", "ordinal", "temporal"] | None = None
 
@@ -86,6 +93,7 @@ ColorSpec = Union[str, ColorFieldMapping]
 
 
 # ─── Tooltip ──────────────────────────────────────────────────────
+
 
 class TooltipField(BaseModel):
     field: str
@@ -96,6 +104,7 @@ TooltipSpec = Union[list[str], list[TooltipField]]
 
 
 # ─── Filters ──────────────────────────────────────────────────────
+
 
 class ShelfFilter(BaseModel):
     field: str
@@ -123,28 +132,36 @@ class ShelfFilter(BaseModel):
             if not has_values:
                 raise ValueError("Filter operator 'in'/'not_in' requires 'values' to be set.")
             if has_value or has_range:
-                raise ValueError("Filter operator 'in'/'not_in' only supports 'values'; 'value' and 'range' must be omitted.")
+                raise ValueError(
+                    "Filter operator 'in'/'not_in' only supports 'values'; 'value' and 'range' must be omitted."
+                )
 
         elif op == "between":
             if not has_range:
                 raise ValueError("Filter operator 'between' requires 'range' to be set.")
             if has_value or has_values:
-                raise ValueError("Filter operator 'between' only supports 'range'; 'value' and 'values' must be omitted.")
+                raise ValueError(
+                    "Filter operator 'between' only supports 'range'; 'value' and 'values' must be omitted."
+                )
 
         else:
             # eq, neq, gt, lt, gte, lte
             if not has_value:
                 raise ValueError(f"Filter operator '{op}' requires 'value' to be set.")
             if has_values or has_range:
-                raise ValueError(f"Filter operator '{op}' only supports 'value'; 'values' and 'range' must be omitted.")
+                raise ValueError(
+                    f"Filter operator '{op}' only supports 'value'; 'values' and 'range' must be omitted."
+                )
 
         return self
 
 
 # ─── Sort ─────────────────────────────────────────────────────────
 
+
 class FieldSort(BaseModel):
     """Sort by a field's values (ascending/descending or custom order)."""
+
     field: str
     order: SortOrder | list[str]
     channel: Literal["x", "y"] = "x"
@@ -152,6 +169,7 @@ class FieldSort(BaseModel):
 
 class AxisSort(BaseModel):
     """Sort by another axis's values (e.g., sort x by y values)."""
+
     axis: Literal["x", "y"]
     order: SortOrder
     channel: Literal["x", "y"] = "x"
@@ -162,8 +180,10 @@ SortSpec = Union[FieldSort, AxisSort]
 
 # ─── Facet ────────────────────────────────────────────────────────
 
+
 class RowColumnFacet(BaseModel):
     """Facet by row, column, or both (grid)."""
+
     row: str | None = None
     column: str | None = None
     axis: ScaleResolve | None = None
@@ -177,6 +197,7 @@ class RowColumnFacet(BaseModel):
 
 class WrapFacet(BaseModel):
     """Wrapping facet — single dimension wrapped into a grid."""
+
     field: str
     columns: int = Field(gt=0)
     sort: SortOrder | None = None
@@ -187,6 +208,7 @@ FacetSpec = Union[WrapFacet, RowColumnFacet]
 
 
 # ─── Axis Config ──────────────────────────────────────────────────
+
 
 class AxisChannelConfig(BaseModel):
     title: str | None = None
@@ -200,6 +222,7 @@ class AxisConfig(BaseModel):
 
 
 # ─── KPI (special pattern) ────────────────────────────────────────
+
 
 class KPIComparison(BaseModel):
     measure: str
@@ -215,6 +238,7 @@ class KPIConfig(BaseModel):
 
 # ─── Multi-Measure Shelf Entries ──────────────────────────────────
 
+
 class LayerEntry(BaseModel):
     """
     A measure layered on top of a parent MeasureEntry (Phase 1a).
@@ -223,6 +247,7 @@ class LayerEntry(BaseModel):
     not stacked as separate panels. Each layer can override mark, color,
     detail, size, and opacity, or inherit from the parent entry / top-level.
     """
+
     measure: str
     mark: MarkSpec | None = None
     color: ColorSpec | None = None
@@ -242,6 +267,7 @@ class MeasureEntry(BaseModel):
     Encoding properties (mark, color, detail, size, opacity) on this
     entry act as defaults for its layer entries.
     """
+
     measure: str
     mark: MarkSpec | None = None
     color: ColorSpec | None = None
@@ -264,6 +290,7 @@ ShelfSpec = Union[str, list[MeasureEntry]]
 
 # ─── Top-Level Chart Spec ─────────────────────────────────────────
 
+
 class ChartSpec(BaseModel):
     """
     A fully validated Chart DSL spec.
@@ -284,7 +311,7 @@ class ChartSpec(BaseModel):
 
     sheet: str = Field(min_length=1)
     description: str | None = None
-    data: DataSource
+    data: str = Field(min_length=1, description="Model name referencing a DataModel manifest.")
 
     # Shelf assignments
     cols: ShelfSpec | None = None
@@ -338,6 +365,7 @@ class ChartSpec(BaseModel):
 
 
 # ─── Public API ───────────────────────────────────────────────────
+
 
 def parse_chart(yaml_string: str) -> ChartSpec:
     """

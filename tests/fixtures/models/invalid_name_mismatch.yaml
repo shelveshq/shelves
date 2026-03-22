@@ -1,0 +1,10 @@
+model: something_else
+label: Wrong Name
+
+measures:
+  m1:
+    label: M1
+
+dimensions:
+  d1:
+    label: D1

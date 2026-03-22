@@ -1,0 +1,8 @@
+model: empty_measures
+label: Empty Measures
+
+measures: {}
+
+dimensions:
+  d1:
+    label: D1

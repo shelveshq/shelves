@@ -1,8 +1,5 @@
 sheet: "Revenue vs Order Count"
-data:
-  model: orders
-  measures: [revenue, order_count]
-  dimensions: [country]
+data: orders
 
 cols: revenue
 rows: order_count

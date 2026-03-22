@@ -1,0 +1,13 @@
+model: temporal_explicit_grains
+label: Test Temporal Explicit
+
+measures:
+  m1:
+    label: M1
+
+dimensions:
+  year_field:
+    type: temporal
+    label: Year Only
+    grains: [year]
+    defaultGrain: year

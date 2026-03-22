@@ -1,6 +1,6 @@
 # Charter DSL Reference
 
-**DSL Version: 0.1.0**
+**DSL Version: 0.3.0**
 
 This document is the authoritative reference for the Charter YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -13,13 +13,7 @@ version: "0.1.0"          # optional — DSL version this spec targets
 sheet: "My Chart Title"    # required — chart name
 description: "..."         # optional
 
-data:
-  model: orders            # semantic model name
-  measures: [revenue]      # quantitative fields
-  dimensions: [country]    # categorical/nominal fields
-  time_grain:              # optional — marks a dimension as temporal
-    field: week
-    grain: week            # day | week | month | quarter | year
+data: orders                 # model name — references a DataModel manifest in models/
 
 cols: <shelf>              # x-axis assignment
 rows: <shelf>              # y-axis assignment
@@ -91,6 +85,34 @@ rows:
 
 ---
 
+## Temporal dot notation
+
+When using a data model, temporal fields support dot notation to specify the time grain:
+
+```yaml
+data: orders
+cols: order_date.month    # month grain
+rows: revenue
+marks: line
+```
+
+Supported grains: `day`, `week`, `month`, `quarter`, `year`.
+
+The dot notation resolves to:
+- `field`: the base field name (e.g. `order_date`)
+- `timeUnit`: the Vega-Lite time unit (e.g. `yearmonth`)
+- `axis.format`: auto-injected from the model's per-grain format map (if defined)
+
+Without dot notation, a temporal field uses its `defaultGrain` from the model:
+
+```yaml
+cols: order_date    # uses defaultGrain from model (e.g. "month")
+```
+
+Dot notation is only valid for fields declared as `type: temporal` in the model. Using it on measures or nominal dimensions raises an error.
+
+---
+
 ## Marks
 
 The `marks` field specifies how data points are drawn.
@@ -120,21 +142,15 @@ marks:
 ## Data block
 
 ```yaml
-data:
-  model: orders
-  measures: [revenue, order_count, arpu]
-  dimensions: [country, week, region]
-  time_grain:
-    field: week
-    grain: week
+data: orders
 ```
 
-- **model** — name of the semantic data model.
-- **measures** — fields treated as quantitative (numbers).
-- **dimensions** — fields treated as nominal (categories).
-- **time_grain** — marks one dimension as temporal. The `field` must be listed in `dimensions`. Supported grains: `day`, `week`, `month`, `quarter`, `year`.
+A string referencing a data model file (`models/orders.yaml`). The model defines all measures, dimensions, field types, labels, and formats. See `models/` for available models.
 
-Field type resolution: measures resolve to `quantitative`, dimensions to `nominal`, the `time_grain.field` to `temporal`.
+- **Required.** Every chart must reference a model.
+- Temporal dimensions, grain, and format strings are all defined in the model — no need to redeclare per chart.
+
+Field type resolution: measures → `quantitative`, dimensions → `nominal`, fields with `type: temporal` in the model (including dot-notation grains like `order_date.month`) → `temporal`.
 
 ---
 
@@ -323,6 +339,34 @@ axis:
     grid: true
 ```
 
+### Auto-injection from model
+
+When a chart references a data model (`data: orders`), the translator automatically injects:
+
+- **Axis titles** from the model's field `label` (e.g. `revenue` → title "Revenue")
+- **Axis formats** from the model's `format` string (e.g. `"$,.0f"` for revenue)
+- **Temporal formats** from the model's per-grain format map (e.g. `"%b %Y"` for month grain)
+- **Grid defaults**: y-axis grid on, x-axis grid off
+- **Legend titles** from the model's dimension `label`
+- **Tooltip labels and formats** from the model's field `label` and `format`
+- **Default sort** from the model's `defaultSort` (measure) or `sortOrder` (dimension)
+
+All auto-injected values can be overridden by explicit chart-level configuration. The precedence order:
+
+1. Explicit chart config (e.g. `axis.y.title`, `sort:`) — **always wins**
+2. Model field metadata (label, format, defaultSort, sortOrder)
+
+```yaml
+# No axis config needed — model provides titles, formats, and grid defaults
+sheet: "Revenue by Country"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+color: country
+tooltip: [country, revenue]
+```
+
 ---
 
 ## Complete examples
@@ -331,11 +375,7 @@ axis:
 
 ```yaml
 sheet: "Revenue by Country"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country]
-
+data: orders
 cols: country
 rows: revenue
 marks: bar
@@ -350,14 +390,7 @@ tooltip: [country, revenue]
 
 ```yaml
 sheet: "Weekly Revenue Trend"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [week]
-  time_grain:
-    field: week
-    grain: week
-
+data: orders
 cols: week
 rows: revenue
 marks: line
@@ -368,11 +401,7 @@ tooltip: [week, revenue]
 
 ```yaml
 sheet: "Revenue vs Order Count"
-data:
-  model: orders
-  measures: [revenue, order_count]
-  dimensions: [country]
-
+data: orders
 cols: revenue
 rows: order_count
 marks: circle
@@ -385,11 +414,7 @@ tooltip: [country, revenue, order_count]
 
 ```yaml
 sheet: "Revenue Heatmap"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country, product]
-
+data: orders
 cols: product
 rows: country
 marks: rect
@@ -403,22 +428,13 @@ tooltip: [country, product, revenue]
 
 ```yaml
 sheet: "Key Metrics by Week"
-data:
-  model: orders
-  measures: [revenue, order_count, arpu]
-  dimensions: [week]
-  time_grain:
-    field: week
-    grain: week
-
+data: orders
 cols: week
 marks: line
-
 rows:
   - measure: revenue
   - measure: order_count
   - measure: arpu
-
 tooltip: [week]
 ```
 
@@ -426,16 +442,8 @@ tooltip: [week]
 
 ```yaml
 sheet: "Revenue and Orders"
-data:
-  model: orders
-  measures: [revenue, order_count]
-  dimensions: [country, week]
-  time_grain:
-    field: week
-    grain: week
-
+data: orders
 cols: week
-
 rows:
   - measure: revenue
     mark: bar
@@ -443,27 +451,32 @@ rows:
   - measure: order_count
     mark: line
     color: country
-
 tooltip: [week, country]
 ```
+
+### Model-based chart with dot notation
+
+```yaml
+sheet: "Monthly Revenue Trend"
+data: orders
+cols: week.month
+rows: revenue
+marks: line
+color: country
+tooltip: [week.month, country, revenue]
+```
+
+Uses the `orders` data model for field definitions. `week.month` applies the month grain to the `week` temporal dimension. Labels, formats, and sort defaults come from the model automatically.
 
 ### Faceted chart
 
 ```yaml
 sheet: "Revenue Trend by Country"
-data:
-  model: orders
-  measures: [revenue]
-  dimensions: [country, month]
-  time_grain:
-    field: month
-    grain: month
-
+data: orders
 cols: month
 rows: revenue
 marks: line
 tooltip: [month, country, revenue]
-
 facet:
   field: country
   columns: 4
@@ -516,4 +529,6 @@ kpi:
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.1.0** | Current | Single-measure charts, multi-measure stacked panels (repeat/concat), filters, sort, facet, themes, data binding, HTML rendering. Layers and KPI parsed but not compiled. |
+| **0.3.0** | Current | **Breaking:** removed legacy `DataSource` inline declaration. `data` is now always a model name string. |
+| **0.2.0** | Previous | Data model shorthand (`data: orders`), temporal dot notation (`cols: order_date.month`), auto-injected axis formats from model. |
+| **0.1.0** | — | Single-measure charts, multi-measure stacked panels (repeat/concat), filters, sort, facet, themes, data binding, HTML rendering. Layers and KPI parsed but not compiled. |

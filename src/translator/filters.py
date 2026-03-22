@@ -20,38 +20,44 @@ from __future__ import annotations
 from typing import Any
 
 from src.schema.chart_schema import ShelfFilter
+from src.schema.field_types import FieldTypeResolver
 
 
-def build_transforms(filters: list[ShelfFilter] | None) -> list[dict[str, Any]]:
+def build_transforms(
+    filters: list[ShelfFilter] | None,
+    resolver: FieldTypeResolver | None = None,
+) -> list[dict[str, Any]]:
     """Convert DSL filters to Vega-Lite transform list."""
 
     if not filters:
         return []
 
-    return [{"filter": _translate_filter(f)} for f in filters]
+    return [{"filter": _translate_filter(f, resolver)} for f in filters]
 
 
-def _translate_filter(f: ShelfFilter) -> Any:
+def _translate_filter(f: ShelfFilter, resolver: FieldTypeResolver | None = None) -> Any:
     """Convert a single DSL filter to a Vega-Lite filter predicate."""
+
+    field = resolver.resolve_base_field(f.field) if resolver else f.field
 
     match f.operator:
         case "eq":
-            return {"field": f.field, "equal": f.value}
+            return {"field": field, "equal": f.value}
         case "neq":
-            return {"not": {"field": f.field, "equal": f.value}}
+            return {"not": {"field": field, "equal": f.value}}
         case "gt":
-            return {"field": f.field, "gt": f.value}
+            return {"field": field, "gt": f.value}
         case "lt":
-            return {"field": f.field, "lt": f.value}
+            return {"field": field, "lt": f.value}
         case "gte":
-            return {"field": f.field, "gte": f.value}
+            return {"field": field, "gte": f.value}
         case "lte":
-            return {"field": f.field, "lte": f.value}
+            return {"field": field, "lte": f.value}
         case "in":
-            return {"field": f.field, "oneOf": f.values}
+            return {"field": field, "oneOf": f.values}
         case "not_in":
-            return {"not": {"field": f.field, "oneOf": f.values}}
+            return {"not": {"field": field, "oneOf": f.values}}
         case "between":
-            return {"field": f.field, "range": f.range}
+            return {"field": field, "range": f.range}
         case _:
             raise ValueError(f'Unknown filter operator: "{f.operator}"')
