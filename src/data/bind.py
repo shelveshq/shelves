@@ -37,12 +37,14 @@ def resolve_data(
     Attach data to a Vega-Lite spec, using inline rows or Cube.dev.
 
     If rows are provided, uses them directly (inline mode).
-    Otherwise, loads the model and fetches from its configured source.
+    Otherwise, loads the model and fetches from Cube.dev. Only Cube
+    sources are supported here — inline-source models must be resolved
+    by the caller (CLI/dev-server reads the JSON and passes rows).
 
     Args:
         spec: Compiled Vega-Lite spec (no data yet).
         chart_spec: The parsed ChartSpec (needed for field extraction + filters).
-        rows: Pre-fetched rows. If None, queries the model's data source.
+        rows: Pre-fetched rows. If None, queries Cube.dev via the model's source.
         models_dir: Optional path to models directory. Defaults to
                     <project_root>/models/.
 
@@ -52,7 +54,7 @@ def resolve_data(
     Raises:
         CubeConfigError: If Cube env vars are missing and no rows provided.
         CubeQueryError: If the Cube API returns an error.
-        ValueError: If the model has no configured data source.
+        ValueError: If no rows provided and the model has no Cube source.
     """
     if rows is not None:
         return bind_data(spec, rows)
