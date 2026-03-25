@@ -10,4 +10,8 @@ build/
 docs/plans/
 docs/foundational/
 /model
-/.coverage
+.coverage
+models/cube_*.yaml
+charts/
+.env
+output/
