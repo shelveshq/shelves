@@ -5,6 +5,7 @@ Tests for Cube.dev client — query building, filter translation, response parsi
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 
 import httpx
@@ -105,6 +106,132 @@ class TestCollectChartFields:
         spec = parse_chart(
             'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
             'filters:\n  - field: segment\n    operator: eq\n    value: "Consumer"\n'
+        )
+        fields = _collect_chart_fields(spec)
+        assert "segment" in fields
+
+    def test_size_field_collected(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: circle\n'
+            "size: net_sales\n"
+        )
+        fields = _collect_chart_fields(spec)
+        assert "net_sales" in fields
+        assert "category" in fields
+
+    def test_size_numeric_not_collected(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: circle\n'
+            "size: 100\n"
+        )
+        fields = _collect_chart_fields(spec)
+        # 100 should not appear as a field name
+        assert fields == {"category", "net_sales"}
+
+    def test_tooltip_existing_fields_no_warning(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            "tooltip: [category, net_sales]\n"
+        )
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            fields = _collect_chart_fields(spec)
+        assert "category" in fields
+        assert "net_sales" in fields
+        assert len(w) == 0  # no warnings — both fields already on axes
+
+    def test_tooltip_new_field_warns(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            "tooltip: [category, segment]\n"
+        )
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            fields = _collect_chart_fields(spec)
+        assert "segment" in fields  # still collected
+        assert "category" in fields
+        assert "net_sales" in fields
+        # Only segment triggers a warning (category is already on cols)
+        assert len(w) == 1
+        assert "segment" in str(w[0].message)
+        assert "detail" in str(w[0].message)
+
+    def test_tooltip_object_new_field_warns(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            "tooltip:\n  - field: segment\n"
+        )
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            fields = _collect_chart_fields(spec)
+        assert "segment" in fields
+        assert len(w) == 1
+        assert "segment" in str(w[0].message)
+
+    def test_tooltip_mixed_warns_only_new(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            "color: segment\n"
+            "tooltip: [category, net_sales, segment, order_date]\n"
+        )
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            fields = _collect_chart_fields(spec)
+        assert fields == {"category", "net_sales", "segment", "order_date"}
+        # Only order_date is new — category on cols, net_sales on rows, segment on color
+        assert len(w) == 1
+        assert "order_date" in str(w[0].message)
+
+    def test_wrap_facet_field_collected(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: order_date\nrows: net_sales\nmarks: line\n'
+            "facet:\n  field: category\n  columns: 3\n"
+        )
+        fields = _collect_chart_fields(spec)
+        assert "category" in fields
+        assert "order_date" in fields
+        assert "net_sales" in fields
+
+    def test_row_column_facet_fields_collected(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: order_date\nrows: net_sales\nmarks: line\n'
+            "facet:\n  row: category\n  column: segment\n"
+        )
+        fields = _collect_chart_fields(spec)
+        assert "category" in fields
+        assert "segment" in fields
+
+    def test_field_sort_collected(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            "sort:\n  field: net_sales\n  order: descending\n"
+        )
+        fields = _collect_chart_fields(spec)
+        assert "net_sales" in fields
+
+    def test_axis_sort_no_extra_fields(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+            "sort:\n  axis: y\n  order: ascending\n"
+        )
+        fields = _collect_chart_fields(spec)
+        # AxisSort references axes, not fields — no extra fields added
+        assert fields == {"category", "net_sales"}
+
+    def test_measure_entry_size_field_collected(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\n'
+            "rows:\n  - measure: net_sales\n    mark: circle\n    size: segment\n"
+        )
+        fields = _collect_chart_fields(spec)
+        assert "segment" in fields
+        assert "net_sales" in fields
+        assert "category" in fields
+
+    def test_entry_color_field_mapping_collected(self):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\n'
+            "rows:\n  - measure: net_sales\n    mark: bar\n    color:\n      field: segment\n"
         )
         fields = _collect_chart_fields(spec)
         assert "segment" in fields

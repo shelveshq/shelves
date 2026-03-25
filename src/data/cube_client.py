@@ -10,6 +10,7 @@ Phase 3: replaces inline JSON data for charts backed by a semantic model.
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,9 +19,12 @@ import httpx
 from src.schema.chart_schema import (
     ChartSpec,
     ColorFieldMapping,
+    FieldSort,
     HEX_COLOR_RE,
     MeasureEntry,
+    RowColumnFacet,
     ShelfFilter,
+    WrapFacet,
 )
 from src.models.schema import CubeSource, DataModel
 from src.schema.field_types import FieldTypeResolver
@@ -78,8 +82,24 @@ def _collect_chart_fields(spec: ChartSpec) -> set[str]:
     """
     Extract the set of field names a chart actually references.
 
-    Walks rows, cols, color, detail, and filters to collect every field
-    the chart needs — this is what gets sent to Cube.
+    Walks ALL field-bearing properties of ChartSpec:
+      - rows, cols (string or MeasureEntry list — including layer entries)
+      - color (string field or ColorFieldMapping)
+      - detail
+      - size (when it's a string field name, not a numeric literal)
+      - tooltip (list of strings or TooltipField objects)
+      - facet (RowColumnFacet.row, RowColumnFacet.column, WrapFacet.field)
+      - sort (FieldSort.field — but NOT AxisSort, which references an axis not a field)
+      - filters (ShelfFilter.field)
+      - kpi (KPIConfig.measure, KPIComparison.measure)
+
+    Tooltip disaggregation warning:
+      Tooltip fields not already referenced by other chart properties are still
+      collected (the user asked for them), but a warnings.warn() is emitted for
+      each one explaining that including it will disaggregate the data — i.e., it
+      behaves as if the field were added to 'detail'.
+
+    Returns the set of field names to send to Cube.
     """
     fields: set[str] = set()
 
@@ -97,8 +117,29 @@ def _collect_chart_fields(spec: ChartSpec) -> set[str]:
                     and not HEX_COLOR_RE.match(entry.color)
                 ):
                     fields.add(entry.color)
+                elif isinstance(entry.color, ColorFieldMapping):
+                    fields.add(entry.color.field)
                 if entry.detail:
                     fields.add(entry.detail)
+                # entry-level size (string = field name; int/float = static)
+                if isinstance(entry.size, str):
+                    fields.add(entry.size)
+                # layer entries
+                if entry.layer:
+                    for layer in entry.layer:
+                        fields.add(layer.measure)
+                        if (
+                            layer.color
+                            and isinstance(layer.color, str)
+                            and not HEX_COLOR_RE.match(layer.color)
+                        ):
+                            fields.add(layer.color)
+                        elif isinstance(layer.color, ColorFieldMapping):
+                            fields.add(layer.color.field)
+                        if layer.detail:
+                            fields.add(layer.detail)
+                        if isinstance(layer.size, str):
+                            fields.add(layer.size)
 
     _add_shelf(spec.rows)
     _add_shelf(spec.cols)
@@ -112,9 +153,51 @@ def _collect_chart_fields(spec: ChartSpec) -> set[str]:
     if spec.detail:
         fields.add(spec.detail)
 
+    # top-level size
+    if isinstance(spec.size, str):
+        fields.add(spec.size)
+
+    # facet
+    if spec.facet:
+        if isinstance(spec.facet, WrapFacet):
+            fields.add(spec.facet.field)
+        elif isinstance(spec.facet, RowColumnFacet):
+            if spec.facet.row:
+                fields.add(spec.facet.row)
+            if spec.facet.column:
+                fields.add(spec.facet.column)
+
+    # sort
+    if spec.sort and isinstance(spec.sort, FieldSort):
+        fields.add(spec.sort.field)
+
     if spec.filters:
         for f in spec.filters:
             fields.add(f.field)
+
+    # kpi
+    if spec.kpi:
+        fields.add(spec.kpi.measure)
+        if spec.kpi.comparison:
+            fields.add(spec.kpi.comparison.measure)
+
+    # tooltip (two-pass — warn for fields not already referenced)
+    # Snapshot the fields collected so far (everything EXCEPT tooltip).
+    # Then collect tooltip fields. Any tooltip field NOT in the snapshot
+    # is "tooltip-only" and will disaggregate the Cube query.
+    if spec.tooltip:
+        pre_tooltip_fields = set(fields)
+        for t in spec.tooltip:
+            field_name = t if isinstance(t, str) else t.field
+            if field_name not in pre_tooltip_fields:
+                warnings.warn(
+                    f"Tooltip field '{field_name}' is not referenced by any other "
+                    f"chart property (rows, cols, color, detail, facet, etc.). "
+                    f"Including it in the Cube query will disaggregate the data "
+                    f"— it behaves as if '{field_name}' were added to 'detail'.",
+                    stacklevel=2,
+                )
+            fields.add(field_name)
 
     return fields
 
