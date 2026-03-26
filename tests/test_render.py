@@ -8,7 +8,7 @@ and the full YAML -> HTML pipeline.
 import json
 
 from src.render.to_html import render_html
-from src.theme.merge import merge_theme, load_default_theme
+from src.theme.merge import merge_theme, load_theme
 from src.data.bind import bind_data
 from src.schema.chart_schema import parse_chart
 from src.translator.translate import translate_chart
@@ -60,11 +60,10 @@ class TestRenderHTML:
 
 class TestThemeMerge:
     def test_default_theme_loads(self):
-        theme = load_default_theme()
-        assert isinstance(theme, dict)
-        assert "background" in theme
-        assert "range" in theme
-        assert len(theme["range"]["category"]) == 8
+        theme = load_theme()
+        assert theme.chart.background == "#ffffff"
+        assert "range" in theme.chart.model_dump()
+        assert len(theme.chart.model_dump()["range"]["category"]) == 8
 
     def test_theme_adds_config(self):
         spec = {"mark": "bar", "encoding": {}}
@@ -91,8 +90,8 @@ class TestThemeMerge:
         assert result["config"]["padding"] == 0
 
     def test_color_palette(self):
-        theme = load_default_theme()
-        assert theme["range"]["category"][0] == "#4A90D9"
+        theme = load_theme()
+        assert theme.chart.model_dump()["range"]["category"][0] == "#4A90D9"
 
 
 # ─── Data Binding ────────────────────────────────────────────────

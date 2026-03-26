@@ -26,6 +26,16 @@ charter-render path/to/chart.yaml --out output/my-chart.html
 charter-render path/to/chart.yaml --no-theme
 ```
 
+### Custom theme
+
+Pass a custom theme file to change colors, fonts, and spacing:
+
+```bash
+python -m src.cli.render my_chart.yaml --data data.json --theme my_theme.yaml
+```
+
+See [Theme](dsl-reference.md#theme) in the DSL reference for the full theme file format.
+
 The data file should be a JSON array of row objects:
 
 ```json
