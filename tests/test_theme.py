@@ -112,6 +112,14 @@ class TestThemeMerge:
         assert result["config"]["background"] == "#222"
         assert result["config"]["padding"] == 0
 
+    def test_merge_theme_default_none(self):
+        """merge_theme(spec, None) loads and applies the default theme."""
+        spec = {"mark": "bar", "encoding": {}}
+        result = merge_theme(spec, None)
+        assert "config" in result
+        assert result["config"]["background"] == "#ffffff"
+        assert result["config"]["mark"] == {"color": "#4A90D9"}
+
     def test_custom_theme_merge_into_spec(self):
         custom_path = Path(__file__).parent / "fixtures" / "themes" / "custom_brand.yaml"
         theme = load_theme(custom_path)
@@ -122,3 +130,107 @@ class TestThemeMerge:
         assert result["config"]["mark"]["color"] == "#e94560"
         # Layout section still does not leak
         assert "layout" not in result["config"]
+
+
+# ─── Layout Token Validation ────────────────────────────────────
+
+
+class TestLayoutTokens:
+    """Validate that default theme layout tokens match the Layout DSL specification."""
+
+    def test_layout_tokens_match_dsl_spec(self):
+        """Cross-reference layout tokens against Layout DSL Specification section 5.4."""
+        theme = load_theme()
+
+        # Text presets — values must match DSL spec table
+        assert theme.layout.presets["title"].font_size == 24
+        assert theme.layout.presets["title"].color == "#1a1a1a"  # resolved from text.primary
+        assert theme.layout.presets["subtitle"].font_size == 18
+        assert theme.layout.presets["subtitle"].color == "#666666"  # resolved from text.secondary
+        assert theme.layout.presets["caption"].font_size == 12
+        assert theme.layout.presets["caption"].color == "#999999"  # resolved from text.tertiary
+        assert theme.layout.presets["label"].font_size == 11
+
+        # Body font family must match chart axis label font
+        chart = theme.chart.model_dump()
+        assert theme.layout.font.family.body == chart["axis"]["labelFont"]
+
+        # Dashboard background (Layout DSL examples 8.1, 8.2)
+        assert theme.layout.background == "#f5f5f5"
+
+        # Card surface color (Layout DSL examples 8.1 card style)
+        assert theme.layout.surface == "#ffffff"
+
+        # Border color (Layout DSL examples 8.1 card border)
+        assert theme.layout.border == "#e5e7eb"
+
+    def test_font_coherence_across_sections(self):
+        """Chart axis/title/legend fonts all use the same family as layout.font.family.body."""
+        theme = load_theme()
+        chart = theme.chart.model_dump()
+        body_font = theme.layout.font.family.body
+
+        assert chart["axis"]["labelFont"] == body_font
+        assert chart["axis"]["titleFont"] == body_font
+        assert chart["title"]["font"] == body_font
+        assert chart["legend"]["labelFont"] == body_font
+        assert chart["legend"]["titleFont"] == body_font
+
+    def test_layout_font_size_scale(self):
+        """Layout font size tokens form a monotonically increasing scale."""
+        theme = load_theme()
+        sizes = theme.layout.font.size
+        assert sizes.xs < sizes.sm < sizes.md < sizes.lg < sizes.xl
+
+    def test_layout_font_weight_scale(self):
+        """Layout font weight tokens form a monotonically increasing scale."""
+        theme = load_theme()
+        weights = theme.layout.font.weight
+        assert weights.normal < weights.medium < weights.semibold < weights.bold
+
+    def test_all_presets_have_valid_colors(self):
+        """After resolution, every preset color is a hex string."""
+        theme = load_theme()
+        for name, preset in theme.layout.presets.items():
+            assert preset.color.startswith("#"), (
+                f"Preset '{name}' color not resolved: {preset.color}"
+            )
+
+    def test_chart_section_category_palette_length(self):
+        """Chart category palette has exactly 8 distinct colors."""
+        theme = load_theme()
+        palette = theme.chart.model_dump()["range"]["category"]
+        assert len(palette) == 8
+        assert len(set(palette)) == 8, "Category palette has duplicate colors"
+
+    def test_chart_visual_qa_values(self):
+        """Verify all chart section values match the visual QA checklist."""
+        theme = load_theme()
+        chart = theme.chart.model_dump()
+
+        # Background and view
+        assert chart["background"] == "#ffffff"
+        assert chart["view"]["fill"] == "#f8f9fa"
+        assert chart["padding"] == 16
+
+        # Mark default
+        assert chart["mark"]["color"] == "#4A90D9"
+
+        # Axis
+        assert chart["axis"]["labelFontSize"] == 11
+        assert chart["axis"]["titleFontSize"] == 12
+        assert chart["axis"]["gridColor"] == "#f0f0f0"
+        assert chart["axis"]["domainColor"] == "#9ca3af"
+        assert chart["axis"]["tickColor"] == "#9ca3af"
+
+        # Title
+        assert chart["title"]["fontSize"] == 16
+        assert chart["title"]["fontWeight"] == 600
+
+        # Legend
+        assert chart["legend"]["labelFontSize"] == 11
+        assert chart["legend"]["titleFontSize"] == 12
+
+        # Bar corner radius
+        assert chart["bar"]["cornerRadius"] == 2
+        assert chart["rect"]["cornerRadius"] == 2
