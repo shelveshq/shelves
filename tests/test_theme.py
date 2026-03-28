@@ -86,6 +86,51 @@ class TestThemeLoading:
         assert theme.layout.font.family.body == "Inter, system-ui, sans-serif"
         assert theme.layout.font.size.md == 14
 
+    def test_custom_theme_inherits_default_chart_config(self):
+        """Custom theme that only overrides colors should still have all
+        default chart config (axis, legend, view, title, padding, etc.)."""
+        custom_path = Path(__file__).parent / "fixtures" / "themes" / "custom_brand.yaml"
+        theme = load_theme(custom_path)
+        chart = theme.chart.model_dump()
+
+        # Custom overrides are applied
+        assert chart["background"] == "#1a1a2e"
+        assert chart["mark"] == {"color": "#e94560"}
+        assert len(chart["range"]["category"]) == 4  # custom palette has 4
+
+        # Default config that custom_brand.yaml does NOT specify must survive
+        assert "axis" in chart
+        assert chart["axis"]["labelFont"] == "Inter, system-ui, sans-serif"
+        assert chart["axis"]["labelFontSize"] == 11
+        assert chart["axis"]["gridColor"] == "#f0f0f0"
+        assert "legend" in chart
+        assert chart["legend"]["labelFontSize"] == 11
+        assert "view" in chart
+        assert chart["view"]["fill"] == "#f8f9fa"
+        assert "title" in chart
+        assert chart["title"]["fontSize"] == 16
+        assert chart["bar"]["cornerRadius"] == 2
+        assert chart["padding"] == 16
+
+    def test_custom_theme_inherits_default_layout_presets(self):
+        """Custom theme that doesn't specify presets should inherit all
+        default presets with colors resolved against the custom text palette."""
+        custom_path = Path(__file__).parent / "fixtures" / "themes" / "custom_brand.yaml"
+        theme = load_theme(custom_path)
+        presets = theme.layout.presets
+
+        # All six presets must still exist (inherited from default)
+        assert set(presets.keys()) == {"title", "subtitle", "heading", "body", "caption", "label"}
+
+        # Preset colors resolve against the CUSTOM text palette, not the default
+        assert presets["title"].color == "#ffffff"  # text.primary → custom "#ffffff"
+        assert presets["subtitle"].color == "#a0a0a0"  # text.secondary → custom "#a0a0a0"
+        assert presets["caption"].color == "#666666"  # text.tertiary → custom "#666666"
+
+        # Preset font sizes are inherited from default
+        assert presets["title"].font_size == 24
+        assert presets["body"].font_size == 14
+
 
 # ─── Theme Merge ─────────────────────────────────────────────────
 
@@ -130,6 +175,73 @@ class TestThemeMerge:
         assert result["config"]["mark"]["color"] == "#e94560"
         # Layout section still does not leak
         assert "layout" not in result["config"]
+
+    def test_deep_merge_spec_config_overrides_single_key(self):
+        """Spec-level config that overrides a single nested key should NOT
+        wipe out sibling keys from the theme. e.g. overriding
+        axis.labelFontSize should preserve axis.gridColor, axis.labelFont, etc."""
+        theme = load_theme()
+        spec = {
+            "mark": "bar",
+            "encoding": {},
+            "config": {"axis": {"labelFontSize": 14}},
+        }
+        result = merge_theme(spec, theme)
+        axis = result["config"]["axis"]
+
+        # The spec-level override wins
+        assert axis["labelFontSize"] == 14
+
+        # Theme defaults for other axis keys must survive
+        assert axis["gridColor"] == "#f0f0f0"
+        assert axis["labelFont"] == "Inter, system-ui, sans-serif"
+        assert axis["domainColor"] == "#9ca3af"
+        assert axis["titleFontSize"] == 12
+
+    def test_deep_merge_spec_config_overrides_multiple_sections(self):
+        """Spec-level config overriding keys in multiple nested sections
+        should preserve unrelated keys in each section."""
+        theme = load_theme()
+        spec = {
+            "mark": "bar",
+            "encoding": {},
+            "config": {
+                "axis": {"labelFontSize": 14},
+                "legend": {"padding": 20},
+                "view": {"fill": "#000000"},
+            },
+        }
+        result = merge_theme(spec, theme)
+
+        # Overrides take effect
+        assert result["config"]["axis"]["labelFontSize"] == 14
+        assert result["config"]["legend"]["padding"] == 20
+        assert result["config"]["view"]["fill"] == "#000000"
+
+        # Theme defaults survive in each section
+        assert result["config"]["axis"]["gridColor"] == "#f0f0f0"
+        assert result["config"]["legend"]["labelFontSize"] == 11
+        assert result["config"]["mark"] == {"color": "#4A90D9"}
+        assert result["config"]["padding"] == 16
+
+    def test_deep_merge_top_level_scalar_override(self):
+        """Spec-level config that overrides a top-level scalar (padding)
+        should still work correctly alongside deep merge."""
+        theme = load_theme()
+        spec = {
+            "mark": "bar",
+            "encoding": {},
+            "config": {"padding": 0, "background": "#111111"},
+        }
+        result = merge_theme(spec, theme)
+
+        # Overrides win
+        assert result["config"]["padding"] == 0
+        assert result["config"]["background"] == "#111111"
+
+        # Nested theme defaults survive untouched
+        assert result["config"]["axis"]["labelFontSize"] == 11
+        assert result["config"]["view"]["fill"] == "#f8f9fa"
 
 
 # ─── Layout Token Validation ────────────────────────────────────

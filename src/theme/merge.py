@@ -25,14 +25,22 @@ def load_theme(path: Path | None = None) -> ThemeSpec:
     Load a theme YAML file and return a validated ThemeSpec.
 
     If no path is given, loads the built-in default_theme.yaml.
+    If a custom path is given, deep-merges it onto the defaults so
+    unspecified keys inherit from the built-in theme.
     Resolves preset color references (e.g. "text.primary" → "#1a1a1a").
 
     Returns:
         ThemeSpec with all preset colors resolved to hex values.
     """
-    theme_path = path if path is not None else DEFAULT_THEME_PATH
-    data = yaml.safe_load(theme_path.read_text())
-    theme = ThemeSpec(**(data or {}))
+    default_data = yaml.safe_load(DEFAULT_THEME_PATH.read_text()) or {}
+
+    if path is None or path.resolve() == DEFAULT_THEME_PATH.resolve():
+        merged_data = default_data
+    else:
+        user_data = yaml.safe_load(path.read_text()) or {}
+        merged_data = _deep_merge_dicts(default_data, user_data)
+
+    theme = ThemeSpec(**merged_data)
     return _resolve_preset_colors(theme)
 
 
@@ -68,6 +76,18 @@ def _resolve_preset_colors(theme: ThemeSpec) -> ThemeSpec:
     return theme.model_copy(update={"layout": new_layout})
 
 
+def _deep_merge_dicts(base: dict, override: dict) -> dict:
+    """Recursively merge override into base. Override values win.
+    When both values are dicts, recurse; otherwise override replaces."""
+    result = dict(base)
+    for key, val in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
+            result[key] = _deep_merge_dicts(result[key], val)
+        else:
+            result[key] = val
+    return result
+
+
 def merge_theme(spec: dict, theme: dict | ThemeSpec | None = None) -> dict:
     """
     Merge theme config into a Vega-Lite spec.
@@ -95,8 +115,8 @@ def merge_theme(spec: dict, theme: dict | ThemeSpec | None = None) -> dict:
     result = copy.deepcopy(spec)
     existing_config = result.pop("config", {})
 
-    # Theme is the base, spec-level config overrides
-    merged_config = {**vl_config, **existing_config}
+    # Theme is the base, spec-level config overrides (deep merge preserves siblings)
+    merged_config = _deep_merge_dicts(vl_config, existing_config)
     result["config"] = merged_config
 
     return result
