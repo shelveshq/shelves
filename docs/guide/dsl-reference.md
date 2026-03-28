@@ -1,6 +1,6 @@
 # Charter DSL Reference
 
-**DSL Version: 0.3.0**
+**DSL Version: 0.4.0**
 
 This document is the authoritative reference for the Charter YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -369,6 +369,109 @@ tooltip: [country, revenue]
 
 ---
 
+## Theme
+
+Charter uses a `theme.yaml` file to control visual styling across all charts and dashboards. The theme has two sections:
+
+- **`chart`** — Vega-Lite config properties (colors, fonts, padding, mark defaults). Applied to every chart via `spec.config`.
+- **`layout`** — Tokens for the Layout DSL (text presets, surface colors, typography). Used by dashboard rendering.
+
+### Using the default theme
+
+By default, Charter applies its built-in theme. No configuration needed:
+
+```bash
+python -m src.cli.render my_chart.yaml --data data.json
+```
+
+### Using a custom theme
+
+Create a `theme.yaml` file and pass it via `--theme`:
+
+```bash
+python -m src.cli.render my_chart.yaml --data data.json --theme my_theme.yaml
+```
+
+### Theme file structure
+
+```yaml
+chart:
+  background: "#ffffff"
+  mark:
+    color: "#4A90D9"
+  axis:
+    labelFont: "Inter, system-ui, sans-serif"
+    labelFontSize: 11
+    titleFont: "Inter, system-ui, sans-serif"
+    titleFontSize: 12
+    gridColor: "#f0f0f0"
+  range:
+    category: ["#4A90D9", "#E5A84B", "#5BBD72", "#D94A6B"]
+  bar:
+    cornerRadius: 2
+  padding: 16
+
+layout:
+  text:
+    primary: "#1a1a1a"
+    secondary: "#666666"
+    tertiary: "#999999"
+  font:
+    family:
+      body: "Inter, system-ui, sans-serif"
+      heading: "Inter, system-ui, sans-serif"
+  surface: "#ffffff"
+  background: "#f5f5f5"
+  border: "#e5e7eb"
+  presets:
+    title:
+      font_size: 24
+      font_weight: bold
+      color: text.primary
+    body:
+      font_size: 14
+      font_weight: normal
+      color: text.primary
+```
+
+### Partial overrides
+
+You only need to include the keys you want to change. Unspecified keys use the built-in defaults. For example, to change just the brand color palette:
+
+```yaml
+chart:
+  mark:
+    color: "#e94560"
+  range:
+    category: ["#e94560", "#0f3460", "#16213e", "#533483"]
+
+layout:
+  text:
+    primary: "#ffffff"
+  surface: "#1a1a2e"
+  background: "#0f0f1a"
+```
+
+### Preset color references
+
+In the `layout.presets` section, the `color` field supports references to `layout.text` values:
+
+- `text.primary` → resolves to `layout.text.primary`
+- `text.secondary` → resolves to `layout.text.secondary`
+- `text.tertiary` → resolves to `layout.text.tertiary`
+
+You can also use hex values directly: `color: "#ff0000"`.
+
+### Skipping the theme
+
+To render without any theme applied:
+
+```bash
+python -m src.cli.render my_chart.yaml --data data.json --no-theme
+```
+
+---
+
 ## Complete examples
 
 ### Simple bar chart
@@ -529,6 +632,7 @@ kpi:
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.3.0** | Current | **Breaking:** removed legacy `DataSource` inline declaration. `data` is now always a model name string. |
+| **0.4.0** | Current | Unified `theme.yaml` with `chart` + `layout` sections, `--theme` CLI flag, partial theme overrides. |
+| **0.3.0** | Previous | **Breaking:** removed legacy `DataSource` inline declaration. `data` is now always a model name string. |
 | **0.2.0** | Previous | Data model shorthand (`data: orders`), temporal dot notation (`cols: order_date.month`), auto-injected axis formats from model. |
 | **0.1.0** | — | Single-measure charts, multi-measure stacked panels (repeat/concat), filters, sort, facet, themes, data binding, HTML rendering. Layers and KPI parsed but not compiled. |

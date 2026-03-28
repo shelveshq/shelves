@@ -27,10 +27,13 @@ from watchdog.events import FileSystemEventHandler
 
 from src.schema.chart_schema import parse_chart
 from src.translator.translate import translate_chart
-from src.theme.merge import merge_theme
+from src.theme.merge import merge_theme, load_theme
 from src.data.bind import resolve_data
 from src.render.to_html import render_html
 
+from dotenv import load_dotenv
+
+load_dotenv()  # Load environment variables from .env file (for CUBE_API_URL, etc.)
 
 # Auto-reload snippet injected into served HTML
 _RELOAD_SCRIPT = """
@@ -58,7 +61,9 @@ class _State:
         self.timestamp: str = ""
 
 
-def _build(yaml_path: Path, data_path: Path | None, no_theme: bool, state: _State):
+def _build(
+    yaml_path: Path, data_path: Path | None, no_theme: bool, theme_path: Path | None, state: _State
+):
     """Re-run the full pipeline and update state."""
     try:
         yaml_string = yaml_path.read_text()
@@ -66,7 +71,8 @@ def _build(yaml_path: Path, data_path: Path | None, no_theme: bool, state: _Stat
         vl_spec = translate_chart(spec)
 
         if not no_theme:
-            vl_spec = merge_theme(vl_spec)
+            theme = load_theme(theme_path)
+            vl_spec = merge_theme(vl_spec, theme)
 
         # Data: inline JSON if --data provided, otherwise try model source or Cube
         if data_path:
@@ -110,15 +116,16 @@ def _build(yaml_path: Path, data_path: Path | None, no_theme: bool, state: _Stat
 
 
 class _YAMLWatcher(FileSystemEventHandler):
-    def __init__(self, yaml_path, data_path, no_theme, state):
+    def __init__(self, yaml_path, data_path, no_theme, theme_path, state):
         self._yaml_path = yaml_path
         self._data_path = data_path
         self._no_theme = no_theme
+        self._theme_path = theme_path
         self._state = state
 
     def on_modified(self, event):
         if Path(os.fsdecode(event.src_path)).resolve() == self._yaml_path.resolve():
-            _build(self._yaml_path, self._data_path, self._no_theme, self._state)
+            _build(self._yaml_path, self._data_path, self._no_theme, self._theme_path, self._state)
 
 
 def _make_handler(state: _State):
@@ -149,11 +156,15 @@ def main():
     parser.add_argument("yaml_path", help="Path to chart YAML file")
     parser.add_argument("--data", help="Path to JSON data file")
     parser.add_argument("--port", type=int, default=8089, help="Server port (default: 8089)")
-    parser.add_argument("--no-theme", action="store_true", help="Skip theme merging")
+    parser.add_argument(
+        "--no-theme", action="store_true", help="Skip theme merging (takes priority over --theme)"
+    )
+    parser.add_argument("--theme", help="Path to custom theme YAML file")
     args = parser.parse_args()
 
     yaml_path = Path(args.yaml_path).resolve()
     data_path = Path(args.data).resolve() if args.data else None
+    theme_path = Path(args.theme).resolve() if args.theme else None
 
     if not yaml_path.exists():
         print(f"Error: {yaml_path} not found")
@@ -168,11 +179,14 @@ def main():
         print(f"  Data:     {data_path}")
     else:
         print("  Data:     Cube.dev (from CUBE_API_URL)")
-    _build(yaml_path, data_path, args.no_theme, state)
+
+    print(f"  Chart:    {yaml_path.name}")
+    print(f"  Theme:    {'None' if args.no_theme else (theme_path or 'Default')}")
+    _build(yaml_path, data_path, args.no_theme, theme_path, state)
 
     # File watcher
     observer = Observer()
-    handler = _YAMLWatcher(yaml_path, data_path, args.no_theme, state)
+    handler = _YAMLWatcher(yaml_path, data_path, args.no_theme, theme_path, state)
     observer.schedule(handler, str(yaml_path.parent), recursive=False)
     observer.start()
 

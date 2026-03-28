@@ -18,7 +18,7 @@ Typical pipeline:
 
 from src.schema.chart_schema import parse_chart, ChartSpec, DSL_VERSION
 from src.translator.translate import translate_chart
-from src.theme.merge import merge_theme
+from src.theme.merge import merge_theme, load_theme
 from src.data.bind import bind_data, resolve_data
 from src.render.to_html import render_html
 
@@ -26,6 +26,7 @@ __all__ = [
     "parse_chart",
     "translate_chart",
     "merge_theme",
+    "load_theme",
     "bind_data",
     "resolve_data",
     "render_html",

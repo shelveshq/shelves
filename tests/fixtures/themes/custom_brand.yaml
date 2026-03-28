@@ -1,0 +1,20 @@
+# Custom brand theme — overrides just colors and palette
+chart:
+  background: "#1a1a2e"
+  mark:
+    color: "#e94560"
+  range:
+    category:
+      - "#e94560"
+      - "#0f3460"
+      - "#16213e"
+      - "#533483"
+
+layout:
+  text:
+    primary: "#ffffff"
+    secondary: "#a0a0a0"
+    tertiary: "#666666"
+  surface: "#1a1a2e"
+  background: "#0f0f1a"
+  border: "#333355"

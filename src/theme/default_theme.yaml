@@ -1,0 +1,102 @@
+# Charter Default Theme
+# Copy this file and pass --theme <path> to customize.
+
+chart:
+  background: "#ffffff"
+  view:
+    fill: "#f8f9fa"
+  mark:
+    color: "#4A90D9"
+  title:
+    font: "Inter, system-ui, sans-serif"
+    fontSize: 16
+    fontWeight: 600
+    color: "#1a1a1a"
+  axis:
+    labelFont: "Inter, system-ui, sans-serif"
+    labelFontSize: 11
+    labelFontWeight: 400
+    labelColor: "#1a1a1a"
+    titleFont: "Inter, system-ui, sans-serif"
+    titleFontSize: 12
+    titleFontWeight: 500
+    titleColor: "#666666"
+    gridColor: "#f0f0f0"
+    domainColor: "#9ca3af"
+    tickColor: "#9ca3af"
+  legend:
+    labelFont: "Inter, system-ui, sans-serif"
+    labelFontSize: 11
+    titleFont: "Inter, system-ui, sans-serif"
+    titleFontSize: 12
+    padding: 8
+  range:
+    category:
+      - "#4A90D9"
+      - "#E5A84B"
+      - "#5BBD72"
+      - "#D94A6B"
+      - "#9B6BD9"
+      - "#4AD9C4"
+      - "#D97B4A"
+      - "#7B8FA1"
+  bar:
+    cornerRadius: 2
+  rect:
+    cornerRadius: 2
+  padding: 16
+
+layout:
+  text:
+    primary: "#1a1a1a"
+    secondary: "#666666"
+    tertiary: "#999999"
+  font:
+    family:
+      body: "Inter, system-ui, sans-serif"
+      heading: "Inter, system-ui, sans-serif"
+    size:
+      xs: 11
+      sm: 12
+      md: 14
+      lg: 18
+      xl: 24
+    weight:
+      normal: 400
+      medium: 500
+      semibold: 600
+      bold: 700
+  surface: "#ffffff"
+  background: "#f5f5f5"
+  border: "#e5e7eb"
+  presets:
+    title:
+      font_size: 24
+      font_weight: bold
+      color: text.primary
+      text_align: left
+    subtitle:
+      font_size: 18
+      font_weight: 600
+      color: text.secondary
+      text_align: left
+    heading:
+      font_size: 16
+      font_weight: 600
+      color: text.primary
+      text_align: left
+    body:
+      font_size: 14
+      font_weight: normal
+      color: text.primary
+      text_align: left
+    caption:
+      font_size: 12
+      font_weight: normal
+      color: text.tertiary
+      text_align: left
+    label:
+      font_size: 11
+      font_weight: 500
+      color: text.secondary
+      text_align: left

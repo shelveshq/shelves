@@ -22,7 +22,7 @@ from pathlib import Path
 
 from src.schema.chart_schema import parse_chart
 from src.translator.translate import translate_chart
-from src.theme.merge import merge_theme
+from src.theme.merge import merge_theme, load_theme
 from src.data.bind import resolve_data
 from src.render.to_html import render_html
 
@@ -32,7 +32,10 @@ def main():
     parser.add_argument("yaml_path", help="Path to chart YAML file")
     parser.add_argument("--data", help="Path to JSON data file (array of row objects)")
     parser.add_argument("--out", help="Output HTML file path")
-    parser.add_argument("--no-theme", action="store_true", help="Skip theme merging")
+    parser.add_argument(
+        "--no-theme", action="store_true", help="Skip theme merging (takes priority over --theme)"
+    )
+    parser.add_argument("--theme", help="Path to custom theme YAML file")
     parser.add_argument("--no-data", action="store_true", help="Render without data")
     args = parser.parse_args()
 
@@ -45,7 +48,9 @@ def main():
 
     # Theme
     if not args.no_theme:
-        vl_spec = merge_theme(vl_spec)
+        theme_path = Path(args.theme) if args.theme else None
+        theme = load_theme(theme_path)
+        vl_spec = merge_theme(vl_spec, theme)
 
     # Data
     if args.no_data:
