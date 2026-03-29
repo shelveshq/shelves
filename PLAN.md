@@ -245,6 +245,8 @@ charter/
 │   │   ├── filters.py               # DSL filters → VL transforms
 │   │   ├── sort.py                  # DSL sort → VL encoding sort
 │   │   ├── facet.py                 # Facet wrapping (inner-spec-agnostic)
+│   │   ├── layout.py              # Layout DSL → HTML translator
+│   │   ├── layout_styles.py       # Style resolution engine for layout
 │   │   └── patterns/
 │   │       ├── __init__.py
 │   │       ├── single.py            # Single-measure chart (Phase 1 path)
@@ -292,6 +294,7 @@ charter/
 │   │       └── predefined_components.yaml
 │   ├── test_schema.py
 │   ├── test_layout_schema.py              # Layout DSL schema parsing + validation
+│   ├── test_layout_translator.py          # Layout translator tests
 │   ├── test_translator.py
 │   ├── test_facet.py
 │   ├── test_stacked.py                  # Phase 1: stacked panel tests
