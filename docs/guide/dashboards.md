@@ -171,6 +171,7 @@ revenue_chart:
 | Property | Required | Description |
 |---|---|---|
 | `link` | Yes | Path to a chart YAML file |
+| `fit` | No | Sizing mode: `width`, `height`, or `fill` (see [Sheet fit behavior](#sheet-fit-behavior)) |
 
 ### Text
 
@@ -372,6 +373,41 @@ padding: 16              # 16px all sides
 padding: "8 16"          # 8px vertical, 16px horizontal
 padding: "8 16 12 16"    # top right bottom left
 ```
+
+---
+
+## Sheet fit behavior
+
+Sheets support a `fit` property that controls how the chart scales within its container — the same concept as Tableau's "Fit" dropdown:
+
+| Value | Behavior |
+|---|---|
+| `width` | Chart stretches to fill container width. Vertical scrolling if content overflows. |
+| `height` | Chart stretches to fill container height. Horizontal scrolling if content overflows. |
+| `fill` | Chart stretches to fill both dimensions. No scrolling — the chart scales to fit entirely. |
+| _(omitted)_ | Fixed sizing from explicit `width`/`height`, or inherited from container (default). |
+
+```yaml
+contains:
+  - revenue:
+      type: sheet
+      link: "charts/revenue.yaml"
+      fit: fill              # scales to fill container
+
+  - timeline:
+      type: sheet
+      link: "charts/timeline.yaml"
+      fit: width             # fills width, scrolls vertically if tall
+
+  - sidebar_chart:
+      type: sheet
+      link: "charts/breakdown.yaml"
+      fit: height            # fills height, scrolls horizontally if wide
+```
+
+> **Note:** `fit` applies only to sheet components. Containers control sizing through `width`, `height`, `align`, and `justify`.
+>
+> When `fit` is set alongside an explicit size on the same axis (e.g., `fit: width` with `width: 300`), the `fit` value takes precedence at render time.
 
 ---
 

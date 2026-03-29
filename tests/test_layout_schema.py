@@ -126,6 +126,19 @@ root:
         container = spec.root.contains[0]
         assert container["type"] == "container"
 
+    def test_parse_dashboard_with_fit_sheets(self):
+        spec = parse_dashboard(load_layout_yaml("fit_sheets.yaml"))
+        assert spec.dashboard == "Fit Sheets Demo"
+        # Root has 3 children: charts_row container, full_chart sheet, fixed_chart sheet
+        assert len(spec.root.contains) == 3
+        # Verify the fixture parses without error (fit values validated at resolve time)
+        charts_row = spec.root.contains[0]
+        assert "charts_row" in charts_row
+        full_chart = spec.root.contains[1]
+        assert "full_chart" in full_chart
+        fixed_chart = spec.root.contains[2]
+        assert "fixed_chart" in fixed_chart
+
 
 # ─── Happy Path: resolve_child ─────────────────────────────────────
 
@@ -256,6 +269,45 @@ root:
         _, defn = resolve_child(node, {})
         assert defn.background == "#F00"
 
+    def test_sheet_fit_width(self):
+        node = {"type": "sheet", "link": "charts/foo.yaml", "fit": "width"}
+        _, defn = resolve_child(node, {})
+        assert defn.fit == "width"
+
+    def test_sheet_fit_height(self):
+        node = {"type": "sheet", "link": "charts/foo.yaml", "fit": "height"}
+        _, defn = resolve_child(node, {})
+        assert defn.fit == "height"
+
+    def test_sheet_fit_fill(self):
+        node = {"type": "sheet", "link": "charts/foo.yaml", "fit": "fill"}
+        _, defn = resolve_child(node, {})
+        assert defn.fit == "fill"
+
+    def test_sheet_fit_default_none(self):
+        node = {"type": "sheet", "link": "charts/foo.yaml"}
+        _, defn = resolve_child(node, {})
+        assert defn.fit is None
+
+    def test_fit_with_explicit_size(self):
+        node = {"type": "sheet", "link": "charts/foo.yaml", "fit": "width", "width": 300}
+        _, defn = resolve_child(node, {})
+        assert defn.fit == "width"
+        assert defn.width == 300
+
+    def test_fit_with_all_sizes(self):
+        node = {
+            "type": "sheet",
+            "link": "charts/foo.yaml",
+            "fit": "fill",
+            "width": "50%",
+            "height": 400,
+        }
+        _, defn = resolve_child(node, {})
+        assert defn.fit == "fill"
+        assert defn.width == "50%"
+        assert defn.height == 400
+
 
 # ─── Validation / Error Tests ─────────────────────────────────────
 
@@ -344,4 +396,19 @@ root:
         - type: blank
 """
         with pytest.raises(ValueError):
+            parse_dashboard(yaml_str)
+
+    def test_invalid_fit_value(self):
+        yaml_str = """\
+dashboard: "Bad Fit"
+canvas: { width: 1440, height: 900 }
+root:
+  type: root
+  orientation: vertical
+  contains:
+    - type: sheet
+      link: "charts/foo.yaml"
+      fit: stretch
+"""
+        with pytest.raises(Exception):
             parse_dashboard(yaml_str)

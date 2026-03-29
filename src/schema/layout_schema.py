@@ -101,6 +101,7 @@ class SheetComponent(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: Literal["sheet"]
     link: str
+    fit: Literal["width", "height", "fill"] | None = None
     width: SizeValue = None
     height: SizeValue = None
     margin: int | str | None = None

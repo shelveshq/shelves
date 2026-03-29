@@ -1,0 +1,30 @@
+dashboard: "Fit Sheets Demo"
+canvas:
+  width: 1440
+  height: 900
+
+root:
+  type: root
+  orientation: vertical
+  contains:
+    - charts_row:
+        type: container
+        orientation: horizontal
+        contains:
+          - wide_chart:
+              type: sheet
+              link: "charts/revenue.yaml"
+              fit: width
+          - tall_chart:
+              type: sheet
+              link: "charts/timeline.yaml"
+              fit: height
+    - full_chart:
+        type: sheet
+        link: "charts/overview.yaml"
+        fit: fill
+    - fixed_chart:
+        type: sheet
+        link: "charts/kpi.yaml"
+        width: 300
+        height: 200
