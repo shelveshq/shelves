@@ -11,11 +11,17 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 YAML_DIR = FIXTURES_DIR / "yaml"
 DATA_DIR = FIXTURES_DIR / "data"
 MODELS_DIR = FIXTURES_DIR / "models"
+LAYOUT_DIR = FIXTURES_DIR / "layout"
 
 
 def load_yaml(name: str) -> str:
     """Load a YAML fixture file by name."""
     return (YAML_DIR / name).read_text()
+
+
+def load_layout_yaml(name: str) -> str:
+    """Load a layout YAML fixture file by name."""
+    return (LAYOUT_DIR / name).read_text()
 
 
 def load_data(name: str) -> str:

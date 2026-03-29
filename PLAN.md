@@ -8,7 +8,7 @@ YAML chart spec
     → Translator (Vega-Lite dict)
     → Theme merge
     → Data bind
-    → HTML render (Phase 1) / Web app (Phase 6)
+    → HTML render (Phase 1) / Charter Studio (Phase 5) / Web app (Phase 6)
 ```
 
 ---
@@ -27,7 +27,7 @@ Adds the `layer` property on MeasureEntry. Overlaid marks sharing an axis,
 with independent/shared scale resolution. Layers nest inside stacked panels
 (the "stacked layers" pattern).
 
-### Phase 2+ — Theme pipeline, semantic layer, layout DSL, web app
+### Phase 2+ — Theme pipeline, semantic layer, layout DSL, Charter Studio, web app
 
 See Future Phases table at the bottom.
 
@@ -235,7 +235,8 @@ charter/
 │   ├── schema/
 │   │   ├── __init__.py
 │   │   ├── chart_schema.py          # Pydantic models (Phase 1 + 1a shapes)
-│   │   └── field_types.py           # Dimension vs measure type resolution
+│   │   ├── field_types.py           # Dimension vs measure type resolution
+│   │   └── layout_schema.py         # Layout DSL: DashboardSpec, component models, resolve_child
 │   ├── translator/
 │   │   ├── __init__.py
 │   │   ├── translate.py             # Main router: detect spec shape → delegate
@@ -282,23 +283,30 @@ charter/
 │   │   │   ├── triple_axis.yaml         # Phase 1a: three layers
 │   │   │   ├── stacked_layers.yaml      # Phase 1a: stacked + layers mixed
 │   │   │   └── layers_faceted.yaml      # Phase 1a: layers + facet
-│   │   └── data/
-│   │       └── orders.json
+│   │   ├── data/
+│   │   │   └── orders.json
+│   │   └── layout/
+│   │       ├── minimal.yaml
+│   │       ├── kpi_dashboard.yaml
+│   │       ├── sidebar_dashboard.yaml
+│   │       └── predefined_components.yaml
 │   ├── test_schema.py
+│   ├── test_layout_schema.py              # Layout DSL schema parsing + validation
 │   ├── test_translator.py
 │   ├── test_facet.py
 │   ├── test_stacked.py                  # Phase 1: stacked panel tests
 │   ├── test_layers.py                   # Phase 1a: layer tests
 │   └── test_render.py
 │
-└── docs/                                # Tool Documentation goes here, ignore foundational or plans subfolder
-    ├── foundational                     # Foundational Documentation, not for users
-    |  ├── DSL_Specification.md
-    |  ├── Architecture.md
-    |  ├── Vision.md
-    |  └── Measure Design.md
-    └── plans                            # Plans made by coding assistants, not for users again
-
+└── docs/
+    ├── DSL_Specification.md
+    ├── Architecture.md
+    ├── Vision.md
+    ├── DESIGN_final_multi_measure.md
+    ├── Layout_DSL_Specification.md
+    ├── Charter_Studio_Design.md
+    └── plans/                           # Per-ticket plan documents
+        └── TICKET-ID.md
 ```
 
 ---
@@ -307,14 +315,14 @@ charter/
 
 ### Phase 1
 
-**Step 1: Bootstrap + Schema** (DONE)
+**Step 1: Bootstrap + Schema** ✅ DONE
 - pyproject.toml, Pydantic models, YAML fixtures, first tests passing
 
-**Step 2: Core Translator** (DONE)
+**Step 2: Core Translator** ✅ DONE
 - Single-measure: encodings, marks, filters, sort
 - 24 tests green
 
-**Step 3: Extend Schema for Multi-Measure**
+**Step 3: Extend Schema for Multi-Measure** (IN PROGRESS)
 - Add `MeasureEntry` model (measure + mark + color + detail + size + opacity)
 - Add `LayerEntry` model with `layer` and `axis` fields (parsed but not compiled yet)
 - Extend `rows`/`cols` type: `Union[str, list[MeasureEntry]]`
@@ -330,7 +338,7 @@ charter/
 - Handle stacked + facet combination
 - Tests: stacked_panels.yaml, stacked_diff_marks.yaml
 
-**Step 5: Theme + Data + CLI** (DONE)
+**Step 5: Theme + Data + CLI** ✅ DONE
 - merge_theme, bind_data, render_html, CLI all working
 
 **Step 6: KPI Pattern** (stretch)
@@ -390,6 +398,20 @@ if rows is list (has layers):      → patterns/stacked.py (which calls layers.p
 
 ---
 
+## AI Development Workflow
+
+### Two-Tier Model
+- **Opus (architect):** Reads a Jira ticket + all context files, produces a detailed plan document to `docs/plans/TICKET-ID.md`. Plan includes schema changes, typed function signatures with pseudocode, translation rule lookup tables, inheritance resolution pseudocode, edge case tables, per-test fixture/expected-output pairs, verbatim documentation deltas, and an explicit Out of Scope section.
+- **Sonnet/Haiku (implementer):** Reads the plan document and executes it mechanically. No architectural decisions — the plan is the spec.
+
+### charter-planner Skill
+A Claude Code skill that automates the planning workflow: fetches the Jira ticket via MCP, ingests project context files, and outputs the structured plan document.
+
+### Per-Ticket Plan Documents
+Every Jira ticket gets a plan document at `docs/plans/TICKET-ID.md` before any code is written. Test fixtures (input YAML + expected Vega-Lite JSON) are specified upfront. Documentation deltas are explicit.
+
+---
+
 ## Dependencies
 
 ```
@@ -404,8 +426,7 @@ Dev: pytest >= 8.0, syrupy >= 4.0 (snapshot testing)
 | Phase | Adds | Key files |
 |-------|------|-----------|
 | **2** | Theme pipeline (Figma → Style Dictionary) | `theme/`, `tools/` |
-| **3** | Semantic layer (Cube.dev integration) | `data/bind.py` → `data/cube_client.py` |
-| **4** | Layout DSL (dashboards, filters, containers) | `schema/layout_schema.py`, `translator/layout.py` |
-| **5** | Figma → SD automated pipeline | `tools/style_dictionary/` |
-| **6** | Web app (FastAPI + frontend) | `app/` |
+| **4** | Layout DSL (dashboards, static HTML) | `schema/layout_schema.py`, `translator/layout.py` |
+| **5** | Charter Studio (local dev server + native app) | `studio/` |
+| **6** | Web app (hosted, business users) | `app/` |
 | **7** | Production (VegaFusion, caching, auth) | Infrastructure |

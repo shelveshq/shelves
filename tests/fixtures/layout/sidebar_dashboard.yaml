@@ -1,0 +1,96 @@
+dashboard: "Executive Summary"
+canvas:
+  width: 1440
+  height: 900
+
+styles:
+  card:
+    background: "#FFFFFF"
+    border: "1px solid #E5E7EB"
+    border_radius: 8
+    padding: 16
+
+  nav_link:
+    color: "#94A3B8"
+    font_size: 14
+
+root:
+  type: root
+  orientation: horizontal
+  contains:
+
+    # ── Sidebar ──
+    - sidebar:
+        type: container
+        orientation: vertical
+        width: 220
+        background: "#1E293B"
+        padding: "24 16"
+        contains:
+          - type: image
+            src: "assets/logo_white.svg"
+            height: 24
+            width: auto
+          - type: blank
+            height: 24
+          - type: navigation_link
+            text: "Overview"
+            link: "/dashboards/overview"
+            style: nav_link
+            color: "#FFFFFF"
+            html: "font-weight: bold;"
+          - type: navigation_link
+            text: "Sales"
+            link: "/dashboards/sales"
+            style: nav_link
+            margin: "8 0 0 0"
+          - type: navigation_link
+            text: "Customers"
+            link: "/dashboards/customers"
+            style: nav_link
+            margin: "8 0 0 0"
+          - type: navigation_link
+            text: "Products"
+            link: "/dashboards/products"
+            style: nav_link
+            margin: "8 0 0 0"
+
+    # ── Main content ──
+    - main:
+        type: container
+        orientation: vertical
+        padding: 24
+        contains:
+          - type: text
+            content: "Executive Summary"
+            preset: title
+          - type: text
+            content: "Updated daily · All figures in USD"
+            preset: caption
+            margin: "4 0 16 0"
+
+          - kpi_row:
+              type: container
+              orientation: horizontal
+              height: 120
+              margin: "0 0 16 0"
+              contains:
+                - kpi_revenue: { type: sheet, link: "charts/kpi_revenue.yaml", style: card, margin: "0 8 0 0" }
+                - kpi_orders: { type: sheet, link: "charts/kpi_orders.yaml", style: card, margin: "0 8 0 0" }
+                - kpi_margin: { type: sheet, link: "charts/kpi_margin.yaml", style: card }
+
+          - chart_row:
+              type: container
+              orientation: horizontal
+              contains:
+                - revenue_trend:
+                    type: sheet
+                    link: "charts/revenue_trend.yaml"
+                    width: 65%
+                    style: card
+                    margin: "0 8 0 0"
+                - revenue_by_region:
+                    type: sheet
+                    link: "charts/revenue_by_region.yaml"
+                    width: 35%
+                    style: card

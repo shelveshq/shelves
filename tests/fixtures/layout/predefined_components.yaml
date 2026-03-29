@@ -1,0 +1,32 @@
+dashboard: "Multi-Page Overview"
+canvas: { width: 1440, height: 900 }
+
+styles:
+  card: { background: "#FFF", border_radius: 8, padding: 16 }
+
+components:
+  kpi_revenue: { type: sheet, link: "charts/kpi_revenue.yaml", style: card, margin: "0 8 0 0" }
+  kpi_orders: { type: sheet, link: "charts/kpi_orders.yaml", style: card }
+
+  kpi_row:
+    type: container
+    orientation: horizontal
+    height: 140
+    contains: [kpi_revenue, kpi_orders]
+
+root:
+  type: root
+  orientation: vertical
+  contains:
+    - type: text
+      content: "Overview"
+      preset: title
+      padding: "16 24"
+    - kpi_row
+    - chart_area:
+        type: container
+        orientation: horizontal
+        padding: "16 24"
+        contains:
+          - revenue: { type: sheet, link: "charts/revenue.yaml", width: "60%", style: card, margin: "0 8 0 0" }
+          - orders: { type: sheet, link: "charts/orders.yaml", width: "40%", style: card }
