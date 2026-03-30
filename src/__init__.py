@@ -7,6 +7,7 @@ Public API:
     merge_theme(vl_spec, theme)    → Vega-Lite dict with theme config applied
     bind_data(vl_spec, rows)       → Vega-Lite dict with data.values attached
     render_html(vl_spec)           → standalone HTML string with vegaEmbed
+    compose_dashboard(path)        → end-to-end dashboard HTML from YAML
 
 Typical pipeline:
     spec   = parse_chart(yaml_string)
@@ -23,6 +24,7 @@ from src.translator.layout import translate_dashboard
 from src.theme.merge import merge_theme, load_theme
 from src.data.bind import bind_data, resolve_data
 from src.render.to_html import render_html
+from src.compose.dashboard import compose_dashboard
 
 __all__ = [
     "parse_chart",
@@ -37,4 +39,5 @@ __all__ = [
     "ChartSpec",
     "DashboardSpec",
     "DSL_VERSION",
+    "compose_dashboard",
 ]

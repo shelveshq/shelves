@@ -20,6 +20,8 @@ import argparse
 import json
 from pathlib import Path
 
+import yaml as yaml_lib
+
 from src.schema.chart_schema import parse_chart
 from src.translator.translate import translate_chart
 from src.theme.merge import merge_theme, load_theme
@@ -28,8 +30,8 @@ from src.render.to_html import render_html
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Render a chart YAML to HTML")
-    parser.add_argument("yaml_path", help="Path to chart YAML file")
+    parser = argparse.ArgumentParser(description="Render a chart or dashboard YAML to HTML")
+    parser.add_argument("yaml_path", help="Path to chart or dashboard YAML file")
     parser.add_argument("--data", help="Path to JSON data file (array of row objects)")
     parser.add_argument("--out", help="Output HTML file path")
     parser.add_argument(
@@ -37,10 +39,45 @@ def main():
     )
     parser.add_argument("--theme", help="Path to custom theme YAML file")
     parser.add_argument("--no-data", action="store_true", help="Render without data")
+    parser.add_argument(
+        "--chart-dir", help="Base directory for resolving chart link paths in dashboards"
+    )
     args = parser.parse_args()
 
-    # Parse YAML
+    # Detect dashboard vs chart YAML
     yaml_string = Path(args.yaml_path).read_text()
+    raw = yaml_lib.safe_load(yaml_string)
+
+    if "dashboard" in raw:
+        _render_dashboard(args, raw)
+    else:
+        _render_chart(args, yaml_string)
+
+
+def _render_dashboard(args, raw):
+    """Render a dashboard YAML file."""
+    from src.compose.dashboard import compose_dashboard
+
+    theme_path = Path(args.theme) if args.theme else None
+    theme = load_theme(theme_path) if not args.no_theme else None
+
+    html = compose_dashboard(
+        dashboard_path=Path(args.yaml_path),
+        theme=theme,
+        chart_base_dir=Path(args.chart_dir) if args.chart_dir else None,
+        data_dir=Path(args.data).parent if args.data else None,
+        no_theme=args.no_theme,
+    )
+
+    slug = raw["dashboard"].lower().replace(" ", "-")
+    out_path = Path(args.out) if args.out else Path("output") / f"{slug}.html"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html)
+    print(f"Rendered: {out_path}")
+
+
+def _render_chart(args, yaml_string):
+    """Render a chart YAML file (existing pipeline)."""
     spec = parse_chart(yaml_string)
 
     # Translate
@@ -82,7 +119,6 @@ def main():
     out_path = Path(args.out) if args.out else Path("output") / f"{slug}.html"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html)
-
     print(f"Rendered: {out_path}")
 
 

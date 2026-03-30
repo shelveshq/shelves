@@ -1,0 +1,14 @@
+dashboard: "Predefined"
+canvas: { width: 1440, height: 900 }
+
+components:
+  revenue:
+    type: sheet
+    link: "simple_bar.yaml"
+    width: "60%"
+
+root:
+  type: root
+  orientation: vertical
+  contains:
+    - revenue

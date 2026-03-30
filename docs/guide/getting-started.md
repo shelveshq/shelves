@@ -110,6 +110,8 @@ Then render it:
 python -m src.cli.render dashboards/sales_overview.yaml
 ```
 
+For dashboards, each chart resolves its own data from its data model's configured source. The `--data` flag is not used with dashboard files — pass it only when rendering individual charts.
+
 See the [Dashboards guide](./dashboards.md) for the full Layout DSL reference, component types, styling, and complete examples.
 
 ## Python API

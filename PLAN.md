@@ -262,6 +262,9 @@ charter/
 │   ├── render/
 │   │   ├── __init__.py
 │   │   └── to_html.py
+│   ├── compose/
+│   │   ├── __init__.py
+│   │   └── dashboard.py           # End-to-end dashboard composition
 │   └── cli/
 │       ├── __init__.py
 │       └── render.py
@@ -291,7 +294,12 @@ charter/
 │   │       ├── minimal.yaml
 │   │       ├── kpi_dashboard.yaml
 │   │       ├── sidebar_dashboard.yaml
-│   │       └── predefined_components.yaml
+│   │       ├── predefined_components.yaml
+│   │       ├── compose_minimal.yaml
+│   │       ├── compose_multi.yaml
+│   │       ├── compose_with_text.yaml
+│   │       ├── compose_predefined.yaml
+│   │       └── compose_fit.yaml
 │   ├── test_schema.py
 │   ├── test_layout_schema.py              # Layout DSL schema parsing + validation
 │   ├── test_layout_translator.py          # Layout translator tests
@@ -299,7 +307,8 @@ charter/
 │   ├── test_facet.py
 │   ├── test_stacked.py                  # Phase 1: stacked panel tests
 │   ├── test_layers.py                   # Phase 1a: layer tests
-│   └── test_render.py
+│   ├── test_render.py
+│   └── test_dashboard_compose.py          # Dashboard composition + CLI tests
 │
 └── docs/
     ├── DSL_Specification.md

@@ -1,0 +1,18 @@
+dashboard: "Multi Chart"
+canvas: { width: 1440, height: 900 }
+root:
+  type: root
+  orientation: vertical
+  contains:
+    - charts:
+        type: container
+        orientation: horizontal
+        contains:
+          - bar_chart:
+              type: sheet
+              link: "simple_bar.yaml"
+              width: "50%"
+          - line_chart:
+              type: sheet
+              link: "line_chart.yaml"
+              width: "50%"

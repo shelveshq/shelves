@@ -1,0 +1,15 @@
+dashboard: "Charts and Text"
+canvas: { width: 1440, height: 900 }
+root:
+  type: root
+  orientation: vertical
+  contains:
+    - type: text
+      content: "Dashboard Title"
+      preset: title
+    - revenue_chart:
+        type: sheet
+        link: "simple_bar.yaml"
+    - type: text
+      content: "Updated daily"
+      preset: caption
