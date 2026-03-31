@@ -6,6 +6,7 @@ translation → single HTML output. Also tests CLI dashboard detection.
 """
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -191,7 +192,7 @@ class TestCLI:
         """CLI auto-detects dashboard files and routes to dashboard pipeline."""
         result = subprocess.run(
             [
-                ".venv/bin/python",
+                sys.executable,
                 "-m",
                 "src.cli.render",
                 "tests/fixtures/layout/compose_minimal.yaml",
@@ -214,7 +215,7 @@ class TestCLI:
         """Existing chart rendering still works — no regression."""
         result = subprocess.run(
             [
-                ".venv/bin/python",
+                sys.executable,
                 "-m",
                 "src.cli.render",
                 "tests/fixtures/yaml/simple_bar.yaml",
