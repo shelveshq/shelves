@@ -188,7 +188,7 @@ Component = Union[
 
 # ─── Type Discriminator Map ───────────────────────────────────────
 
-_TYPE_MAP: dict[str, type[BaseModel]] = {
+_TYPE_MAP: dict[str, type[Component]] = {
     "root": RootComponent,
     "container": ContainerComponent,
     "sheet": SheetComponent,

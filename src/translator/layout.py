@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import html
 import json
+from typing import Literal
 
 from src.schema.layout_schema import (
     Canvas,
+    ContainerBase,
     DashboardSpec,
 )
 from src.theme.theme_schema import ThemeSpec
@@ -48,7 +50,7 @@ def translate_dashboard(
 def render_node(
     node: ResolvedNode,
     ctx: RenderContext,
-    parent_orientation: str | None = None,
+    parent_orientation: Literal["horizontal", "vertical"] | None = None,
 ) -> str:
     """Recursively render a ResolvedNode tree to HTML."""
     defn = node.component
@@ -66,9 +68,10 @@ def render_node(
     )
 
     # Dispatch on type
-    if comp_type in ("root", "container"):
-        orientation = getattr(defn, "orientation", "vertical")
-        inner = "".join(render_node(c, ctx, parent_orientation=orientation) for c in node.children)
+    if isinstance(defn, ContainerBase):
+        inner = "".join(
+            render_node(c, ctx, parent_orientation=defn.orientation) for c in node.children
+        )
         return f'<div style="{css}">{inner}</div>'
 
     elif comp_type == "sheet":

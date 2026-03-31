@@ -16,6 +16,7 @@ from typing import Any
 
 from src.schema.chart_schema import parse_chart
 from src.schema.layout_schema import (
+    ContainerBase,
     DashboardSpec,
     SheetComponent,
     load_dashboard,
@@ -122,7 +123,7 @@ def _walk_contains(
             sheet_name = name or f"auto-{_next_auto(auto_counter)}"
             if sheet_name not in sheets:
                 sheets[sheet_name] = defn.link
-        elif hasattr(defn, "contains"):
+        elif isinstance(defn, ContainerBase):
             _walk_contains(defn.contains, sheets, components, auto_counter)
 
 
