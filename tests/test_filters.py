@@ -334,9 +334,10 @@ filters:
         )
         transforms = vl.get("transform", [])
         filt = transforms[0]["filter"]
-        assert filt["field"] == "country"
-        # neq → Vega-Lite uses "not equal" representation
-        assert "equal" not in filt or filt.get("not")
+        # neq → Vega-Lite wraps not around an equal transform
+        assert filt["not"] and "equal" not in filt
+        assert filt["not"]["field"] == "country"
+        assert filt["not"]["equal"] == "Other"
 
     def test_gte_becomes_filter_transform(self):
         vl = _compile(
@@ -419,9 +420,12 @@ filters:
         )
         transforms = vl.get("transform", [])
         assert len(transforms) >= 1
-        # not_in should produce a negated oneOf or equivalent exclusion
         filt = transforms[0]["filter"]
-        assert filt["field"] == "country"
+        # check the oneOf transform is wrapped in a "not" structure
+        assert filt["not"] and "oneOf" not in filt
+        # not_in should produce a negated oneOf or equivalent exclusion
+        assert filt["not"]["field"] == "country"
+        assert filt["not"]["oneOf"] == ["Other"]
 
     def test_between_becomes_range_filter(self):
         vl = _compile(
