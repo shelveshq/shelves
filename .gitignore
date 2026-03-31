@@ -8,7 +8,6 @@ build/
 .claude/
 .pytest_cache/
 docs/plans/
-docs/foundational/
 /model
 .coverage
 models/cube_*.yaml
