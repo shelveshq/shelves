@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import html
 import json
-from typing import Any, Literal
 
 from src.schema.layout_schema import (
     Canvas,
     DashboardSpec,
-    resolve_child,
 )
 from src.theme.theme_schema import ThemeSpec
+from src.translator.layout_solver import ResolvedNode, solve_layout
 from src.translator.layout_styles import RenderContext, resolve_styles
 
 
@@ -31,7 +30,10 @@ def translate_dashboard(
 
     ctx = RenderContext(components=components, styles=styles, theme=theme)
 
-    body_html = render_node(dashboard.root, ctx, parent_orientation=None)
+    # Solve layout to get concrete pixel dimensions
+    resolved_tree = solve_layout(dashboard)
+
+    body_html = render_node(resolved_tree, ctx)
 
     return wrap_html_page(
         dashboard_name=dashboard.dashboard,
@@ -44,31 +46,29 @@ def translate_dashboard(
 
 
 def render_node(
-    node: Any,
+    node: ResolvedNode,
     ctx: RenderContext,
-    parent_orientation: Literal["horizontal", "vertical"] | None,
+    parent_orientation: str | None = None,
 ) -> str:
-    """Recursively render a component tree node to HTML."""
-    # Resolve node to (name, component)
-    comp_type = getattr(node, "type", None)
+    """Recursively render a ResolvedNode tree to HTML."""
+    defn = node.component
+    name = node.name
+    comp_type = getattr(defn, "type", None)
 
-    if comp_type == "root":
-        name = None
-        defn = node
-    else:
-        name, defn = resolve_child(node, ctx.components)
-        comp_type = getattr(defn, "type", None)
-
-    # Resolve CSS styles
-    css = resolve_styles(defn, name, ctx, parent_orientation)
-
-    # Root canvas dimensions are injected by wrap_html_page
+    # Resolve CSS styles with solver-computed dimensions
+    css = resolve_styles(
+        defn,
+        name,
+        ctx,
+        parent_orientation=parent_orientation,
+        resolved_width=node.outer_width,
+        resolved_height=node.outer_height,
+    )
 
     # Dispatch on type
     if comp_type in ("root", "container"):
         orientation = getattr(defn, "orientation", "vertical")
-        children = getattr(defn, "contains", [])
-        inner = "".join(render_node(c, ctx, orientation) for c in children)
+        inner = "".join(render_node(c, ctx, parent_orientation=orientation) for c in node.children)
         return f'<div style="{css}">{inner}</div>'
 
     elif comp_type == "sheet":
@@ -117,11 +117,7 @@ def wrap_html_page(
     fit_modes = sheet_fit_modes or {}
     body_font = theme.layout.font.family.body
 
-    # Inject canvas dimensions into the root div
-    # The first <div in body_html is the root — inject width/height
-    root_style_inject = f"width: {canvas.width}px; height: {canvas.height}px; "
-    if body_html.startswith('<div style="'):
-        body_html = body_html.replace('<div style="', f'<div style="{root_style_inject}', 1)
+    # Root div already has solver-computed width/height from resolve_styles
 
     # Build vegaEmbed script
     script_lines = []

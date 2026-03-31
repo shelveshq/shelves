@@ -85,85 +85,6 @@ def _format_spacing(value: int | str | None) -> str | None:
     return " ".join(f"{p}px" if p.isdigit() else p for p in parts)
 
 
-def _size_to_flex(value: Any) -> str:
-    """Convert a DSL size value to a CSS flex property value.
-
-    None or "auto" → "1"
-    int            → "0 0 {value}px"
-    str "Npx"      → "0 0 {value}"
-    str "N%"       → "0 0 {value}"
-    """
-    if value is None or value == "auto":
-        return "1"
-    if isinstance(value, int):
-        return f"0 0 {value}px"
-    s = str(value)
-    if s.endswith("px") or s.endswith("%"):
-        return f"0 0 {s}"
-    # Bare number string
-    if s.isdigit():
-        return f"0 0 {s}px"
-    return "1"
-
-
-def _resolve_sizing(
-    component: Any,
-    parent_orientation: Literal["horizontal", "vertical"] | None,
-) -> dict[str, str]:
-    """Translate DSL size values to CSS flex properties."""
-    if parent_orientation is None:
-        return {}
-
-    width = getattr(component, "width", None)
-    height = getattr(component, "height", None)
-
-    css: dict[str, str] = {}
-
-    if parent_orientation == "horizontal":
-        main_value = width
-        cross_value = height
-        cross_prop = "height"
-    else:
-        main_value = height
-        cross_value = width
-        cross_prop = "width"
-
-    # Main-axis
-    css["flex"] = _size_to_flex(main_value)
-
-    # Cross-axis
-    if cross_value is not None and cross_value != "auto":
-        if isinstance(cross_value, int):
-            css[cross_prop] = f"{cross_value}px"
-        else:
-            s = str(cross_value)
-            if s.endswith("px") or s.endswith("%"):
-                css[cross_prop] = s
-            elif s.isdigit():
-                css[cross_prop] = f"{s}px"
-
-    return css
-
-
-# ─── Align / Justify ─────────────────────────────────────────────
-
-_ALIGN_MAP = {
-    "start": "flex-start",
-    "center": "center",
-    "end": "flex-end",
-    "stretch": "stretch",
-}
-
-_JUSTIFY_MAP = {
-    "start": "flex-start",
-    "center": "center",
-    "end": "flex-end",
-    "between": "space-between",
-    "around": "space-around",
-    "evenly": "space-evenly",
-}
-
-
 # ─── Style Properties That Come From Inline Extras ───────────────
 
 _STYLE_EXTRA_KEYS = {
@@ -192,6 +113,8 @@ def resolve_styles(
     name: str | None,
     ctx: RenderContext,
     parent_orientation: Literal["horizontal", "vertical"] | None,
+    resolved_width: int | None = None,
+    resolved_height: int | None = None,
 ) -> str:
     """Resolve component styles to a CSS inline style string.
 
@@ -205,36 +128,28 @@ def resolve_styles(
     7. Margin/padding
     8. Sheet fit CSS
     9. html escape hatch (raw CSS, appended last)
+
+    When resolved_width/resolved_height are provided (from layout solver),
+    fixed pixel dimensions are emitted instead of flex-based sizing.
     """
     css: dict[str, str] = {}
     comp_type = getattr(component, "type", None)
 
     # Step 1: Structural CSS
     if comp_type in ("root", "container"):
-        orientation = getattr(component, "orientation", "vertical")
-        css["display"] = "flex"
-        css["flex-direction"] = "row" if orientation == "horizontal" else "column"
-
         if comp_type == "root":
-            # Root gets canvas dimensions via wrap_html_page injection
             css["overflow"] = "hidden"
 
-        # Align/justify
-        align = getattr(component, "align", None)
-        if align and align in _ALIGN_MAP:
-            css["align-items"] = _ALIGN_MAP[align]
+    # Children of horizontal containers are inline-block
+    if parent_orientation == "horizontal":
+        css["display"] = "inline-block"
+        css["vertical-align"] = "top"
 
-        justify = getattr(component, "justify", None)
-        if justify and justify in _JUSTIFY_MAP:
-            css["justify-content"] = _JUSTIFY_MAP[justify]
-
-    elif comp_type == "text":
-        css["display"] = "flex"
-        css["align-items"] = "center"
-
-    # Step 2: Sizing (main-axis flex + cross-axis)
-    sizing = _resolve_sizing(component, parent_orientation)
-    css.update(sizing)
+    # Step 2: Sizing — solver-computed pixel dimensions
+    if resolved_width is not None:
+        css["width"] = f"{resolved_width}px"
+    if resolved_height is not None:
+        css["height"] = f"{resolved_height}px"
 
     # Step 3: Theme defaults (font-family for text-bearing components)
     if comp_type in ("text", "navigation", "navigation_button", "navigation_link"):

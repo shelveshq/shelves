@@ -121,33 +121,43 @@ class TestStyleResolution:
 
 
 class TestSizing:
-    def test_sizing_fixed_px(self):
-        """Integer width in horizontal container → flex: 0 0 300px."""
+    def test_sizing_solver_dimensions(self):
+        """Solver-provided dimensions emit fixed width/height CSS."""
         comp = BlankComponent(type="blank", width=300)
         ctx = _make_ctx()
-        css = resolve_styles(comp, None, ctx, parent_orientation="horizontal")
-        assert "flex: 0 0 300px" in css
+        css = resolve_styles(
+            comp,
+            None,
+            ctx,
+            parent_orientation="horizontal",
+            resolved_width=300,
+            resolved_height=900,
+        )
+        assert "width: 300px" in css
+        assert "height: 900px" in css
 
-    def test_sizing_percentage(self):
-        """Percentage width in horizontal container → flex: 0 0 50%."""
+    def test_sizing_no_flex_emitted(self):
+        """Solver-based sizing does not emit flex properties."""
         comp = BlankComponent(type="blank", width="50%")
         ctx = _make_ctx()
-        css = resolve_styles(comp, None, ctx, parent_orientation="horizontal")
-        assert "flex: 0 0 50%" in css
+        css = resolve_styles(
+            comp,
+            None,
+            ctx,
+            parent_orientation="horizontal",
+            resolved_width=720,
+            resolved_height=900,
+        )
+        assert "flex" not in css
+        assert "width: 720px" in css
 
-    def test_sizing_auto(self):
-        """Auto width in horizontal container → flex: 1."""
-        comp = BlankComponent(type="blank", width="auto")
-        ctx = _make_ctx()
-        css = resolve_styles(comp, None, ctx, parent_orientation="horizontal")
-        assert "flex: 1" in css
-
-    def test_sizing_omitted(self):
-        """Omitted width in horizontal container → flex: 1."""
+    def test_sizing_without_solver(self):
+        """Without solver dimensions, no width/height is emitted."""
         comp = BlankComponent(type="blank")
         ctx = _make_ctx()
         css = resolve_styles(comp, None, ctx, parent_orientation="horizontal")
-        assert "flex: 1" in css
+        assert "width" not in css
+        assert "height" not in css
 
 
 # ─── Component Rendering ─────────────────────────────────────────
@@ -399,8 +409,8 @@ class TestComponentRendering:
         # Sheet div should be empty (chart is injected by vegaEmbed)
         assert 'id="sheet-my_chart" style=' in html
 
-    def test_container_renders_flex_div(self):
-        """ContainerComponent → <div> with display:flex and children inside."""
+    def test_container_renders_div_with_children(self):
+        """ContainerComponent → <div> with solver-computed dimensions and children."""
         dashboard = DashboardSpec(
             dashboard="Container Test",
             root=RootComponent(
@@ -422,8 +432,8 @@ class TestComponentRendering:
         )
         theme = _default_theme()
         html = translate_dashboard(dashboard, theme)
-        assert "display: flex" in html
-        assert "flex-direction: row" in html
+        # Horizontal children get inline-block
+        assert "display: inline-block" in html
         assert "Left" in html
         assert "Right" in html
 
@@ -471,8 +481,9 @@ class TestLayoutTranslation:
         spec = parse_dashboard(load_layout_yaml("sidebar_dashboard.yaml"))
         theme = _default_theme()
         html = translate_dashboard(spec, theme)
-        assert "flex-direction: row" in html
-        assert "flex: 0 0 220px" in html
+        assert "width: 220px" in html
+        # Horizontal root children are inline-block
+        assert "display: inline-block" in html
         assert '<a href="/dashboards/overview"' in html
         assert "Executive Summary" in html
 
@@ -534,13 +545,14 @@ class TestLayoutTranslation:
         html = translate_dashboard(spec, theme)
         assert "object-fit: contain" in html
 
-    def test_blank_spacer_flex(self):
-        """Blank with auto width becomes a flex spacer."""
+    def test_blank_spacer_resolved(self):
+        """Blank with auto width gets solver-computed pixel dimensions."""
         spec = parse_dashboard(load_layout_yaml("kpi_dashboard.yaml"))
         theme = _default_theme()
         html = translate_dashboard(spec, theme)
-        # The blank with width: auto should get flex: 1
-        assert "flex: 1" in html
+        # The blank with width: auto gets a concrete pixel width from solver
+        # (no flex properties — solver pre-computes all dimensions)
+        assert "flex: 1" not in html
 
     def test_text_html_escaped(self):
         """Text content is HTML-escaped to prevent XSS."""
@@ -557,10 +569,10 @@ class TestLayoutTranslation:
         assert "&lt;script&gt;" in html
         assert "<script>alert" not in html
 
-    def test_align_and_justify(self):
-        """Align/justify DSL values map to correct CSS flexbox properties."""
+    def test_solver_dimensions_in_output(self):
+        """Solver-computed pixel dimensions appear in rendered HTML."""
         dashboard = DashboardSpec(
-            dashboard="Align Test",
+            dashboard="Dimensions Test",
             root=RootComponent(
                 type="root",
                 orientation="vertical",
@@ -569,8 +581,7 @@ class TestLayoutTranslation:
                         "row": {
                             "type": "container",
                             "orientation": "horizontal",
-                            "align": "center",
-                            "justify": "between",
+                            "height": 200,
                             "contains": [],
                         }
                     }
@@ -579,8 +590,11 @@ class TestLayoutTranslation:
         )
         theme = _default_theme()
         html = translate_dashboard(dashboard, theme)
-        assert "align-items: center" in html
-        assert "justify-content: space-between" in html
+        # Root gets canvas dimensions
+        assert "width: 1440px" in html
+        assert "height: 900px" in html
+        # Container gets solver-computed dimensions
+        assert "height: 200px" in html
 
 
 # ─── Edge Cases ───────────────────────────────────────────────────
@@ -645,7 +659,7 @@ class TestEdgeCases:
         assert "Deep Text" in html
 
     def test_empty_container(self):
-        """Empty container renders as empty div with flex styles."""
+        """Empty container renders as empty div with dimensions."""
         dashboard = DashboardSpec(
             dashboard="Empty Test",
             root=RootComponent(
@@ -664,7 +678,9 @@ class TestEdgeCases:
         )
         theme = _default_theme()
         html = translate_dashboard(dashboard, theme)
-        assert "display: flex" in html
+        # Empty container still gets solver-computed width/height
+        assert "width:" in html
+        assert "height:" in html
 
     def test_margin_as_integer(self):
         """Integer margin → CSS: margin: 16px."""
