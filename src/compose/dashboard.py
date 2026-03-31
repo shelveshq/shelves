@@ -42,7 +42,8 @@ def compose_dashboard(
         theme: Optional ThemeSpec. If None, loads the default theme.
         chart_base_dir: Base directory for resolving chart link paths.
                        If None, defaults to the dashboard file's parent dir.
-        data_dir: Optional path to data directory for inline data resolution.
+        data_dir: Base directory for resolving inline data source paths.
+                 If None, defaults to the current working directory.
         models_dir: Optional path to models directory.
         no_theme: If True, skip theme merging for charts and layout.
 
@@ -63,6 +64,7 @@ def compose_dashboard(
     sheets = _discover_sheets(spec)
 
     base = chart_base_dir or dashboard_path.parent
+    resolved_data_dir = Path(data_dir) if data_dir else Path.cwd()
 
     chart_specs: dict[str, dict] = {}
     for name, link in sheets.items():
@@ -72,7 +74,7 @@ def compose_dashboard(
                 f"Chart file not found: {chart_path} (referenced by sheet '{name}')"
             )
         try:
-            vl = _compile_chart(chart_path, theme, data_dir, models_dir, no_theme)
+            vl = _compile_chart(chart_path, theme, resolved_data_dir, models_dir, no_theme)
         except Exception as e:
             raise RuntimeError(
                 f"Failed to compile chart for sheet '{name}' (link: {link}): {e}"
@@ -132,13 +134,16 @@ def _next_auto(counter: list[int]) -> int:
 def _compile_chart(
     chart_path: Path,
     theme: ThemeSpec,
-    data_dir: Path | None,
+    data_dir: Path,
     models_dir: Path | str | None,
     no_theme: bool,
 ) -> dict:
     """Compile a single chart YAML through the full pipeline.
 
-    Pipeline: parse_chart → translate_chart → merge_theme → (data binding).
+    Pipeline: parse_chart → translate_chart → merge_theme → data binding.
+
+    Data binding is model-driven: loads the chart's model, then routes
+    by source type — inline reads from data_dir, cube fetches from API.
     """
     yaml_string = chart_path.read_text()
     spec = parse_chart(yaml_string)
@@ -148,24 +153,27 @@ def _compile_chart(
     if not no_theme:
         vl = merge_theme(vl, theme)
 
-    # Data binding: attempt to load inline data from model source
-    if data_dir is not None:
-        try:
-            from src.models.loader import load_model
+    # Data binding: load model and route by source type
+    try:
+        from src.models.loader import load_model
 
-            model = load_model(spec.data, models_dir=models_dir)
-            if model.source and model.source.type == "inline":
-                import json
+        model = load_model(spec.data, models_dir=models_dir)
+        if model.source and model.source.type == "inline":
+            import json
 
-                data_path = Path(model.source.path)
-                if not data_path.is_absolute():
-                    data_path = data_dir / data_path
-                if data_path.exists():
-                    rows = json.loads(data_path.read_text())
-                    from src.data.bind import resolve_data
+            data_path = Path(model.source.path)
+            if not data_path.is_absolute():
+                data_path = data_dir / data_path
+            if data_path.exists():
+                rows = json.loads(data_path.read_text())
+                from src.data.bind import resolve_data
 
-                    vl = resolve_data(vl, spec, rows=rows)
-        except Exception:
-            pass  # Data binding is best-effort at compose time
+                vl = resolve_data(vl, spec, rows=rows)
+        elif model.source and model.source.type == "cube":
+            from src.data.bind import resolve_data
+
+            vl = resolve_data(vl, spec, models_dir=models_dir)
+    except Exception:
+        pass  # Data binding is best-effort at compose time
 
     return vl

@@ -42,6 +42,14 @@ def main():
     parser.add_argument(
         "--chart-dir", help="Base directory for resolving chart link paths in dashboards"
     )
+    parser.add_argument(
+        "--data-dir",
+        help="Base directory for resolving inline data source paths in dashboards (default: CWD)",
+    )
+    parser.add_argument(
+        "--models-dir",
+        help="Directory containing model YAML files for dashboards",
+    )
     args = parser.parse_args()
 
     # Detect dashboard vs chart YAML
@@ -65,7 +73,8 @@ def _render_dashboard(args, raw):
         dashboard_path=Path(args.yaml_path),
         theme=theme,
         chart_base_dir=Path(args.chart_dir) if args.chart_dir else None,
-        data_dir=Path(args.data).parent if args.data else None,
+        data_dir=Path(args.data_dir) if args.data_dir else None,
+        models_dir=Path(args.models_dir) if args.models_dir else None,
         no_theme=args.no_theme,
     )
 

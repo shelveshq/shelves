@@ -73,6 +73,8 @@ def _build(
     theme_path: Path | None,
     state: _State,
     chart_dir: Path | None = None,
+    data_dir: Path | None = None,
+    models_dir: Path | None = None,
 ):
     """Re-run the full pipeline and update state."""
     try:
@@ -80,7 +82,9 @@ def _build(
         raw = yaml_lib.safe_load(yaml_string)
 
         if "dashboard" in raw:
-            html = _build_dashboard(yaml_path, no_theme, theme_path, data_path, chart_dir)
+            html = _build_dashboard(
+                yaml_path, no_theme, theme_path, chart_dir, data_dir, models_dir
+            )
         else:
             html = _build_chart(yaml_string, data_path, no_theme, theme_path)
 
@@ -142,8 +146,9 @@ def _build_dashboard(
     yaml_path: Path,
     no_theme: bool,
     theme_path: Path | None,
-    data_path: Path | None,
     chart_dir: Path | None,
+    data_dir: Path | None,
+    models_dir: Path | None,
 ) -> str:
     """Build a dashboard and return HTML."""
     from src.compose.dashboard import compose_dashboard
@@ -154,19 +159,32 @@ def _build_dashboard(
         dashboard_path=yaml_path,
         theme=theme,
         chart_base_dir=chart_dir,
-        data_dir=data_path.parent if data_path else None,
+        data_dir=data_dir,
+        models_dir=models_dir,
         no_theme=no_theme,
     )
 
 
 class _YAMLWatcher(FileSystemEventHandler):
-    def __init__(self, yaml_path, data_path, no_theme, theme_path, state, chart_dir=None):
+    def __init__(
+        self,
+        yaml_path,
+        data_path,
+        no_theme,
+        theme_path,
+        state,
+        chart_dir=None,
+        data_dir=None,
+        models_dir=None,
+    ):
         self._yaml_path = yaml_path
         self._data_path = data_path
         self._no_theme = no_theme
         self._theme_path = theme_path
         self._state = state
         self._chart_dir = chart_dir
+        self._data_dir = data_dir
+        self._models_dir = models_dir
 
     def on_modified(self, event):
         if Path(os.fsdecode(event.src_path)).resolve() == self._yaml_path.resolve():
@@ -177,6 +195,8 @@ class _YAMLWatcher(FileSystemEventHandler):
                 self._theme_path,
                 self._state,
                 self._chart_dir,
+                self._data_dir,
+                self._models_dir,
             )
 
 
@@ -217,12 +237,22 @@ def main():
     parser.add_argument(
         "--chart-dir", help="Base directory for resolving chart link paths in dashboards"
     )
+    parser.add_argument(
+        "--data-dir",
+        help="Base directory for resolving inline data source paths in dashboards (default: CWD)",
+    )
+    parser.add_argument(
+        "--models-dir",
+        help="Directory containing model YAML files for dashboards",
+    )
     args = parser.parse_args()
 
     yaml_path = Path(args.yaml_path).resolve()
     data_path = Path(args.data).resolve() if args.data else None
     theme_path = Path(args.theme).resolve() if args.theme else None
     chart_dir = Path(args.chart_dir).resolve() if args.chart_dir else None
+    data_dir = Path(args.data_dir).resolve() if args.data_dir else None
+    models_dir = Path(args.models_dir).resolve() if args.models_dir else None
 
     if not yaml_path.exists():
         print(f"Error: {yaml_path} not found")
@@ -241,18 +271,24 @@ def main():
         print("  Mode:     Dashboard")
         if chart_dir:
             print(f"  Charts:   {chart_dir}")
+        if data_dir:
+            print(f"  Data dir: {data_dir}")
+        if models_dir:
+            print(f"  Models:   {models_dir}")
     else:
         print("  Mode:     Chart")
-    if data_path:
-        print(f"  Data:     {data_path}")
-    elif not is_dashboard:
-        print("  Data:     Cube.dev (from CUBE_API_URL)")
+        if data_path:
+            print(f"  Data:     {data_path}")
+        else:
+            print("  Data:     Cube.dev (from CUBE_API_URL)")
     print(f"  Theme:    {'None' if args.no_theme else (theme_path or 'Default')}")
-    _build(yaml_path, data_path, args.no_theme, theme_path, state, chart_dir)
+    _build(yaml_path, data_path, args.no_theme, theme_path, state, chart_dir, data_dir, models_dir)
 
     # File watcher
     observer = Observer()
-    handler = _YAMLWatcher(yaml_path, data_path, args.no_theme, theme_path, state, chart_dir)
+    handler = _YAMLWatcher(
+        yaml_path, data_path, args.no_theme, theme_path, state, chart_dir, data_dir, models_dir
+    )
     observer.schedule(handler, str(yaml_path.parent), recursive=False)
     observer.start()
 
