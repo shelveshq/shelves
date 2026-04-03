@@ -90,6 +90,7 @@ def _resolve_children(
     container_content_h: int,
     orientation: str,
     container_name: str | None,
+    components_dict: dict[str, Any] | None = None,
 ) -> list[ResolvedNode]:
     """Resolve a list of children within a container's content box."""
     if not children_specs:
@@ -258,13 +259,13 @@ def _resolve_children(
         comp_type = getattr(comp, "type", None)
         if comp_type in _CONTAINER_TYPES:
             child_orientation = getattr(comp, "orientation", "horizontal")
-            components_dict = {}
+            comps = components_dict or {}
             child_specs = []
             for raw_child in getattr(comp, "contains", []):
-                resolved_name, resolved_comp = resolve_child(raw_child, components_dict)
+                resolved_name, resolved_comp = resolve_child(raw_child, comps)
                 child_specs.append((resolved_name, resolved_comp))
             children = _resolve_children(
-                child_specs, content_w, content_h, child_orientation, child_name
+                child_specs, content_w, content_h, child_orientation, child_name, comps
             )
 
         result.append(
@@ -304,7 +305,7 @@ def solve_layout(dashboard: DashboardSpec) -> ResolvedNode:
         child_specs.append((name, comp))
 
     children = _resolve_children(
-        child_specs, root_content_w, root_content_h, root.orientation, None
+        child_specs, root_content_w, root_content_h, root.orientation, None, components_dict
     )
 
     return ResolvedNode(

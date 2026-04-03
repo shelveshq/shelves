@@ -2,7 +2,8 @@
 Layout DSL → HTML Translator
 
 Walks a validated DashboardSpec tree and produces a complete HTML page
-with CSS flexbox layout and optional vegaEmbed chart embedding.
+using solver-computed fixed pixel layout (with inline-block for horizontal
+flows) and optional vegaEmbed chart embedding.
 """
 
 from __future__ import annotations
@@ -67,29 +68,35 @@ def render_node(
         resolved_height=node.outer_height,
     )
 
+    safe_css = html.escape(css, quote=True)
+
     # Dispatch on type
     if isinstance(defn, ContainerBase):
         inner = "".join(
             render_node(c, ctx, parent_orientation=defn.orientation) for c in node.children
         )
-        return f'<div style="{css}">{inner}</div>'
+        return f'<div style="{safe_css}">{inner}</div>'
 
     elif comp_type == "sheet":
         sheet_name = name or ctx.next_auto_id()
         fit = getattr(defn, "fit", None)
         if fit is not None:
             ctx.sheet_fit_modes[sheet_name] = fit
-        return f'<div id="sheet-{sheet_name}" style="{css}"></div>'
+        safe_name = html.escape(sheet_name, quote=True)
+        return f'<div id="sheet-{safe_name}" style="{safe_css}"></div>'
 
     elif comp_type == "text":
         escaped_content = html.escape(defn.content)
-        return f'<div style="{css}">{escaped_content}</div>'
+        return f'<div style="{safe_css}">{escaped_content}</div>'
 
     elif comp_type in ("navigation", "navigation_button", "navigation_link"):
         target_attr = f' target="{defn.target}"' if defn.target != "_self" else ""
+        rel_attr = ' rel="noopener noreferrer"' if defn.target == "_blank" else ""
         escaped_text = html.escape(defn.text)
         escaped_link = html.escape(defn.link, quote=True)
-        return f'<a href="{escaped_link}"{target_attr} style="{css}">{escaped_text}</a>'
+        return (
+            f'<a href="{escaped_link}"{target_attr}{rel_attr} style="{safe_css}">{escaped_text}</a>'
+        )
 
     elif comp_type == "image":
         escaped_src = html.escape(defn.src, quote=True)
@@ -100,10 +107,11 @@ def render_node(
                 img_css += "; object-fit: contain"
             else:
                 img_css = "object-fit: contain"
-        return f'<img src="{escaped_src}" alt="{escaped_alt}" style="{img_css}">'
+        safe_img_css = html.escape(img_css, quote=True)
+        return f'<img src="{escaped_src}" alt="{escaped_alt}" style="{safe_img_css}">'
 
     elif comp_type == "blank":
-        return f'<div style="{css}"></div>'
+        return f'<div style="{safe_css}"></div>'
 
     return ""
 

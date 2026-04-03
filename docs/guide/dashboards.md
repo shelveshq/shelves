@@ -2,7 +2,7 @@
 
 Dashboards compose multiple charts, text blocks, navigation links, images, and spacers into a single HTML page. The Layout DSL arranges components in nested horizontal and vertical containers — the same model as Tableau's dashboard layout system.
 
-The output is a static HTML page with CSS flexbox layout and embedded Vega-Lite charts via vegaEmbed.
+The output is a static HTML page whose layout is computed by a solver into fixed pixel positions, rendered with standard block/inline-block CSS, and embedded Vega-Lite charts via vegaEmbed.
 
 ---
 
@@ -128,7 +128,7 @@ root:                                   # Required: the layout tree
 
 ### Container (`root` / `container`)
 
-Containers arrange their children horizontally or vertically using CSS flexbox. The `root` is a special container that receives the canvas dimensions — there's exactly one per dashboard.
+Containers arrange their children horizontally or vertically. The layout solver computes fixed pixel dimensions for each child, then the renderer emits them as block (vertical) or inline-block (horizontal) elements. The `root` is a special container that receives the canvas dimensions — there's exactly one per dashboard.
 
 ```yaml
 root:
@@ -354,17 +354,20 @@ All components accept `width` and `height` in these formats:
 
 | Format | Example | Behavior |
 |---|---|---|
-| Integer | `300` | Fixed 300px |
-| Percentage | `"50%"` | 50% of parent |
-| `auto` | `"auto"` | Fill remaining space equally |
-| Omitted | — | Same as `auto` — fill remaining space |
+| Integer | `300` | Fixed 300px (exact pixel size) |
+| Percentage | `"50%"` | 50% of the parent size on that axis |
+| `auto` | `"auto"` | Let the layout solver allocate from remaining space |
+| Omitted | — | Same as `auto` — solver-controlled from remaining space |
 
 **Main-axis vs cross-axis:**
 
 - In a **horizontal** container: `width` is the main axis, `height` is cross axis
 - In a **vertical** container: `height` is the main axis, `width` is cross axis
-- Main-axis sizing controls flex behavior (`flex: 0 0 300px` for fixed, `flex: 1` for auto)
-- Cross-axis defaults to `100%` (fill parent)
+- Along the **main axis**, the solver uses a three-bucket model:
+  - Fixed integers are reserved first (e.g., `width: 300` gets 300px).
+  - Percentages are computed next as a fraction of the parent's main-axis size (e.g., `"50%"`).
+  - Any remaining main-axis space is divided among `auto` / omitted values, typically equally unless additional constraints apply.
+- Along the **cross axis**, components default to filling the parent on that axis (i.e., they get the parent's computed size) unless you explicitly set a fixed integer or percentage.
 
 **Margin and padding** use CSS shorthand:
 
