@@ -601,6 +601,20 @@ Apply a style and optionally override individual properties inline:
 | `font_family` | string | Font family override |
 | `color` | string | Text color |
 | `text_align` | string | `left`, `center`, or `right` |
+| `padding` | int or string | Inner spacing (CSS shorthand) |
+| `margin` | int or string | Outer spacing (CSS shorthand) |
+
+Example — a card style with padding:
+
+```yaml
+styles:
+  card:
+    background: "#FFFFFF"
+    border_radius: 8
+    padding: 12
+```
+
+If a component also sets `padding` inline, the inline value wins and a warning is emitted.
 
 ### The `html` escape hatch
 

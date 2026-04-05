@@ -535,6 +535,8 @@ styles:
 | `border` | string | `border` |
 | `border_radius` | int or string | `border-radius` (int → px) |
 | `opacity` | float (0–1) | `opacity` |
+| `padding` | int or string | `padding` (shorthand) |
+| `margin` | int or string | `margin` (shorthand) |
 
 **Text:**
 
@@ -564,6 +566,8 @@ theme defaults → text preset → shared style → inline properties → html (
 ```
 
 The `html` property is a raw CSS string appended last. It supersedes all other styling for any property it sets.
+
+When a style and an inline property define the same value (e.g., `padding`), the inline value wins and a warning is emitted.
 
 ---
 
