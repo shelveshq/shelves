@@ -12,20 +12,17 @@ Top-level orchestrator that composes a complete dashboard from a YAML file:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from src.schema.chart_schema import parse_chart
 from src.schema.layout_schema import (
-    ContainerComponent,
     DashboardSpec,
-    RootComponent,
     SheetComponent,
     load_dashboard,
-    resolve_child,
 )
 from src.theme.merge import load_theme, merge_theme
 from src.theme.theme_schema import ThemeSpec
 from src.translator.layout import translate_dashboard
+from src.translator.layout_flatten import FlatNode, flatten_dashboard
 from src.translator.translate import translate_chart
 
 
@@ -88,45 +85,31 @@ def compose_dashboard(
 
 
 def _discover_sheets(spec: DashboardSpec) -> dict[str, str]:
-    """Walk the layout tree and find all sheet components.
+    """Walk the flattened layout tree and find all sheet components.
 
     Returns a dict mapping component name → link path.
     Anonymous sheets get auto-generated names (auto-1, auto-2, ...).
     """
+    flat_tree = flatten_dashboard(spec)
     sheets: dict[str, str] = {}
     auto_counter = [0]
-    components = spec.components or {}
-
-    # Walk components dict
-    for name, comp in components.items():
-        if isinstance(comp, SheetComponent):
-            sheets[name] = comp.link
-        elif hasattr(comp, "contains"):
-            _walk_contains(comp.contains, sheets, components, auto_counter)
-
-    # Walk root.contains
-    _walk_contains(spec.root.contains, sheets, components, auto_counter)
-
+    _walk_flat_tree(flat_tree, sheets, auto_counter)
     return sheets
 
 
-def _walk_contains(
-    contains: list[Any],
+def _walk_flat_tree(
+    node: FlatNode,
     sheets: dict[str, str],
-    components: dict[str, Any],
     auto_counter: list[int],
 ) -> None:
-    """Recursively walk a contains list and collect sheet components."""
-    for entry in contains:
-        name, defn = resolve_child(entry, components)
-
-        if isinstance(defn, SheetComponent):
-            # Prefer explicit name property, then component dict key, then auto
-            sheet_name = getattr(defn, "name", None) or name or f"auto-{_next_auto(auto_counter)}"
-            if sheet_name not in sheets:
-                sheets[sheet_name] = defn.link
-        elif isinstance(defn, (ContainerComponent, RootComponent)):
-            _walk_contains(defn.contains, sheets, components, auto_counter)
+    """Recursively walk a FlatNode tree and collect sheet components."""
+    comp = node.component
+    if isinstance(comp, SheetComponent):
+        sheet_name = getattr(comp, "name", None) or node.name or f"auto-{_next_auto(auto_counter)}"
+        if sheet_name not in sheets:
+            sheets[sheet_name] = comp.link
+    for child in node.children:
+        _walk_flat_tree(child, sheets, auto_counter)
 
 
 def _next_auto(counter: list[int]) -> int:

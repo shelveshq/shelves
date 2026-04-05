@@ -60,6 +60,8 @@ class StyleProperties(BaseModel):
     font_family: str | None = None
     color: str | None = None
     text_align: Literal["left", "center", "right"] | None = None
+    padding: int | str | None = None
+    margin: int | str | None = None
 
 
 # ─── Canvas ────────────────────────────────────────────────────────

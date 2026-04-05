@@ -10,10 +10,8 @@ These tests define expected behavior for the implementation to follow.
 
 import warnings
 
-from src.schema.layout_schema import (
-    DashboardSpec,
-    parse_dashboard,
-)
+from src.schema.layout_schema import parse_dashboard
+from src.translator.layout_flatten import flatten_dashboard
 from src.translator.layout_solver import (
     parse_spacing,
     solve_layout,
@@ -23,14 +21,10 @@ from src.translator.layout_solver import (
 # ─── Helpers ────────────────────────────────────────────────────────
 
 
-def _make_dashboard(yaml_str: str) -> DashboardSpec:
-    """Parse a YAML string into a DashboardSpec."""
-    return parse_dashboard(yaml_str)
-
-
 def _solve(yaml_str: str):
-    """Parse and solve a dashboard YAML, return the resolved tree."""
-    return solve_layout(_make_dashboard(yaml_str))
+    """Parse, flatten, and solve a dashboard YAML, return the resolved tree."""
+    spec = parse_dashboard(yaml_str)
+    return solve_layout(flatten_dashboard(spec))
 
 
 def _simple_dashboard(
@@ -355,6 +349,25 @@ class TestGapDistribution:
         # header claims 56, body gets 724
         assert tree.children[0].outer_height == 56
         assert tree.children[1].outer_height == 724
+
+    def test_gap_exceeds_available_space_warns(self):
+        """When total gap exceeds available space, solver should warn."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            # 4 children → 3 gaps → 3 × 400 = 1200 > 1000 available
+            _solve(
+                _simple_dashboard(
+                    orientation="horizontal",
+                    gap=400,
+                    contains_yaml="""\
+    - sheet: charts/a.yaml
+    - sheet: charts/b.yaml
+    - sheet: charts/c.yaml
+    - sheet: charts/d.yaml""",
+                )
+            )
+            warning_msgs = [str(x.message).lower() for x in w]
+            assert any("gap" in msg for msg in warning_msgs)
 
     def test_gap_single_child_no_effect(self):
         """Gap with one child: gap × 0 = 0, no effect."""

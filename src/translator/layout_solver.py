@@ -13,10 +13,7 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.schema.layout_schema import (
-    DashboardSpec,
-    resolve_child,
-)
+from src.translator.layout_flatten import FlatNode
 
 _SIZE_RE = re.compile(r"^(\d+)(px|%)?$")
 
@@ -90,16 +87,15 @@ def _parse_size(value: Any) -> tuple[str, int | float]:
 
 
 def _resolve_children(
-    children_specs: list[tuple[str | None, Any]],
+    flat_children: list[FlatNode],
     container_content_w: int,
     container_content_h: int,
     orientation: str,
     container_name: str | None,
     gap: int = 0,
-    components_dict: dict[str, Any] | None = None,
 ) -> list[ResolvedNode]:
-    """Resolve a list of children within a container's content box."""
-    if not children_specs:
+    """Resolve a list of FlatNode children within a container's content box."""
+    if not flat_children:
         return []
 
     is_horizontal = orientation == "horizontal"
@@ -107,11 +103,12 @@ def _resolve_children(
     cross_content = container_content_h if is_horizontal else container_content_w
 
     # Step 2: Subtract gap and child margins on main axis
-    total_gap = gap * max(len(children_specs) - 1, 0)
+    total_gap = gap * max(len(flat_children) - 1, 0)
 
     total_margin = 0
     child_margins: list[tuple[int, int, int, int]] = []
-    for _name, comp in children_specs:
+    for flat_child in flat_children:
+        comp = flat_child.component
         margin = parse_spacing(getattr(comp, "margin", None))
         child_margins.append(margin)
         if is_horizontal:
@@ -119,17 +116,26 @@ def _resolve_children(
         else:
             total_margin += margin[0] + margin[2]  # top + bottom
 
+    if total_gap > main_content - total_margin:
+        cname = container_name or "root"
+        warnings.warn(
+            f"Gap in `{cname}` ({gap}px × {max(len(flat_children) - 1, 0)} = {total_gap}px) "
+            f"exceeds available space ({max(main_content - total_margin, 0)}px); "
+            f"children will receive 0px on main axis"
+        )
+
     distributable = max(main_content - total_margin - total_gap, 0)
 
     # Step 3: Classify into buckets
     buckets: list[tuple[str, int | float]] = []
-    for _name, comp in children_specs:
+    for flat_child in flat_children:
+        comp = flat_child.component
         main_size = getattr(comp, "width", None) if is_horizontal else getattr(comp, "height", None)
         buckets.append(_parse_size(main_size))
 
     # Step 4: Resolve sizes in priority order
     # Percentages resolve against the content box (pre-gap, pre-margin)
-    resolved_sizes: list[int] = [0] * len(children_specs)
+    resolved_sizes: list[int] = [0] * len(flat_children)
 
     # Bucket A: percentages
     pct_indices = [i for i, (b, _) in enumerate(buckets) if b == "pct"]
@@ -162,7 +168,7 @@ def _resolve_children(
         # Warn if auto children get 0
         if auto_indices and remaining == 0:
             for i in auto_indices:
-                child_name = children_specs[i][0] or f"child[{i}]"
+                child_name = flat_children[i].name or f"child[{i}]"
                 cname = container_name or "root"
                 warnings.warn(
                     f"Auto-sized child `{child_name}` in `{cname}` received 0px on main axis; "
@@ -190,7 +196,7 @@ def _resolve_children(
             # Auto children get 0
             for i in auto_indices:
                 resolved_sizes[i] = 0
-                child_name = children_specs[i][0] or f"child[{i}]"
+                child_name = flat_children[i].name or f"child[{i}]"
                 cname = container_name or "root"
                 warnings.warn(
                     f"Auto-sized child `{child_name}` in `{cname}` received 0px on main axis; "
@@ -217,7 +223,9 @@ def _resolve_children(
 
     # Step 5: Cross-axis resolution + Step 6: Content areas + Step 7: Recurse
     result: list[ResolvedNode] = []
-    for idx, (child_name, comp) in enumerate(children_specs):
+    for idx, flat_child in enumerate(flat_children):
+        child_name = flat_child.name
+        comp = flat_child.component
         main_size = resolved_sizes[idx]
         margin = child_margins[idx]
 
@@ -262,25 +270,18 @@ def _resolve_children(
             content_w = max(content_w, 0)
             content_h = max(content_h, 0)
 
-        # Recurse for containers
+        # Recurse for containers using pre-resolved FlatNode children
         children: list[ResolvedNode] = []
         if _is_container(comp):
-            # Container's type IS its orientation
             child_orientation = comp.type
             child_gap = getattr(comp, "gap", 0) or 0
-            comps = components_dict or {}
-            child_specs = []
-            for raw_child in getattr(comp, "contains", []):
-                resolved_name, resolved_comp = resolve_child(raw_child, comps)
-                child_specs.append((resolved_name, resolved_comp))
             children = _resolve_children(
-                child_specs,
+                flat_child.children,
                 content_w,
                 content_h,
                 child_orientation,
                 child_name,
                 gap=child_gap,
-                components_dict=comps,
             )
 
         result.append(
@@ -298,11 +299,10 @@ def _resolve_children(
     return result
 
 
-def solve_layout(dashboard: DashboardSpec) -> ResolvedNode:
-    """Solve the layout tree, producing a ResolvedNode with pixel dimensions."""
-    root = dashboard.root
-    canvas = dashboard.canvas
-    components_dict = dashboard.components or {}
+def solve_layout(flat_tree: FlatNode) -> ResolvedNode:
+    """Solve the layout tree from a pre-flattened FlatNode."""
+    root = flat_tree.component
+    canvas = flat_tree.canvas
 
     # Root resolution
     root_margin = parse_spacing(root.margin)
@@ -313,23 +313,15 @@ def solve_layout(dashboard: DashboardSpec) -> ResolvedNode:
     root_content_w = max(root_outer_w - root_padding[1] - root_padding[3], 0)
     root_content_h = max(root_outer_h - root_padding[0] - root_padding[2], 0)
 
-    # Root gap
     root_gap = getattr(root, "gap", 0) or 0
 
-    # Resolve root children
-    child_specs: list[tuple[str | None, Any]] = []
-    for raw_child in root.contains:
-        name, comp = resolve_child(raw_child, components_dict)
-        child_specs.append((name, comp))
-
     children = _resolve_children(
-        child_specs,
+        flat_tree.children,
         root_content_w,
         root_content_h,
         root.orientation,
         None,
         gap=root_gap,
-        components_dict=components_dict,
     )
 
     return ResolvedNode(
