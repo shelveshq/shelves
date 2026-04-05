@@ -16,8 +16,9 @@ from typing import Any
 
 from src.schema.chart_schema import parse_chart
 from src.schema.layout_schema import (
-    ContainerBase,
+    ContainerComponent,
     DashboardSpec,
+    RootComponent,
     SheetComponent,
     load_dashboard,
     resolve_child,
@@ -120,10 +121,11 @@ def _walk_contains(
         name, defn = resolve_child(entry, components)
 
         if isinstance(defn, SheetComponent):
-            sheet_name = name or f"auto-{_next_auto(auto_counter)}"
+            # Prefer explicit name property, then component dict key, then auto
+            sheet_name = getattr(defn, "name", None) or name or f"auto-{_next_auto(auto_counter)}"
             if sheet_name not in sheets:
                 sheets[sheet_name] = defn.link
-        elif isinstance(defn, ContainerBase):
+        elif isinstance(defn, (ContainerComponent, RootComponent)):
             _walk_contains(defn.contains, sheets, components, auto_counter)
 
 

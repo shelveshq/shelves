@@ -1,8 +1,8 @@
 """
 Layout Style Resolution Engine
 
-Resolves the five-level style cascade for layout DSL components:
-  theme defaults → navigation type defaults → text preset → shared style
+Resolves the style cascade for layout DSL components:
+  theme defaults → type defaults → text preset → shared style
   → inline properties → sheet fit → html (wins all)
 """
 
@@ -12,25 +12,24 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from src.schema.layout_schema import (
+    RootComponent,
     StyleProperties,
 )
 from src.theme.theme_schema import ThemeSpec
 
 
-# ─── Navigation Component Defaults ───────────────────────────────
+# ─── Button / Link Defaults ─────────────────────────────────────
 
-NAVIGATION_BUTTON_DEFAULTS: dict[str, str] = {
+BUTTON_DEFAULTS: dict[str, str] = {
     "background": "#4A90D9",
     "color": "#FFFFFF",
     "border-radius": "6px",
     "padding": "8px 20px",
     "text-decoration": "none",
     "cursor": "pointer",
-    "display": "inline-flex",
-    "align-items": "center",
 }
 
-NAVIGATION_LINK_DEFAULTS: dict[str, str] = {
+LINK_DEFAULTS: dict[str, str] = {
     "color": "#4A90D9",
     "text-decoration": "underline",
     "cursor": "pointer",
@@ -52,6 +51,7 @@ class RenderContext:
     theme: ThemeSpec
     auto_id_counter: int = 0
     sheet_fit_modes: dict[str, str] = field(default_factory=dict)
+    sheet_show_titles: dict[str, bool] = field(default_factory=dict)
 
     def next_auto_id(self) -> str:
         """Generate next auto-ID for anonymous sheets."""
@@ -119,26 +119,24 @@ def resolve_styles(
     """Resolve component styles to a CSS inline style string.
 
     Resolution order:
-    1. Layout/structural CSS (display, flex-direction, sizing)
-    2. Theme defaults (font family)
-    3. Navigation type defaults (button or link)
-    4. Text preset (if TextComponent with preset)
-    5. Shared style (if component.style references styles dict)
-    6. Inline properties (component-level overrides from extra fields)
-    7. Margin/padding
-    8. Sheet fit CSS
-    9. html escape hatch (raw CSS, appended last)
-
-    When resolved_width/resolved_height are provided (from layout solver),
-    fixed pixel dimensions are emitted instead of flex-based sizing.
+    1. Structural CSS (overflow, display for horizontal children)
+    2. Solver-computed pixel dimensions
+    3. Theme defaults (font family)
+    4. Type defaults (button or link)
+    5. Text preset
+    6. Shared style
+    7. Inline overrides from __pydantic_extra__
+    8. Margin/padding
+    9. Sheet fit CSS
+    10. html escape hatch (raw CSS, appended last)
     """
     css: dict[str, str] = {}
     comp_type = getattr(component, "type", None)
+    is_root = isinstance(component, RootComponent)
 
     # Step 1: Structural CSS
-    if comp_type in ("root", "container"):
-        if comp_type == "root":
-            css["overflow"] = "hidden"
+    if is_root:
+        css["overflow"] = "hidden"
 
     # Children of horizontal containers are inline-block
     if parent_orientation == "horizontal":
@@ -152,15 +150,15 @@ def resolve_styles(
         css["height"] = f"{resolved_height}px"
 
     # Step 3: Theme defaults (font-family for text-bearing components)
-    if comp_type in ("text", "navigation", "navigation_button", "navigation_link"):
+    if comp_type in ("text", "button", "link"):
         css["font-family"] = ctx.theme.layout.font.family.body
 
-    # Step 4: Navigation type defaults
-    if comp_type in ("navigation", "navigation_button"):
-        for k, v in NAVIGATION_BUTTON_DEFAULTS.items():
+    # Step 4: Type defaults
+    if comp_type == "button":
+        for k, v in BUTTON_DEFAULTS.items():
             css[k] = v
-    elif comp_type == "navigation_link":
-        for k, v in NAVIGATION_LINK_DEFAULTS.items():
+    elif comp_type == "link":
+        for k, v in LINK_DEFAULTS.items():
             css[k] = v
 
     # Step 5: Text preset
@@ -205,11 +203,6 @@ def resolve_styles(
                 css[css_name] = f"{val}px"
             else:
                 css[css_name] = str(val)
-
-    # Also check declared fields that act as inline overrides
-    # (font_size on TextComponent is a declared field via extras on the model,
-    #  but it's actually in __pydantic_extra__ because it's not on the base)
-    # We handle padding/margin separately below.
 
     # Step 8: Margin and padding
     margin = getattr(component, "margin", None)

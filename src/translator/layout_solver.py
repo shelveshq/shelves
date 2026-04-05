@@ -3,7 +3,7 @@ Layout Solver
 
 Resolves the dashboard component tree to concrete pixel dimensions.
 Implements the v2 sizing model: border-box semantics, three-bucket
-distribution (% → px → auto), and overconstrained handling.
+distribution (% → px → auto), gap subtraction, and overconstrained handling.
 """
 
 from __future__ import annotations
@@ -19,7 +19,12 @@ from src.schema.layout_schema import (
 )
 
 _SIZE_RE = re.compile(r"^(\d+)(px|%)?$")
-_CONTAINER_TYPES = {"root", "container"}
+
+
+def _is_container(comp: Any) -> bool:
+    """Check if a component is a container (horizontal/vertical)."""
+    comp_type = getattr(comp, "type", None)
+    return comp_type in ("horizontal", "vertical")
 
 
 @dataclass
@@ -90,6 +95,7 @@ def _resolve_children(
     container_content_h: int,
     orientation: str,
     container_name: str | None,
+    gap: int = 0,
     components_dict: dict[str, Any] | None = None,
 ) -> list[ResolvedNode]:
     """Resolve a list of children within a container's content box."""
@@ -100,7 +106,9 @@ def _resolve_children(
     main_content = container_content_w if is_horizontal else container_content_h
     cross_content = container_content_h if is_horizontal else container_content_w
 
-    # Step 2: Subtract all child margins on main axis
+    # Step 2: Subtract gap and child margins on main axis
+    total_gap = gap * max(len(children_specs) - 1, 0)
+
     total_margin = 0
     child_margins: list[tuple[int, int, int, int]] = []
     for _name, comp in children_specs:
@@ -111,7 +119,7 @@ def _resolve_children(
         else:
             total_margin += margin[0] + margin[2]  # top + bottom
 
-    distributable = max(main_content - total_margin, 0)
+    distributable = max(main_content - total_margin - total_gap, 0)
 
     # Step 3: Classify into buckets
     buckets: list[tuple[str, int | float]] = []
@@ -120,7 +128,7 @@ def _resolve_children(
         buckets.append(_parse_size(main_size))
 
     # Step 4: Resolve sizes in priority order
-    # Percentages resolve against the content box (pre-margin)
+    # Percentages resolve against the content box (pre-gap, pre-margin)
     resolved_sizes: list[int] = [0] * len(children_specs)
 
     # Bucket A: percentages
@@ -256,16 +264,23 @@ def _resolve_children(
 
         # Recurse for containers
         children: list[ResolvedNode] = []
-        comp_type = getattr(comp, "type", None)
-        if comp_type in _CONTAINER_TYPES:
-            child_orientation = getattr(comp, "orientation", "horizontal")
+        if _is_container(comp):
+            # Container's type IS its orientation
+            child_orientation = comp.type
+            child_gap = getattr(comp, "gap", 0) or 0
             comps = components_dict or {}
             child_specs = []
             for raw_child in getattr(comp, "contains", []):
                 resolved_name, resolved_comp = resolve_child(raw_child, comps)
                 child_specs.append((resolved_name, resolved_comp))
             children = _resolve_children(
-                child_specs, content_w, content_h, child_orientation, child_name, comps
+                child_specs,
+                content_w,
+                content_h,
+                child_orientation,
+                child_name,
+                gap=child_gap,
+                components_dict=comps,
             )
 
         result.append(
@@ -298,6 +313,9 @@ def solve_layout(dashboard: DashboardSpec) -> ResolvedNode:
     root_content_w = max(root_outer_w - root_padding[1] - root_padding[3], 0)
     root_content_h = max(root_outer_h - root_padding[0] - root_padding[2], 0)
 
+    # Root gap
+    root_gap = getattr(root, "gap", 0) or 0
+
     # Resolve root children
     child_specs: list[tuple[str | None, Any]] = []
     for raw_child in root.contains:
@@ -305,7 +323,13 @@ def solve_layout(dashboard: DashboardSpec) -> ResolvedNode:
         child_specs.append((name, comp))
 
     children = _resolve_children(
-        child_specs, root_content_w, root_content_h, root.orientation, None, components_dict
+        child_specs,
+        root_content_w,
+        root_content_h,
+        root.orientation,
+        None,
+        gap=root_gap,
+        components_dict=components_dict,
     )
 
     return ResolvedNode(

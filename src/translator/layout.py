@@ -14,8 +14,9 @@ from typing import Literal
 
 from src.schema.layout_schema import (
     Canvas,
-    ContainerBase,
+    ContainerComponent,
     DashboardSpec,
+    RootComponent,
 )
 from src.theme.theme_schema import ThemeSpec
 from src.translator.layout_solver import ResolvedNode, solve_layout
@@ -45,7 +46,15 @@ def translate_dashboard(
         theme=theme,
         canvas=dashboard.canvas,
         sheet_fit_modes=ctx.sheet_fit_modes,
+        sheet_show_titles=ctx.sheet_show_titles,
     )
+
+
+def _get_orientation(defn: object) -> str:
+    """Get orientation from a container or root component."""
+    if isinstance(defn, RootComponent):
+        return defn.orientation
+    return getattr(defn, "type", "vertical")
 
 
 def render_node(
@@ -71,17 +80,19 @@ def render_node(
     safe_css = html.escape(css, quote=True)
 
     # Dispatch on type
-    if isinstance(defn, ContainerBase):
-        inner = "".join(
-            render_node(c, ctx, parent_orientation=defn.orientation) for c in node.children
-        )
+    if isinstance(defn, (ContainerComponent, RootComponent)):
+        orientation = _get_orientation(defn)
+        inner = "".join(render_node(c, ctx, parent_orientation=orientation) for c in node.children)
         return f'<div style="{safe_css}">{inner}</div>'
 
     elif comp_type == "sheet":
-        sheet_name = name or ctx.next_auto_id()
+        sheet_name = name or getattr(defn, "name", None) or ctx.next_auto_id()
         fit = getattr(defn, "fit", None)
         if fit is not None:
             ctx.sheet_fit_modes[sheet_name] = fit
+        show_title = getattr(defn, "show_title", True)
+        if not show_title:
+            ctx.sheet_show_titles[sheet_name] = False
         safe_name = html.escape(sheet_name, quote=True)
         return f'<div id="sheet-{safe_name}" style="{safe_css}"></div>'
 
@@ -89,14 +100,11 @@ def render_node(
         escaped_content = html.escape(defn.content)
         return f'<div style="{safe_css}">{escaped_content}</div>'
 
-    elif comp_type in ("navigation", "navigation_button", "navigation_link"):
+    elif comp_type in ("button", "link"):
         target_attr = f' target="{defn.target}"' if defn.target != "_self" else ""
-        rel_attr = ' rel="noopener noreferrer"' if defn.target == "_blank" else ""
         escaped_text = html.escape(defn.text)
-        escaped_link = html.escape(defn.link, quote=True)
-        return (
-            f'<a href="{escaped_link}"{target_attr}{rel_attr} style="{safe_css}">{escaped_text}</a>'
-        )
+        escaped_href = html.escape(defn.href, quote=True)
+        return f'<a href="{escaped_href}"{target_attr} style="{safe_css}">{escaped_text}</a>'
 
     elif comp_type == "image":
         escaped_src = html.escape(defn.src, quote=True)
@@ -123,17 +131,17 @@ def wrap_html_page(
     theme: ThemeSpec,
     canvas: Canvas,
     sheet_fit_modes: dict[str, str] | None = None,
+    sheet_show_titles: dict[str, bool] | None = None,
 ) -> str:
     """Wrap rendered component tree in a full HTML page."""
     fit_modes = sheet_fit_modes or {}
+    show_titles = sheet_show_titles or {}
     body_font = theme.layout.font.family.body
-
-    # Root div already has solver-computed width/height from resolve_styles
 
     # Build vegaEmbed script
     script_lines = []
     if chart_specs:
-        # Serialize specs, applying fit modes
+        # Serialize specs, applying fit modes and show_title
         specs_obj = {}
         for sheet_name, spec in chart_specs.items():
             modified_spec = dict(spec)
@@ -142,6 +150,9 @@ def wrap_html_page(
                 modified_spec["width"] = "container"
             if fit in ("height", "fill"):
                 modified_spec["height"] = "container"
+            # show_title: false → null out the title
+            if show_titles.get(sheet_name) is False:
+                modified_spec["title"] = None
             specs_obj[f"sheet-{sheet_name}"] = modified_spec
 
         specs_json = json.dumps(specs_obj, indent=2)
