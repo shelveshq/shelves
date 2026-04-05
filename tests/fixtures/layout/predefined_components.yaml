@@ -2,31 +2,48 @@ dashboard: "Multi-Page Overview"
 canvas: { width: 1440, height: 900 }
 
 styles:
-  card: { background: "#FFF", border_radius: 8, padding: 16 }
+  card:
+    background: "#FFFFFF"
+    border_radius: 8
+    shadow: "0 1px 3px rgba(0,0,0,0.08)"
 
 components:
-  kpi_revenue: { type: sheet, link: "charts/kpi_revenue.yaml", style: card, margin: "0 8 0 0" }
-  kpi_orders: { type: sheet, link: "charts/kpi_orders.yaml", style: card }
+  page_title:
+    text: "Overview"
+    preset: title
+
+  kpi_revenue:
+    sheet: charts/kpi_revenue.yaml
+    style: card
+
+  kpi_orders:
+    sheet: charts/kpi_orders.yaml
+    style: card
 
   kpi_row:
-    type: container
-    orientation: horizontal
-    height: 140
-    contains: [kpi_revenue, kpi_orders]
+    horizontal:
+      height: 140
+      gap: 16
+      contains:
+        - sheet: charts/kpi_revenue.yaml
+          style: card
+        - sheet: charts/kpi_orders.yaml
+          style: card
 
 root:
-  type: root
   orientation: vertical
+  padding: 24
+  gap: 20
   contains:
-    - type: text
-      content: "Overview"
-      preset: title
-      padding: "16 24"
+    - page_title
     - kpi_row
-    - chart_area:
-        type: container
-        orientation: horizontal
-        padding: "16 24"
+    - horizontal:
+        gap: 16
         contains:
-          - revenue: { type: sheet, link: "charts/revenue.yaml", width: "60%", style: card, margin: "0 8 0 0" }
-          - orders: { type: sheet, link: "charts/orders.yaml", width: "40%", style: card }
+          - sheet: charts/revenue.yaml
+            width: "60%"
+            style: card
+            padding: 12
+          - sheet: charts/orders.yaml
+            style: card
+            padding: 12

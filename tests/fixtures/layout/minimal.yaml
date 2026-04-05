@@ -3,9 +3,7 @@ canvas:
   width: 1440
   height: 900
 root:
-  type: root
   orientation: vertical
   contains:
-    - type: text
-      content: "Hello World"
+    - text: "Hello World"
       preset: title

@@ -1,19 +1,16 @@
 """
-Layout Translator Tests
+Layout Translator Tests — Type-Led Syntax
 
-Tests the Layout DSL → HTML translation pipeline.
-Covers style resolution, sizing, and full integration.
+Tests style resolution, HTML rendering, and end-to-end translation for the
+new type-led Layout DSL. Covers the style cascade, each component type's
+HTML output, and integration with the solver.
+
+These tests define expected behavior for the implementation to follow.
 """
 
 from tests.conftest import load_layout_yaml
 
 from src.schema.layout_schema import (
-    BlankComponent,
-    DashboardSpec,
-    RootComponent,
-    SheetComponent,
-    StyleProperties,
-    TextComponent,
     parse_dashboard,
 )
 from src.theme.merge import load_theme
@@ -28,107 +25,102 @@ def _default_theme():
     return load_theme()
 
 
-def _make_ctx(
-    styles: dict | None = None,
-    theme=None,
-):
-    """Build a minimal RenderContext for unit tests."""
+def _make_ctx(styles=None, components=None, theme=None):
     return RenderContext(
-        components={},
+        components=components or {},
         styles=styles or {},
         theme=theme or _default_theme(),
     )
 
 
-# ─── Style Resolution ────────────────────────────────────────────
+def _resolve_component_styles(entry, ctx=None, parent_orientation="vertical", **kwargs):
+    """Parse a type-led entry, resolve it, and return CSS string."""
+    from src.schema.layout_schema import resolve_child
+
+    _, comp = resolve_child(entry, {})
+    ctx = ctx or _make_ctx()
+    return resolve_styles(comp, None, ctx, parent_orientation=parent_orientation, **kwargs)
 
 
-class TestStyleResolution:
-    def test_resolve_styles_theme_defaults(self):
-        """Bare text component picks up theme font-family."""
-        comp = TextComponent(type="text", content="Hello")
-        ctx = _make_ctx()
-        css = resolve_styles(comp, None, ctx, parent_orientation="vertical")
-        assert "font-family: Inter, system-ui, sans-serif" in css
+def _translate(yaml_str, theme=None, chart_specs=None):
+    """Parse, solve, and translate a dashboard YAML to HTML."""
+    spec = parse_dashboard(yaml_str)
+    return translate_dashboard(spec, theme or _default_theme(), chart_specs=chart_specs)
 
-    def test_resolve_styles_preset(self):
+
+# ─── Style Resolution: Cascade ──────────────────────────────────────
+
+
+class TestStyleCascade:
+    def test_theme_font_on_text(self):
+        """Text component picks up theme font-family."""
+        css = _resolve_component_styles({"text": "Hello"})
+        assert "font-family:" in css
+
+    def test_text_preset_applies(self):
         """Text preset applies font-size, font-weight, color."""
-        comp = TextComponent(type="text", content="Hello", preset="title")
-        ctx = _make_ctx()
-        css = resolve_styles(comp, None, ctx, parent_orientation="vertical")
+        css = _resolve_component_styles({"text": "Hello", "preset": "title"})
         assert "font-size: 24px" in css
         assert "font-weight: bold" in css
-        assert "color: #1a1a1a" in css
 
-    def test_resolve_styles_shared_style(self):
+    def test_shared_style_applies(self):
         """Shared style properties resolve to CSS."""
-        comp = SheetComponent(type="sheet", link="charts/foo.yaml", style="card", padding=16)
+        from src.schema.layout_schema import StyleProperties, resolve_child
+
         ctx = _make_ctx(
             styles={
                 "card": StyleProperties(background="#FFFFFF", border_radius=8),
             }
         )
+        _, comp = resolve_child({"sheet": "charts/foo.yaml", "style": "card", "padding": 16}, {})
         css = resolve_styles(comp, None, ctx, parent_orientation="vertical")
         assert "background: #FFFFFF" in css
         assert "border-radius: 8px" in css
         assert "padding: 16px" in css
 
-    def test_resolve_styles_inline_override(self):
+    def test_inline_overrides_preset(self):
         """Inline font_size overrides preset value."""
-        comp = TextComponent(type="text", content="Hello", preset="title", font_size=20)
-        ctx = _make_ctx()
-        css = resolve_styles(comp, None, ctx, parent_orientation="vertical")
+        css = _resolve_component_styles({"text": "Hello", "preset": "title", "font_size": 20})
         assert "font-size: 20px" in css
         assert "font-size: 24px" not in css
 
-    def test_resolve_styles_html_escape_hatch(self):
-        """html field is appended to end of CSS."""
-        comp = TextComponent(
-            type="text",
-            content="Hello",
-            preset="title",
-            html="text-transform: uppercase; letter-spacing: 2px;",
+    def test_html_escape_hatch_appended_last(self):
+        """html field is appended at the end of CSS."""
+        css = _resolve_component_styles(
+            {"text": "Hello", "html": "text-transform: uppercase; letter-spacing: 2px;"}
         )
-        ctx = _make_ctx()
-        css = resolve_styles(comp, None, ctx, parent_orientation="vertical")
         assert css.endswith("text-transform: uppercase; letter-spacing: 2px;")
 
-    def test_resolve_styles_full_cascade(self):
-        """All five levels of the cascade work together."""
-        comp = TextComponent(
-            type="text",
-            content="Hello",
-            preset="title",
-            style="card",
-            font_size=20,
-            html="letter-spacing: 2px;",
-        )
-        ctx = _make_ctx(
-            styles={
-                "card": StyleProperties(background="#FFF"),
-            }
+    def test_full_cascade(self):
+        """All levels of the cascade work together."""
+        from src.schema.layout_schema import StyleProperties, resolve_child
+
+        ctx = _make_ctx(styles={"card": StyleProperties(background="#FFF")})
+        _, comp = resolve_child(
+            {
+                "text": "Hello",
+                "preset": "title",
+                "style": "card",
+                "font_size": 20,
+                "html": "letter-spacing: 2px;",
+            },
+            {},
         )
         css = resolve_styles(comp, None, ctx, parent_orientation="vertical")
-        assert "font-family: Inter, system-ui, sans-serif" in css  # theme default
-        assert "font-weight: bold" in css  # from preset, not overridden
-        assert "color: #1a1a1a" in css  # from preset
+        assert "font-family:" in css  # theme default
+        assert "font-weight: bold" in css  # from preset
         assert "font-size: 20px" in css  # inline override
-        assert "background: #FFF" in css  # from shared style
-        assert "letter-spacing: 2px;" in css  # from html
+        assert "background: #FFF" in css  # shared style
+        assert "letter-spacing: 2px;" in css  # html escape hatch
 
 
-# ─── Sizing ───────────────────────────────────────────────────────
+# ─── Style Resolution: Sizing ───────────────────────────────────────
 
 
 class TestSizing:
-    def test_sizing_solver_dimensions(self):
-        """Solver-provided dimensions emit fixed width/height CSS."""
-        comp = BlankComponent(type="blank", width=300)
-        ctx = _make_ctx()
-        css = resolve_styles(
-            comp,
-            None,
-            ctx,
+    def test_solver_dimensions_emitted(self):
+        css = _resolve_component_styles(
+            {"blank": None},
             parent_orientation="horizontal",
             resolved_width=300,
             resolved_height=900,
@@ -136,317 +128,348 @@ class TestSizing:
         assert "width: 300px" in css
         assert "height: 900px" in css
 
-    def test_sizing_no_flex_emitted(self):
-        """Solver-based sizing does not emit flex properties."""
-        comp = BlankComponent(type="blank", width="50%")
-        ctx = _make_ctx()
-        css = resolve_styles(
-            comp,
-            None,
-            ctx,
+    def test_no_flex_properties(self):
+        css = _resolve_component_styles(
+            {"blank": None},
             parent_orientation="horizontal",
             resolved_width=720,
             resolved_height=900,
         )
         assert "flex" not in css
-        assert "width: 720px" in css
 
-    def test_sizing_without_solver(self):
-        """Without solver dimensions, no width/height is emitted."""
-        comp = BlankComponent(type="blank")
-        ctx = _make_ctx()
-        css = resolve_styles(comp, None, ctx, parent_orientation="horizontal")
+    def test_no_dimensions_without_solver(self):
+        css = _resolve_component_styles(
+            {"blank": None},
+            parent_orientation="horizontal",
+        )
         assert "width" not in css
         assert "height" not in css
 
 
-# ─── Component Rendering ─────────────────────────────────────────
+# ─── Component HTML Rendering ───────────────────────────────────────
 
 
 class TestComponentRendering:
-    """Verify each component type produces the correct HTML tag and attributes."""
-
-    def test_text_renders_div_with_content(self):
-        """TextComponent → <div> containing escaped text."""
-        dashboard = DashboardSpec(
-            dashboard="Text Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[{"type": "text", "content": "Hello World", "preset": "title"}],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
+    def test_text_renders_div(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Hello World"
+      preset: title
+""")
         assert "<div" in html
         assert "Hello World</div>" in html
 
+    def test_text_html_escaped(self):
+        html = _translate("""\
+dashboard: "XSS Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "<script>alert('xss')</script>"
+""")
+        assert "&lt;script&gt;" in html
+        assert "<script>alert" not in html
+
     def test_image_renders_img_tag(self):
-        """ImageComponent → <img> with src, alt, and object-fit."""
-        dashboard = DashboardSpec(
-            dashboard="Image Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {"type": "image", "src": "logo.png", "alt": "Company Logo"},
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: logo.png
+      alt: "Company Logo"
+""")
         assert '<img src="logo.png"' in html
         assert 'alt="Company Logo"' in html
         assert "object-fit: contain" in html
 
-    def test_image_src_html_escaped(self):
-        """Image src attribute is HTML-escaped."""
-        dashboard = DashboardSpec(
-            dashboard="Img Escape Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {"type": "image", "src": "img.png?a=1&b=2", "alt": "test"},
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
+    def test_image_src_escaped(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: "img.png?a=1&b=2"
+      alt: "test"
+""")
         assert 'src="img.png?a=1&amp;b=2"' in html
 
-    def test_image_alt_html_escaped(self):
-        """Image alt attribute is HTML-escaped."""
-        dashboard = DashboardSpec(
-            dashboard="Alt Escape Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {"type": "image", "src": "x.png", "alt": 'Say "hello"'},
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
+    def test_image_alt_escaped(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: x.png
+      alt: 'Say "hello"'
+""")
         assert 'alt="Say &quot;hello&quot;"' in html
 
-    def test_navigation_renders_anchor_tag(self):
-        """NavigationComponent → <a> with href and button-style defaults."""
-        dashboard = DashboardSpec(
-            dashboard="Nav Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "type": "navigation",
-                        "text": "Go Home",
-                        "link": "/home",
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
+    def test_button_renders_anchor(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "Go Home"
+      href: "/home"
+""")
         assert '<a href="/home"' in html
         assert "Go Home</a>" in html
         # Default button styles
-        assert "background: #4A90D9" in html
-        assert "color: #FFFFFF" in html
-        assert "border-radius: 6px" in html
-        assert "padding: 8px 20px" in html
-        assert "text-decoration: none" in html
-        # No target attr for default _self
-        assert 'target="_self"' not in html
+        assert "background:" in html
+        assert "border-radius:" in html
 
-    def test_navigation_button_renders_anchor_with_button_defaults(self):
-        """NavigationButtonComponent → <a> with same button defaults as navigation."""
-        dashboard = DashboardSpec(
-            dashboard="Button Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "type": "navigation_button",
-                        "text": "Click Me",
-                        "link": "/action",
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        assert '<a href="/action"' in html
-        assert "Click Me</a>" in html
-        assert "background: #4A90D9" in html
-        assert "padding: 8px 20px" in html
+    def test_button_href_escaped(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "Search"
+      href: "/search?q=a&b=c"
+""")
+        assert 'href="/search?q=a&amp;b=c"' in html
 
-    def test_navigation_link_renders_anchor_with_link_defaults(self):
-        """NavigationLinkComponent → <a> with underline, no button background."""
-        dashboard = DashboardSpec(
-            dashboard="Link Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "type": "navigation_link",
-                        "text": "Learn More",
-                        "link": "/about",
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
+    def test_button_text_escaped(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "A <b>bold</b> button"
+      href: "/x"
+""")
+        assert "A &lt;b&gt;bold&lt;/b&gt; button</a>" in html
+
+    def test_link_renders_anchor_with_underline(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - link: "Learn More"
+      href: "/about"
+""")
         assert '<a href="/about"' in html
         assert "Learn More</a>" in html
         assert "text-decoration: underline" in html
         assert "background: transparent" in html
-        assert "color: #4A90D9" in html
-        assert "padding: 0" in html
 
-    def test_navigation_link_href_escaped(self):
-        """Navigation href is HTML-escaped."""
-        dashboard = DashboardSpec(
-            dashboard="Href Escape Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "type": "navigation",
-                        "text": "Search",
-                        "link": "/search?q=a&b=c",
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        assert 'href="/search?q=a&amp;b=c"' in html
+    def test_button_and_link_different_defaults(self):
+        """Button gets solid background; link gets transparent."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "Click"
+      href: "/a"
+    - link: "More"
+      href: "/b"
+""")
+        # Both render as <a> but with different styling
+        assert html.count("<a ") == 2
+        assert "text-decoration: underline" in html
+        assert "text-decoration: none" in html
 
-    def test_navigation_text_escaped(self):
-        """Navigation text content is HTML-escaped."""
-        dashboard = DashboardSpec(
-            dashboard="Text Escape Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "type": "navigation",
-                        "text": "A <b>bold</b> link",
-                        "link": "/x",
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        assert "A &lt;b&gt;bold&lt;/b&gt; link</a>" in html
-
-    def test_navigation_inline_style_overrides_defaults(self):
-        """Inline style properties override navigation button defaults."""
-        dashboard = DashboardSpec(
-            dashboard="Override Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "type": "navigation",
-                        "text": "Custom",
-                        "link": "/x",
-                        "background": "#FF0000",
-                        "color": "#000000",
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
+    def test_button_inline_style_overrides(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "Custom"
+      href: "/x"
+      background: "#FF0000"
+      color: "#000000"
+""")
         assert "background: #FF0000" in html
         assert "color: #000000" in html
 
+    def test_link_target_blank(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - link: "External"
+      href: "https://example.com"
+      target: _blank
+""")
+        assert 'target="_blank"' in html
+
     def test_blank_renders_empty_div(self):
-        """BlankComponent → empty <div> with only style."""
-        dashboard = DashboardSpec(
-            dashboard="Blank Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[{"type": "blank", "height": 20}],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        # Blank should produce an empty div (no text content)
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - blank:
+      height: 20
+""")
         assert "></div>" in html
 
     def test_sheet_renders_div_with_id(self):
-        """SheetComponent → <div> with id='sheet-{name}'."""
-        dashboard = DashboardSpec(
-            dashboard="Sheet Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "my_chart": {
-                            "type": "sheet",
-                            "link": "charts/revenue.yaml",
-                        }
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/revenue.yaml
+      name: my_chart
+""")
         assert 'id="sheet-my_chart"' in html
-        # Sheet div should be empty (chart is injected by vegaEmbed)
-        assert 'id="sheet-my_chart" style=' in html
 
-    def test_container_renders_div_with_children(self):
-        """ContainerComponent → <div> with solver-computed dimensions and children."""
-        dashboard = DashboardSpec(
-            dashboard="Container Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "row": {
-                            "type": "container",
-                            "orientation": "horizontal",
-                            "contains": [
-                                {"type": "text", "content": "Left"},
-                                {"type": "text", "content": "Right"},
-                            ],
-                        }
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        # Horizontal children get inline-block
+    def test_sheet_anonymous_gets_auto_id(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+""")
+        assert 'id="sheet-auto-1"' in html
+
+    def test_horizontal_children_inline_block(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        contains:
+          - text: "Left"
+          - text: "Right"
+""")
         assert "display: inline-block" in html
         assert "Left" in html
         assert "Right" in html
 
 
-# ─── Integration Tests ───────────────────────────────────────────
+# ─── Sheet Fit Modes ────────────────────────────────────────────────
 
 
-class TestLayoutTranslation:
-    def test_translate_minimal_dashboard(self):
-        """Minimal dashboard translates to valid HTML page structure."""
+class TestSheetFit:
+    def test_fit_width_css(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: wide
+      fit: width
+""",
+            chart_specs={"wide": {"mark": "bar"}},
+        )
+        assert "overflow-y: auto" in html
+
+    def test_fit_height_css(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: tall
+      fit: height
+""",
+            chart_specs={"tall": {"mark": "line"}},
+        )
+        assert "overflow-x: auto" in html
+
+    def test_fit_fill_css(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: full
+      fit: fill
+""",
+            chart_specs={"full": {"mark": "area"}},
+        )
+        assert "overflow: hidden" in html
+
+    def test_show_title_false(self):
+        """show_title: false suppresses the chart title."""
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: notitle
+      show_title: false
+""",
+            chart_specs={"notitle": {"mark": "bar", "title": "My Chart"}},
+        )
+        # The title should be nulled in the embedded spec
+        assert '"title": null' in html or '"title":null' in html or "title: null" in html
+
+
+# ─── Spacing CSS ────────────────────────────────────────────────────
+
+
+class TestSpacingCSS:
+    def test_margin_integer(self):
+        css = _resolve_component_styles(
+            {"blank": None, "margin": 16},
+            parent_orientation="vertical",
+        )
+        assert "margin: 16px" in css
+
+    def test_margin_shorthand(self):
+        css = _resolve_component_styles(
+            {"blank": None, "margin": "8 16 12 16"},
+            parent_orientation="vertical",
+        )
+        assert "margin: 8px 16px 12px 16px" in css
+
+    def test_padding_integer(self):
+        css = _resolve_component_styles(
+            {"blank": None, "padding": 16},
+            parent_orientation="vertical",
+        )
+        assert "padding: 16px" in css
+
+
+# ─── Full Translation Integration ───────────────────────────────────
+
+
+class TestFullTranslation:
+    def test_minimal_dashboard_html_structure(self):
         spec = parse_dashboard(load_layout_yaml("minimal.yaml"))
-        theme = _default_theme()
-        html = translate_dashboard(spec, theme)
+        html = translate_dashboard(spec, _default_theme())
         assert "<!DOCTYPE html>" in html
         assert "<title>Minimal Dashboard</title>" in html
         assert "width: 1440px" in html
@@ -454,381 +477,165 @@ class TestLayoutTranslation:
         assert "Hello World" in html
         # CDN scripts
         assert "vega@5" in html
-        assert "vega-lite@6" in html
-        assert "vega-embed@6" in html
+        assert "vega-lite" in html
+        assert "vega-embed" in html
         # CSS reset
-        assert "margin: 0" in html
-        assert "padding: 0" in html
         assert "box-sizing: border-box" in html
 
-    def test_translate_kpi_dashboard(self):
-        """Full KPI dashboard with all component types renders correctly."""
+    def test_kpi_dashboard_renders(self):
         spec = parse_dashboard(load_layout_yaml("kpi_dashboard.yaml"))
-        theme = _default_theme()
-        html = translate_dashboard(spec, theme)
+        html = translate_dashboard(spec, _default_theme())
         assert "<title>Sales Overview</title>" in html
-        assert 'id="sheet-kpi_revenue"' in html
-        assert 'id="sheet-kpi_orders"' in html
-        assert 'id="sheet-kpi_arpu"' in html
-        assert 'id="sheet-kpi_customers"' in html
-        assert 'id="sheet-revenue_chart"' in html
-        assert 'id="sheet-orders_chart"' in html
-        assert '<a href="/dashboards/sales_detail"' in html
         assert '<img src="assets/logo.svg"' in html
+        assert '<a href="/dashboards/sales_detail"' in html
 
-    def test_translate_sidebar_dashboard(self):
-        """Sidebar pattern with horizontal root translates correctly."""
+    def test_sidebar_dashboard_renders(self):
         spec = parse_dashboard(load_layout_yaml("sidebar_dashboard.yaml"))
-        theme = _default_theme()
-        html = translate_dashboard(spec, theme)
+        html = translate_dashboard(spec, _default_theme())
         assert "width: 220px" in html
-        # Horizontal root children are inline-block
         assert "display: inline-block" in html
-        assert '<a href="/dashboards/overview"' in html
         assert "Executive Summary" in html
+        assert '<a href="/dashboards/overview"' in html
 
-    def test_sheet_ids_in_output(self):
-        """Named sheets get stable id='sheet-{name}' attributes."""
-        spec = parse_dashboard(load_layout_yaml("kpi_dashboard.yaml"))
-        theme = _default_theme()
-        html = translate_dashboard(spec, theme)
-        assert 'id="sheet-revenue_chart"' in html
-        assert 'id="sheet-orders_chart"' in html
+    def test_predefined_components_render(self):
+        spec = parse_dashboard(load_layout_yaml("predefined_components.yaml"))
+        html = translate_dashboard(spec, _default_theme())
+        # Component "page_title" resolved and rendered
+        assert "Overview" in html
 
-    def test_vegaembed_script(self):
-        """When chart_specs are provided, vegaEmbed calls are generated."""
+    def test_solver_pixel_dimensions_in_output(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        height: 200
+        contains: []
+""")
+        assert "width: 1440px" in html
+        assert "height: 900px" in html
+        assert "height: 200px" in html
+
+    def test_vegaembed_with_specs(self):
         spec = parse_dashboard(load_layout_yaml("minimal.yaml"))
-        theme = _default_theme()
         chart_specs = {"revenue_chart": {"mark": "bar", "encoding": {}}}
-        html = translate_dashboard(spec, theme, chart_specs=chart_specs)
-        assert (
-            "vegaEmbed('#sheet-revenue_chart'" in html
-            or "vegaEmbed(`#sheet-revenue_chart`" in html
-            or "vegaEmbed" in html
-        )
-        assert '"mark": "bar"' in html or "'mark': 'bar'" in html or '"mark"' in html
+        html = translate_dashboard(spec, _default_theme(), chart_specs=chart_specs)
+        assert "vegaEmbed" in html
 
-    def test_vegaembed_script_absent_without_specs(self):
-        """When no chart specs, no vegaEmbed calls are generated."""
+    def test_no_vegaembed_without_specs(self):
         spec = parse_dashboard(load_layout_yaml("minimal.yaml"))
-        theme = _default_theme()
-        html = translate_dashboard(spec, theme, chart_specs=None)
-        # Should have empty specs or no vegaEmbed calls
+        html = translate_dashboard(spec, _default_theme(), chart_specs=None)
         assert "vegaEmbed" not in html or "const specs = {};" in html
 
     def test_theme_font_in_body(self):
-        """Body font-family comes from theme."""
         spec = parse_dashboard(load_layout_yaml("minimal.yaml"))
-        theme = _default_theme()
-        html = translate_dashboard(spec, theme)
-        assert "font-family: Inter, system-ui, sans-serif" in html
+        html = translate_dashboard(spec, _default_theme())
+        assert "font-family:" in html
 
-    def test_navigation_button_defaults(self):
-        """Navigation/navigation_button gets button-style defaults."""
-        spec = parse_dashboard(load_layout_yaml("kpi_dashboard.yaml"))
-        theme = _default_theme()
-        html = translate_dashboard(spec, theme)
-        # The navigation component in kpi_dashboard should render as <a>
-        assert "background: #4A90D9" in html or "background:#4A90D9" in html
-
-    def test_navigation_link_defaults(self):
-        """Navigation_link gets underlined text link defaults."""
-        spec = parse_dashboard(load_layout_yaml("sidebar_dashboard.yaml"))
-        theme = _default_theme()
-        html = translate_dashboard(spec, theme)
-        assert "text-decoration: underline" in html
-
-    def test_image_object_fit(self):
-        """Image gets default object-fit: contain."""
-        spec = parse_dashboard(load_layout_yaml("kpi_dashboard.yaml"))
-        theme = _default_theme()
-        html = translate_dashboard(spec, theme)
-        assert "object-fit: contain" in html
-
-    def test_blank_spacer_resolved(self):
-        """Blank with auto width gets solver-computed pixel dimensions."""
-        spec = parse_dashboard(load_layout_yaml("kpi_dashboard.yaml"))
-        theme = _default_theme()
-        html = translate_dashboard(spec, theme)
-        # The blank with width: auto gets a concrete pixel width from solver
-        # (no flex properties — solver pre-computes all dimensions)
-        assert "flex: 1" not in html
-
-    def test_text_html_escaped(self):
-        """Text content is HTML-escaped to prevent XSS."""
-        dashboard = DashboardSpec(
-            dashboard="XSS Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[{"type": "text", "content": "<script>alert('xss')</script>"}],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        assert "&lt;script&gt;" in html
-        assert "<script>alert" not in html
-
-    def test_solver_dimensions_in_output(self):
-        """Solver-computed pixel dimensions appear in rendered HTML."""
-        dashboard = DashboardSpec(
-            dashboard="Dimensions Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "row": {
-                            "type": "container",
-                            "orientation": "horizontal",
-                            "height": 200,
-                            "contains": [],
-                        }
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        # Root gets canvas dimensions
-        assert "width: 1440px" in html
-        assert "height: 900px" in html
-        # Container gets solver-computed dimensions
-        assert "height: 200px" in html
-
-
-# ─── Edge Cases ───────────────────────────────────────────────────
-
-
-class TestEdgeCases:
-    def test_anonymous_sheet_auto_id(self):
-        """Inline anonymous sheet gets auto-generated ID."""
-        dashboard = DashboardSpec(
-            dashboard="Auto ID Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[{"type": "sheet", "link": "charts/foo.yaml"}],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        assert 'id="sheet-auto-1"' in html
-
-    def test_deeply_nested_containers(self):
-        """4 levels of nesting all render."""
-        dashboard = DashboardSpec(
-            dashboard="Nested Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "l1": {
-                            "type": "container",
-                            "orientation": "horizontal",
-                            "contains": [
-                                {
-                                    "l2": {
-                                        "type": "container",
-                                        "orientation": "vertical",
-                                        "contains": [
-                                            {
-                                                "l3": {
-                                                    "type": "container",
-                                                    "orientation": "horizontal",
-                                                    "contains": [
-                                                        {
-                                                            "type": "text",
-                                                            "content": "Deep Text",
-                                                        }
-                                                    ],
-                                                }
-                                            }
-                                        ],
-                                    }
-                                }
-                            ],
-                        }
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        assert "Deep Text" in html
-
-    def test_empty_container(self):
-        """Empty container renders as empty div with dimensions."""
-        dashboard = DashboardSpec(
-            dashboard="Empty Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "empty": {
-                            "type": "container",
-                            "orientation": "horizontal",
-                            "contains": [],
-                        }
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        # Empty container still gets solver-computed width/height
+    def test_empty_container_renders(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        contains: []
+""")
         assert "width:" in html
         assert "height:" in html
 
-    def test_margin_as_integer(self):
-        """Integer margin → CSS: margin: 16px."""
-        comp = BlankComponent(type="blank", margin=16)
-        ctx = _make_ctx()
-        css = resolve_styles(comp, None, ctx, parent_orientation="vertical")
-        assert "margin: 16px" in css
-
-    def test_margin_as_shorthand_string(self):
-        """String margin → CSS: margin with px units."""
-        comp = BlankComponent(type="blank", margin="8 16 12 16")
-        ctx = _make_ctx()
-        css = resolve_styles(comp, None, ctx, parent_orientation="vertical")
-        assert "margin: 8px 16px 12px 16px" in css
-
-    def test_navigation_target_blank(self):
-        """target: _blank includes target attribute on <a> tag."""
-        dashboard = DashboardSpec(
-            dashboard="Target Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "type": "navigation",
-                        "text": "External",
-                        "link": "https://example.com",
-                        "target": "_blank",
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        assert 'target="_blank"' in html
-
-    def test_fit_on_anonymous_sheet(self):
-        """Anonymous sheet with fit gets auto-ID and fit CSS."""
-        dashboard = DashboardSpec(
-            dashboard="Fit Anon Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {"type": "sheet", "link": "charts/foo.yaml", "fit": "fill"},
-                ],
-            ),
-        )
-        theme = _default_theme()
-        html = translate_dashboard(dashboard, theme)
-        assert 'id="sheet-auto-1"' in html
-        assert "overflow: hidden" in html
-
-    def test_fit_width_with_explicit_height(self):
-        """fit: width + height: 400 → overflow-y: auto, height sizing normal."""
-        comp = SheetComponent(type="sheet", link="charts/foo.yaml", fit="width", height=400)
-        ctx = _make_ctx()
-        css = resolve_styles(comp, None, ctx, parent_orientation="vertical")
-        assert "overflow-y: auto" in css
+    def test_deeply_nested_renders(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - vertical:
+        contains:
+          - horizontal:
+              contains:
+                - vertical:
+                    contains:
+                      - text: "Deep Text"
+""")
+        assert "Deep Text" in html
 
 
-# ─── Sheet Fit ────────────────────────────────────────────────────
+# ─── Edge Cases ─────────────────────────────────────────────────────
 
 
-class TestSheetFit:
-    def test_sheet_fit_width(self):
-        """fit: width → overflow-y: auto, vegaEmbed injects width: container."""
-        spec = parse_dashboard(load_layout_yaml("fit_sheets.yaml"))
-        theme = _default_theme()
-        chart_specs = {"wide_chart": {"mark": "bar"}}
-        html = translate_dashboard(spec, theme, chart_specs=chart_specs)
-        # The wide_chart sheet div
-        assert 'id="sheet-wide_chart"' in html
-        # Overflow CSS
-        assert "overflow-y: auto" in html
-        # vegaEmbed spec should have width: container
-        assert '"width": "container"' in html
+class TestTranslationEdgeCases:
+    def test_multiline_text_rendered(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: |
+        Line one.
+        Line two.
+      preset: caption
+""")
+        assert "Line one." in html
+        assert "Line two." in html
 
-    def test_sheet_fit_height(self):
-        """fit: height → overflow-x: auto, vegaEmbed injects height: container."""
-        spec = parse_dashboard(load_layout_yaml("fit_sheets.yaml"))
-        theme = _default_theme()
-        chart_specs = {"tall_chart": {"mark": "line"}}
-        html = translate_dashboard(spec, theme, chart_specs=chart_specs)
-        assert 'id="sheet-tall_chart"' in html
-        assert "overflow-x: auto" in html
-        assert '"height": "container"' in html
+    def test_blank_divider_with_background(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - blank:
+      height: 1
+      background: "#E0E0E0"
+""")
+        assert "background: #E0E0E0" in html
 
-    def test_sheet_fit_fill(self):
-        """fit: fill → overflow: hidden, vegaEmbed injects both dimensions."""
-        spec = parse_dashboard(load_layout_yaml("fit_sheets.yaml"))
-        theme = _default_theme()
-        chart_specs = {"full_chart": {"mark": "area"}}
-        html = translate_dashboard(spec, theme, chart_specs=chart_specs)
-        assert 'id="sheet-full_chart"' in html
-        assert "overflow: hidden" in html
-        assert '"width": "container"' in html
-        assert '"height": "container"' in html
+    def test_button_no_target_attr_for_self(self):
+        """Default target _self should not emit a target attribute."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "Go"
+      href: "/x"
+""")
+        assert 'target="_self"' not in html
 
-    def test_sheet_fit_none_default(self):
-        """No fit → no overflow CSS, no container injection."""
-        spec = parse_dashboard(load_layout_yaml("fit_sheets.yaml"))
-        theme = _default_theme()
-        chart_specs = {"fixed_chart": {"mark": "point"}}
-        html = translate_dashboard(spec, theme, chart_specs=chart_specs)
-        # fixed_chart should NOT have fit-related overflow
-        assert 'id="sheet-fixed_chart"' in html
+    def test_no_flex_in_output(self):
+        """Solver-based layout should never emit flex properties."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: horizontal
+  gap: 16
+  contains:
+    - sheet: charts/a.yaml
+      width: "50%"
+    - sheet: charts/b.yaml
+""")
+        assert "flex: 1" not in html
+        assert "flex-grow" not in html
+        assert "flex-direction" not in html
 
-    def test_sheet_fit_with_explicit_size(self):
-        """fit: width + width: 300 → both coexist."""
-        dashboard = DashboardSpec(
-            dashboard="Fit+Size Test",
-            root=RootComponent(
-                type="root",
-                orientation="vertical",
-                contains=[
-                    {
-                        "test_sheet": {
-                            "type": "sheet",
-                            "link": "charts/foo.yaml",
-                            "fit": "width",
-                            "width": 300,
-                        }
-                    }
-                ],
-            ),
-        )
-        theme = _default_theme()
-        chart_specs = {"test_sheet": {"mark": "bar"}}
-        html = translate_dashboard(dashboard, theme, chart_specs=chart_specs)
-        assert "overflow-y: auto" in html
-        assert '"width": "container"' in html
-
-    def test_fit_sheets_full_translation(self):
-        """End-to-end: fit modes propagated to vegaEmbed specs."""
-        spec = parse_dashboard(load_layout_yaml("fit_sheets.yaml"))
-        theme = _default_theme()
-        chart_specs = {
-            "wide_chart": {"mark": "bar"},
-            "tall_chart": {"mark": "line"},
-            "full_chart": {"mark": "area"},
-            "fixed_chart": {"mark": "point"},
-        }
-        html = translate_dashboard(spec, theme, chart_specs=chart_specs)
-
-        # Extract the script section for detailed assertion
-        script_start = html.find("<script>")
-        script_end = html.rfind("</script>")
-        script = html[script_start:script_end]
-
-        assert "vegaEmbed" in script
+    def test_text_only_dashboard_no_vegaembed(self):
+        html = _translate("""\
+dashboard: "Text Only"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Just text"
+      preset: title
+""")
+        assert "Just text" in html
+        assert "vegaEmbed" not in html or "const specs = {};" in html

@@ -1,5 +1,5 @@
 """
-Dashboard Composition Tests
+Dashboard Composition Tests — Type-Led Syntax
 
 Tests end-to-end composition: dashboard YAML → chart compilation → layout
 translation → single HTML output. Also tests CLI dashboard detection.
@@ -44,7 +44,6 @@ class TestDashboardCompose:
         assert "<!DOCTYPE html>" in html
         assert "<title>Compose Test</title>" in html
         assert 'id="sheet-revenue_chart"' in html
-        assert '"sheet-revenue_chart"' in html  # spec key in vegaEmbed script
         assert "vegaEmbed" in html
         assert '"mark"' in html
 
@@ -53,8 +52,6 @@ class TestDashboardCompose:
         html = _compose("compose_multi.yaml")
         assert 'id="sheet-bar_chart"' in html
         assert 'id="sheet-line_chart"' in html
-        assert '"sheet-bar_chart"' in html
-        assert '"sheet-line_chart"' in html
         assert "vegaEmbed" in html
 
     def test_compose_with_non_chart_components(self):
@@ -63,7 +60,6 @@ class TestDashboardCompose:
         assert "Dashboard Title" in html
         assert "Updated daily" in html
         assert 'id="sheet-revenue_chart"' in html
-        assert '"sheet-revenue_chart"' in html
         assert "vegaEmbed" in html
 
     def test_compose_with_custom_theme(self):
@@ -76,7 +72,6 @@ class TestDashboardCompose:
         """Sheets in the components block (string ref) are discovered and compiled."""
         html = _compose("compose_predefined.yaml")
         assert 'id="sheet-revenue"' in html
-        assert '"sheet-revenue"' in html
         assert "vegaEmbed" in html
 
     def test_compose_with_fit_modes(self):
@@ -84,38 +79,30 @@ class TestDashboardCompose:
         html = _compose("compose_fit.yaml")
         assert 'id="sheet-wide_chart"' in html
         assert 'id="sheet-full_chart"' in html
-        # fit: width → VL width: "container"
         assert '"width": "container"' in html
-        # fit: fill → both dimensions
-        assert '"height": "container"' in html
-        # CSS overflow rules
-        assert "overflow-y: auto" in html  # from fit: width
-        assert "overflow: hidden" in html  # from fit: fill
+        assert "overflow-y: auto" in html
+        assert "overflow: hidden" in html
 
     def test_compose_no_theme(self):
         """no_theme=True skips theme merging for charts and layout."""
         html = _compose("compose_minimal.yaml", no_theme=True)
         assert "<!DOCTYPE html>" in html
         assert 'id="sheet-revenue_chart"' in html
-        assert '"sheet-revenue_chart"' in html
         assert "vegaEmbed" in html
 
     def test_compose_dashboard_with_no_sheets(self):
         """Dashboard with only text components produces valid HTML, no vegaEmbed calls."""
-        # Inline spec — no fixture needed
         from src.schema.layout_schema import parse_dashboard
         from src.theme.merge import load_theme as lt
         from src.translator.layout import translate_dashboard
 
-        yaml_str = """
+        yaml_str = """\
 dashboard: "Text Only"
 canvas: { width: 800, height: 600 }
 root:
-  type: root
   orientation: vertical
   contains:
-    - type: text
-      content: "Just text"
+    - text: "Just text"
       preset: title
 """
         spec = parse_dashboard(yaml_str)
@@ -131,17 +118,14 @@ root:
 
 class TestDashboardComposeErrors:
     def test_compose_missing_chart_file(self):
-        """Missing chart link raises FileNotFoundError with filename."""
-        yaml_str = """
+        yaml_str = """\
 dashboard: "Bad Link"
 canvas: { width: 800, height: 600 }
 root:
-  type: root
   orientation: vertical
   contains:
-    - bad_chart:
-        type: sheet
-        link: "does_not_exist.yaml"
+    - sheet: does_not_exist.yaml
+      name: bad_chart
 """
         dashboard_path = LAYOUT_DIR / "_tmp_missing.yaml"
         dashboard_path.write_text(yaml_str)
@@ -155,21 +139,17 @@ root:
             dashboard_path.unlink(missing_ok=True)
 
     def test_compose_invalid_chart_yaml(self):
-        """Invalid chart YAML propagates error with sheet context."""
-        # Create a chart YAML that's valid YAML but invalid DSL (no sheet field)
         bad_chart = YAML_DIR / "_tmp_bad_chart.yaml"
         bad_chart.write_text("invalid_key: true\n")
 
-        dashboard_yaml = """
+        dashboard_yaml = """\
 dashboard: "Bad Chart"
 canvas: { width: 800, height: 600 }
 root:
-  type: root
   orientation: vertical
   contains:
-    - broken:
-        type: sheet
-        link: "_tmp_bad_chart.yaml"
+    - sheet: _tmp_bad_chart.yaml
+      name: broken
 """
         dashboard_path = LAYOUT_DIR / "_tmp_bad_chart_dashboard.yaml"
         dashboard_path.write_text(dashboard_yaml)

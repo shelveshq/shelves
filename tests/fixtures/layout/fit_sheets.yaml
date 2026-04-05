@@ -4,27 +4,26 @@ canvas:
   height: 900
 
 root:
-  type: root
   orientation: vertical
+  padding: 24
+  gap: 16
   contains:
-    - charts_row:
-        type: container
-        orientation: horizontal
+    - horizontal:
+        height: 400
+        gap: 16
         contains:
-          - wide_chart:
-              type: sheet
-              link: "charts/revenue.yaml"
-              fit: width
-          - tall_chart:
-              type: sheet
-              link: "charts/timeline.yaml"
-              fit: height
-    - full_chart:
-        type: sheet
-        link: "charts/overview.yaml"
-        fit: fill
-    - fixed_chart:
-        type: sheet
-        link: "charts/kpi.yaml"
-        width: 300
-        height: 200
+          - sheet: charts/wide_chart.yaml
+            name: wide_chart
+            fit: width
+            width: "50%"
+          - sheet: charts/tall_chart.yaml
+            name: tall_chart
+            fit: height
+
+    - sheet: charts/full_chart.yaml
+      name: full_chart
+      fit: fill
+
+    - sheet: charts/fixed_chart.yaml
+      name: fixed_chart
+      height: 200
