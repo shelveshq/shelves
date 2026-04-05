@@ -46,28 +46,30 @@ canvas:
   width: 1440
   height: 900
 
-root:
-  type: root
-  orientation: vertical
-  contains:
-    - type: text
-      content: "Sales Overview"
-      preset: title
-      padding: "16 24"
+styles:
+  card:
+    background: "#FFFFFF"
+    border_radius: 8
+    shadow: "0 1px 3px rgba(0,0,0,0.1)"
 
-    - charts_row:
-        type: container
-        orientation: horizontal
-        padding: "0 24"
+root:
+  orientation: vertical
+  padding: 24
+  gap: 20
+  contains:
+    - text: "Sales Overview"
+      preset: title
+
+    - horizontal:
+        gap: 16
         contains:
-          - revenue_chart:
-              type: sheet
-              link: "charts/revenue_by_country.yaml"
-              width: "60%"
-          - trend_chart:
-              type: sheet
-              link: "charts/weekly_trend.yaml"
-              width: "40%"
+          - sheet: charts/revenue_by_country.yaml
+            width: "60%"
+            style: card
+            padding: 12
+          - sheet: charts/weekly_trend.yaml
+            style: card
+            padding: 12
 ```
 
 ### 3. Render the dashboard
@@ -91,7 +93,7 @@ Every dashboard YAML file has this shape:
 ```yaml
 dashboard: "Display Name"              # Required: dashboard title
 description: "Optional description"    # Optional
-canvas:                                 # Required: fixed canvas size
+canvas:                                 # Optional (defaults: 1440×900)
   width: 1440
   height: 900
 
@@ -99,16 +101,15 @@ styles:                                 # Optional: reusable style presets
   card:
     background: "#FFFFFF"
     border_radius: 8
-    padding: 16
 
-components:                             # Optional: pre-defined components
-  kpi_revenue:
-    type: sheet
-    link: "charts/kpi_revenue.yaml"
+components:                             # Optional: predefined reusable components
+  revenue_kpi:
+    sheet: kpi_revenue.yaml
+    style: card
 
 root:                                   # Required: the layout tree
-  type: root
   orientation: vertical
+  gap: 20
   contains:
     - ...
 ```
@@ -117,81 +118,174 @@ root:                                   # Required: the layout tree
 |---|---|---|
 | `dashboard` | Yes | Display name shown in the page title |
 | `description` | No | Human-readable description |
-| `canvas` | Yes | Fixed pixel dimensions (`width`, `height`) |
+| `canvas` | No | Fixed pixel dimensions (`width`, `height`). Defaults to 1440×900. |
 | `styles` | No | Named style presets reusable across components |
-| `components` | No | Named components that can be referenced by string in `contains` |
+| `components` | No | Predefined components that can be referenced by name in `contains` |
 | `root` | Yes | The root container — the outermost layout element |
+
+---
+
+## Type-led syntax
+
+Every element in a `contains` list starts with its **type as the YAML key**. You see *what* something is immediately — no hunting for a `type` field.
+
+### Containers: `horizontal` and `vertical`
+
+The type name *is* the orientation. No separate `orientation` field needed.
+
+```yaml
+- horizontal:
+    gap: 16
+    contains:
+      - sheet: revenue.yaml
+      - sheet: orders.yaml
+
+- vertical:
+    padding: 24
+    gap: 12
+    contains:
+      - text: "Section Title"
+        preset: heading
+      - sheet: details.yaml
+```
+
+### Leaf types
+
+The type key's value is always the component's **primary field**. Additional properties appear as sibling keys in the same YAML mapping:
+
+```yaml
+- sheet: revenue.yaml                    # just a chart
+- sheet: revenue.yaml                    # chart with properties
+  fit: width
+  show_title: false
+  style: card
+
+- text: "Dashboard Title"               # just text
+- text: "Dashboard Title"               # text with a preset
+  preset: title
+
+- image: logo.png                        # just an image
+  alt: "Company Logo"
+  height: 40
+
+- button: "Export"                        # navigation button
+  href: "/export"
+
+- link: "Data Dictionary ↗"              # navigation link
+  href: "/docs"
+  target: _blank
+
+- blank:                                 # empty spacer
+- blank:                                 # spacer with explicit size
+  height: 16
+```
+
+### Primary field reference
+
+| Type | Primary field | Example |
+|---|---|---|
+| `sheet` | link (chart path) | `sheet: revenue.yaml` |
+| `text` | content | `text: "Hello"` |
+| `image` | src | `image: logo.png` |
+| `button` | display text | `button: "Export"` |
+| `link` | display text | `link: "Details"` |
+| `blank` | *(none)* | `blank:` |
 
 ---
 
 ## Component types
 
-### Container (`root` / `container`)
+### Containers — `horizontal`, `vertical`
 
-Containers arrange their children horizontally or vertically. The layout solver computes fixed pixel dimensions for each child, then the renderer emits them as block (vertical) or inline-block (horizontal) elements. The `root` is a special container that receives the canvas dimensions — there's exactly one per dashboard.
+Containers arrange their children along a main axis. The layout solver computes fixed pixel dimensions for each child.
 
 ```yaml
-root:
-  type: root
-  orientation: vertical
-  padding: 16
-  contains:
-    - header:
-        type: container
-        orientation: horizontal
-        height: 56
-        contains:
-          - ...
-    - body:
-        type: container
-        orientation: horizontal
-        contains:
-          - ...
+- horizontal:
+    gap: 16
+    padding: "12 24"
+    style: header_bar
+    contains:
+      - image: logo.png
+        height: 28
+        width: 100
+      - text: "Dashboard"
+        preset: title
+      - blank:                            # flex spacer — pushes nav right
+      - button: "Details →"
+        href: "/detail"
 ```
 
-| Property | Required | Description |
-|---|---|---|
-| `orientation` | Yes | `horizontal` or `vertical` |
-| `contains` | Yes | List of child components |
-| `align` | No | Cross-axis alignment: `start`, `center`, `end`, `stretch` (default) |
-| `justify` | No | Main-axis alignment: `start` (default), `center`, `end`, `between`, `around`, `evenly` |
+| Property | Required | Default | Description |
+|---|---|---|---|
+| `contains` | Yes | — | List of child components |
+| `gap` | No | `0` | Pixels between children on the main axis |
+| `width` | No | `auto` | Outer box width |
+| `height` | No | `auto` | Outer box height |
+| `padding` | No | `0` | Inner spacing (CSS shorthand) |
+| `margin` | No | `0` | Outer spacing (CSS shorthand) |
+| `style` | No | — | Reference to a shared style |
+| `html` | No | — | Raw CSS escape hatch |
+
+All children pack to the start (top-left origin). There are no `align` or `justify` keywords — the solver uses fixed-size inline blocks, not flexbox distribution.
 
 ### Sheet (chart embed)
 
-References a Chart DSL YAML file. Named sheets get stable HTML IDs for vegaEmbed.
+Embeds a Chart DSL visualization.
 
 ```yaml
-revenue_chart:
-  type: sheet
-  link: "charts/revenue_by_country.yaml"
-  width: "60%"
+- sheet: revenue.yaml
+  fit: width
+  show_title: false
   style: card
+  padding: 12
 ```
 
-| Property | Required | Description |
-|---|---|---|
-| `link` | Yes | Path to a chart YAML file |
-| `fit` | No | Sizing mode: `width`, `height`, or `fill` (see [Sheet fit behavior](#sheet-fit-behavior)) |
+| Property | Required | Default | Description |
+|---|---|---|---|
+| *(value)* | Yes | — | Path to chart YAML file |
+| `fit` | No | `fill` | Sizing mode: `fill`, `width`, or `height` |
+| `show_title` | No | `true` | Whether to show the chart's Vega-Lite title |
+| `name` | No | auto | Explicit HTML ID for the sheet |
+| `width` | No | `auto` | Outer box width |
+| `height` | No | `auto` | Outer box height |
+| `padding` | No | `0` | Space between card edge and chart |
+| `margin` | No | `0` | Outer spacing |
+| `style` | No | — | Reference to a shared style |
+| `html` | No | — | Raw CSS escape hatch |
+
+**Sheet fit behavior:**
+
+| Value | Behavior |
+|---|---|
+| `fill` (default) | Chart stretches to fill both dimensions. No scrolling. |
+| `width` | Chart fills container width. Vertical scrolling if content overflows. |
+| `height` | Chart fills container height. Horizontal scrolling if content overflows. |
+
+**`show_title`:** When `false`, the chart's Vega-Lite title is suppressed. Useful when the dashboard provides its own section headings and the chart title would be redundant.
 
 ### Text
 
 Static text blocks with optional presets for quick styling.
 
 ```yaml
-- type: text
-  content: "Sales Performance Dashboard"
+- text: "Sales Performance Dashboard"
   preset: title
 
-- type: text
-  content: "Updated daily · All figures in USD"
+- text: "Updated daily · All figures in USD"
   preset: caption
   margin: "4 0 16 0"
 ```
 
-| Property | Required | Description |
-|---|---|---|
-| `content` | Yes | The text string to display |
-| `preset` | No | Built-in text style: `title`, `subtitle`, `heading`, `body`, `caption`, `label` |
+| Property | Required | Default | Description |
+|---|---|---|---|
+| *(value)* | Yes | — | The text to display |
+| `preset` | No | — | Built-in text preset (see table below) |
+| `width` | No | `auto` | Outer box width |
+| `height` | No | `auto` | Outer box height |
+| `padding` | No | `0` | Inner spacing |
+| `margin` | No | `0` | Outer spacing |
+| `style` | No | — | Reference to a shared style |
+| `html` | No | — | Raw CSS escape hatch |
 
 **Text presets** (values come from your theme):
 
@@ -207,76 +301,82 @@ Static text blocks with optional presets for quick styling.
 Multi-line text uses YAML block scalars:
 
 ```yaml
-- type: text
-  content: |
+- text: |
     Revenue metrics for Q4 2024.
     All figures in USD thousands.
   preset: caption
 ```
 
-### Navigation
+### Navigation — `button`, `link`
 
-Buttons or links for dashboard-to-dashboard navigation. Three type aliases with different default styling:
+Buttons and links for dashboard-to-dashboard navigation. Rendered as `<a>` tags with different default styling.
 
 ```yaml
-# Button style (default)
-- type: navigation
-  text: "View Details →"
-  link: "/dashboards/detail"
-  background: "#4A90D9"
-  color: "#FFFFFF"
+- button: "View Details →"
+  href: "/dashboards/detail"
 
-# Explicit button type — identical to above
-- type: navigation_button
-  text: "View Details →"
-  link: "/dashboards/detail"
-
-# Link style — underlined text, no background
-- type: navigation_link
-  text: "Data Dictionary ↗"
-  link: "https://docs.example.com/data"
+- link: "Data Dictionary ↗"
+  href: "https://docs.example.com/data"
   target: _blank
 ```
 
-| Property | Required | Description |
+| Property | Required | Default | Description |
+|---|---|---|---|
+| *(value)* | Yes | — | Button/link display text |
+| `href` | Yes | — | Target URL or dashboard path |
+| `target` | No | `_self` | `_self` or `_blank` |
+| `width` | No | `auto` | Outer box width |
+| `height` | No | `auto` | Outer box height |
+| `padding` | No | `0` | Inner spacing |
+| `margin` | No | `0` | Outer spacing |
+| `style` | No | — | Reference to a shared style |
+| `html` | No | — | Raw CSS escape hatch |
+
+> **Note:** The URL property is `href` (not `link`) to avoid collision with the `link` type name.
+
+**Default appearance:**
+
+| Type | Background | Text style |
 |---|---|---|
-| `text` | Yes | Button/link label |
-| `link` | Yes | Target URL or dashboard path |
-| `target` | No | `_self` (default) or `_blank` |
+| `button` | Solid background, rounded corners, padding | White text |
+| `link` | Transparent | Underlined, colored text |
 
 ### Image
 
 Static images for logos or decorative graphics.
 
 ```yaml
-- type: image
-  src: "assets/logo.svg"
+- image: logo.svg
   alt: "Company Logo"
-  height: 28
-  width: auto
+  height: 40
+  width: 120
 ```
 
-| Property | Required | Description |
-|---|---|---|
-| `src` | Yes | Image file path or URL |
-| `alt` | No | Alt text for accessibility (recommended) |
+| Property | Required | Default | Description |
+|---|---|---|---|
+| *(value)* | Yes | — | Image file path or URL |
+| `alt` | No | `""` | Alt text for accessibility (recommended) |
+| `width` | No | `auto` | Outer box width |
+| `height` | No | `auto` | Outer box height |
+| `padding` | No | `0` | Inner spacing |
+| `margin` | No | `0` | Outer spacing |
+| `style` | No | — | Reference to a shared style |
+| `html` | No | — | Raw CSS escape hatch |
 
 ### Blank (spacer)
 
-Empty div for spacing, dividers, or pushing siblings apart.
+Empty div for spacing or decorative dividers. Most spacing should use `gap` on containers — use `blank` for uneven spacing or visual dividers.
 
 ```yaml
 # Fixed spacer
-- type: blank
-  width: 16
+- blank:
   height: 16
 
 # Flex spacer — pushes siblings apart
-- type: blank
-  width: auto
+- blank:
 
 # Horizontal divider line
-- type: blank
+- blank:
   width: "100%"
   height: 1
   background: "#E0E0E0"
@@ -284,67 +384,128 @@ Empty div for spacing, dividers, or pushing siblings apart.
 
 ---
 
-## The `contains` list
+## The root
 
-Containers accept three shapes of children in their `contains` list. Mix freely.
+The dashboard's outermost element. There is exactly one per dashboard. It behaves like a `vertical` or `horizontal` container but is constrained to the canvas dimensions.
 
-### String reference
+```yaml
+root:
+  orientation: vertical          # Required: horizontal | vertical
+  padding: 24
+  gap: 20
+  contains:
+    - ...
+```
 
-References a named component from the `components` block:
+The root does **not** use type-led syntax — it is always `root:` with an explicit `orientation` field. This is the one exception to the type-led pattern, because the root is a fixed structural element, not a child in a `contains` list.
+
+---
+
+## Predefined components
+
+Components are a **separation of concerns** mechanism. The `components` block is where you define *what things look like* — styling, content, and structure. The `root` tree is where you define *how things are arranged* — position, order, and spatial relationships. Even elements used only once benefit from this pattern when it improves clarity.
+
+### Defining components
+
+Each entry uses the same type-led syntax as the tree. Components are complete as defined:
 
 ```yaml
 components:
-  kpi_revenue:
-    type: sheet
-    link: "charts/kpi_revenue.yaml"
+  revenue_kpi:
+    sheet: kpi_revenue.yaml
+    style: card
 
+  orders_kpi:
+    sheet: kpi_orders.yaml
+    style: card
+
+  company_logo:
+    image: logo.svg
+    alt: "Company Logo"
+    height: 28
+    width: 100
+```
+
+Components can also be containers:
+
+```yaml
+components:
+  kpi_row:
+    horizontal:
+      gap: 16
+      height: 120
+      contains:
+        - sheet: kpi_revenue.yaml
+          style: card
+        - sheet: kpi_orders.yaml
+          style: card
+        - sheet: kpi_growth.yaml
+          style: card
+```
+
+### Using components
+
+Reference a component by name in `contains` as a bare string. It is inserted as-is — no overrides, no merging:
+
+```yaml
 root:
-  type: root
   orientation: vertical
+  gap: 20
   contains:
-    - kpi_revenue              # string reference
+    - company_logo
+    - kpi_row
+    - horizontal:
+        gap: 16
+        contains:
+          - sheet: revenue.yaml
+          - sheet: orders.yaml
 ```
 
-### Inline anonymous
+### Rules
 
-Define a component directly — no name, used once:
+1. **No overrides at usage.** Components are used as-is. If you need a variation, define a separate component or use inline types directly.
+2. **Components cannot reference other components.** A component's definition may only use known types, never other component names.
+3. **Component names must not shadow type names.** A component named `horizontal`, `sheet`, etc. is rejected at parse time.
 
-```yaml
-contains:
-  - type: text
-    content: "Updated daily"
-    preset: caption
-  - type: blank
-    width: 10
-```
+### When to use components vs inline
 
-### Inline named
-
-Define a named component inline. The name becomes an HTML ID for sheets:
+Use components to separate **what things look like** from **where they go**. This keeps the `root` tree scannable:
 
 ```yaml
-contains:
-  - revenue_chart:
-      type: sheet
-      link: "charts/revenue.yaml"
-      width: "60%"
-```
-
-### Mixing all three
-
-```yaml
-contains:
-  - logo                            # string reference
-  - type: text                      # inline anonymous
-    content: "Sales Overview"
+# Define appearance
+components:
+  revenue_chart:
+    sheet: revenue.yaml
+    style: card
+    padding: 12
+  header:
+    text: "Sales Dashboard"
     preset: title
-  - type: blank                     # flex spacer
-    width: auto
-  - detail_nav:                     # inline named
-      type: navigation
-      text: "Details →"
-      link: "/dashboards/detail"
+
+# Arrange layout
+root:
+  orientation: vertical
+  gap: 20
+  contains:
+    - header
+    - revenue_chart
 ```
+
+Use inline types when the element is simple enough that the tree stays readable:
+
+```yaml
+root:
+  orientation: vertical
+  gap: 20
+  contains:
+    - text: "Sales Dashboard"
+      preset: title
+    - sheet: revenue.yaml
+      style: card
+      padding: 12
+```
+
+Both are equivalent — it's a readability judgment call.
 
 ---
 
@@ -354,22 +515,41 @@ All components accept `width` and `height` in these formats:
 
 | Format | Example | Behavior |
 |---|---|---|
-| Integer | `300` | Fixed 300px (exact pixel size) |
-| Percentage | `"50%"` | 50% of the parent size on that axis |
-| `auto` | `"auto"` | Let the layout solver allocate from remaining space |
-| Omitted | — | Same as `auto` — solver-controlled from remaining space |
+| Integer | `300` | Fixed 300px |
+| Pixel string | `"300px"` | Fixed 300px (equivalent to integer) |
+| Percentage | `"50%"` | 50% of the parent's content box on that axis |
+| `"auto"` or omitted | — | Fill remaining space (shared equally with other `auto` children) |
 
-**Main-axis vs cross-axis:**
+### Main axis vs cross axis
 
-- In a **horizontal** container: `width` is the main axis, `height` is cross axis
-- In a **vertical** container: `height` is the main axis, `width` is cross axis
-- Along the **main axis**, the solver uses a three-bucket model:
-  - Fixed integers are reserved first (e.g., `width: 300` gets 300px).
-  - Percentages are computed next as a fraction of the parent's main-axis size (e.g., `"50%"`).
-  - Any remaining main-axis space is divided among `auto` / omitted values, typically equally unless additional constraints apply.
-- Along the **cross axis**, components default to filling the parent on that axis (i.e., they get the parent's computed size) unless you explicitly set a fixed integer or percentage.
+- In a **horizontal** container: `width` is the main axis, `height` is the cross axis
+- In a **vertical** container: `height` is the main axis, `width` is the cross axis
 
-**Margin and padding** use CSS shorthand:
+Along the **main axis**, the solver resolves sizes in priority order:
+1. **Percentages** — computed as a fraction of the parent's content box
+2. **Fixed pixels** — reserved at their exact value
+3. **Auto** — remaining space divided equally among auto children
+
+Along the **cross axis**, components default to 100% of the parent (minus their own margins) unless an explicit size is set.
+
+### Gap
+
+Containers support a `gap` property — uniform spacing between children on the main axis. Gap is subtracted from the distributable space before child sizes are resolved.
+
+```yaml
+- horizontal:
+    gap: 16                    # 16px between each child
+    contains:
+      - sheet: a.yaml
+      - sheet: b.yaml
+      - sheet: c.yaml          # total gap: 16 × 2 = 32px
+```
+
+Use `gap` instead of per-child margins for uniform spacing. It's cleaner and handles any number of children.
+
+### Margin and padding
+
+Both use CSS-style shorthand:
 
 ```yaml
 padding: 16              # 16px all sides
@@ -377,46 +557,13 @@ padding: "8 16"          # 8px vertical, 16px horizontal
 padding: "8 16 12 16"    # top right bottom left
 ```
 
----
-
-## Sheet fit behavior
-
-Sheets support a `fit` property that controls how the chart scales within its container — the same concept as Tableau's "Fit" dropdown:
-
-| Value | Behavior |
-|---|---|
-| `width` | Chart stretches to fill container width. Vertical scrolling if content overflows. |
-| `height` | Chart stretches to fill container height. Horizontal scrolling if content overflows. |
-| `fill` | Chart stretches to fill both dimensions. No scrolling — the chart scales to fit entirely. |
-| _(omitted)_ | Fixed sizing from explicit `width`/`height`, or inherited from container (default). |
-
-```yaml
-contains:
-  - revenue:
-      type: sheet
-      link: "charts/revenue.yaml"
-      fit: fill              # scales to fill container
-
-  - timeline:
-      type: sheet
-      link: "charts/timeline.yaml"
-      fit: width             # fills width, scrolls vertically if tall
-
-  - sidebar_chart:
-      type: sheet
-      link: "charts/breakdown.yaml"
-      fit: height            # fills height, scrolls horizontally if wide
-```
-
-> **Note:** `fit` applies only to sheet components. Containers control sizing through `width`, `height`, `align`, and `justify`.
->
-> When `fit` is set alongside an explicit size on the same axis (e.g., `fit: width` with `width: 300`), the `fit` value takes precedence at render time.
+**Border-box model:** An element's specified size is its outer box. Padding shrinks the content area inward. Margins are additional spacing between elements.
 
 ---
 
 ## Shared styles
 
-Define reusable style presets in the `styles` block, then reference them by name:
+Define reusable visual presets in the `styles` block, then reference them by name with `style:`:
 
 ```yaml
 styles:
@@ -424,23 +571,19 @@ styles:
     background: "#FFFFFF"
     border: "1px solid #E5E7EB"
     border_radius: 8
-    padding: 16
     shadow: "0 1px 3px rgba(0,0,0,0.08)"
 
   header_bar:
     background: "#F8F9FA"
     border_bottom: "1px solid #DEE2E6"
-    padding: "12 24"
+```
 
-root:
-  type: root
-  orientation: vertical
-  contains:
-    - revenue_chart:
-        type: sheet
-        link: "charts/revenue.yaml"
-        style: card                        # apply shared style
-        background: "#F0F8FF"              # override one property
+Apply a style and optionally override individual properties inline:
+
+```yaml
+- sheet: revenue.yaml
+  style: card                        # apply shared style
+  background: "#F0F8FF"              # override one property
 ```
 
 **Available style properties:**
@@ -464,15 +607,9 @@ root:
 Every component accepts an `html` property — a raw CSS string for niche properties not covered by dedicated keywords:
 
 ```yaml
-- type: text
-  content: "QUARTERLY REVIEW"
+- text: "QUARTERLY REVIEW"
   preset: heading
   html: "text-transform: uppercase; letter-spacing: 2px;"
-
-- type: sheet
-  link: "charts/big_scatter.yaml"
-  width: "100%"
-  html: "overflow: auto; min-height: 400px;"
 ```
 
 ### Style resolution order
@@ -487,7 +624,7 @@ theme defaults → text preset → shared style → inline properties → html (
 
 ## Complete examples
 
-### KPI dashboard with header and navigation
+### KPI dashboard with header
 
 ```yaml
 dashboard: "Sales Overview"
@@ -501,89 +638,68 @@ styles:
     background: "#FFFFFF"
     border: "1px solid #E5E7EB"
     border_radius: 8
-    padding: 16
     shadow: "0 1px 3px rgba(0,0,0,0.08)"
 
+components:
+  kpi_revenue:
+    sheet: charts/kpi_revenue.yaml
+    style: card
+  kpi_orders:
+    sheet: charts/kpi_orders.yaml
+    style: card
+  kpi_arpu:
+    sheet: charts/kpi_arpu.yaml
+    style: card
+  kpi_customers:
+    sheet: charts/kpi_customers.yaml
+    style: card
+
 root:
-  type: root
   orientation: vertical
+  padding: 24
+  gap: 20
   contains:
 
     # ── Header ──
-    - header:
-        type: container
-        orientation: horizontal
+    - horizontal:
         height: 56
-        padding: "0 24"
+        gap: 12
         background: "#F8F9FA"
         border_bottom: "1px solid #DEE2E6"
-        html: "align-items: center;"
+        padding: "0 16"
         contains:
-          - logo:
-              type: image
-              src: "assets/logo.svg"
-              alt: "Acme Corp"
-              height: 28
-              width: auto
-          - type: text
-            content: "Sales Overview"
+          - image: assets/logo.svg
+            alt: "Acme Corp"
+            height: 28
+            width: 100
+          - text: "Sales Overview"
             preset: title
             font_size: 20
-            margin: "0 0 0 12"
-          - type: blank
-            width: auto
-          - type: navigation
-            text: "Detailed Report →"
-            link: "/dashboards/sales_detail"
-            background: "#4A90D9"
-            color: "#FFFFFF"
-            border_radius: 6
-            padding: "6 16"
+          - blank:                        # pushes nav to the right
+          - button: "Detailed Report →"
+            href: "/dashboards/sales_detail"
 
     # ── KPI Row ──
-    - kpi_row:
-        type: container
-        orientation: horizontal
-        height: 140
-        padding: "16 24"
+    - horizontal:
+        height: 120
+        gap: 16
         contains:
-          - kpi_revenue:
-              type: sheet
-              link: "charts/kpi_revenue.yaml"
-              style: card
-              margin: "0 8 0 0"
-          - kpi_orders:
-              type: sheet
-              link: "charts/kpi_orders.yaml"
-              style: card
-              margin: "0 8 0 0"
-          - kpi_arpu:
-              type: sheet
-              link: "charts/kpi_arpu.yaml"
-              style: card
-              margin: "0 8 0 0"
-          - kpi_customers:
-              type: sheet
-              link: "charts/kpi_customers.yaml"
-              style: card
+          - kpi_revenue
+          - kpi_orders
+          - kpi_arpu
+          - kpi_customers
 
     # ── Charts Row ──
-    - chart_row:
-        type: container
-        orientation: horizontal
-        padding: "0 24"
+    - horizontal:
+        gap: 16
         contains:
-          - revenue_chart:
-              type: sheet
-              link: "charts/revenue_by_country.yaml"
-              width: "60%"
-              style: card
-              margin: "0 8 0 0"
-          - orders_chart:
-              type: sheet
-              link: "charts/orders_trend.yaml"
-              width: "40%"
-              style: card
+          - sheet: charts/revenue_by_country.yaml
+            width: "60%"
+            style: card
+            padding: 12
+          - sheet: charts/orders_trend.yaml
+            style: card
+            padding: 12
 ```
 
 ### Sidebar navigation dashboard
@@ -599,116 +715,115 @@ styles:
     background: "#FFFFFF"
     border: "1px solid #E5E7EB"
     border_radius: 8
-    padding: 16
-
-  nav_link:
-    color: "#94A3B8"
-    font_size: 14
+    shadow: "0 1px 3px rgba(0,0,0,0.08)"
 
 root:
-  type: root
   orientation: horizontal
   contains:
 
     # ── Sidebar ──
-    - sidebar:
-        type: container
-        orientation: vertical
+    - vertical:
         width: 220
         background: "#1E293B"
         padding: "24 16"
+        gap: 8
         contains:
-          - type: image
-            src: "assets/logo_white.svg"
+          - image: assets/logo_white.svg
             height: 24
-            width: auto
-          - type: blank
-            height: 24
-          - type: navigation_link
-            text: "Overview"
-            link: "/dashboards/overview"
-            style: nav_link
+            width: 100
+          - blank:
+            height: 16
+          - button: "Overview"
+            href: "/dashboards/overview"
             color: "#FFFFFF"
             html: "font-weight: bold;"
-          - type: navigation_link
-            text: "Sales"
-            link: "/dashboards/sales"
-            style: nav_link
-            margin: "8 0 0 0"
-          - type: navigation_link
-            text: "Customers"
-            link: "/dashboards/customers"
-            style: nav_link
-            margin: "8 0 0 0"
+          - button: "Sales"
+            href: "/dashboards/sales"
+            color: "#94A3B8"
+          - button: "Customers"
+            href: "/dashboards/customers"
+            color: "#94A3B8"
 
     # ── Main content ──
-    - main:
-        type: container
-        orientation: vertical
+    - vertical:
         padding: 24
+        gap: 16
         contains:
-          - type: text
-            content: "Executive Summary"
+          - text: "Executive Summary"
             preset: title
-          - type: text
-            content: "Updated daily · All figures in USD"
+          - text: "Updated daily · All figures in USD"
             preset: caption
-            margin: "4 0 16 0"
 
-          - chart_row:
-              type: container
-              orientation: horizontal
+          - horizontal:
+              gap: 16
               contains:
-                - revenue_trend:
-                    type: sheet
-                    link: "charts/revenue_trend.yaml"
-                    width: "65%"
-                    style: card
-                    margin: "0 8 0 0"
-                - revenue_by_region:
-                    type: sheet
-                    link: "charts/revenue_by_region.yaml"
-                    width: "35%"
-                    style: card
+                - sheet: charts/revenue_trend.yaml
+                  width: "65%"
+                  style: card
+                  padding: 12
+                - sheet: charts/revenue_by_region.yaml
+                  style: card
+                  padding: 12
+
+          - sheet: charts/order_details.yaml
+            style: card
+            padding: 12
 ```
 
-### Pre-defined components (DRY)
+### Separation of concerns with components
 
-Use the `components` block to define reusable elements, then reference them by name:
+Define appearance in `components`, arrange layout in `root`:
 
 ```yaml
 dashboard: "Multi-Page Overview"
 canvas: { width: 1440, height: 900 }
 
 styles:
-  card: { background: "#FFF", border_radius: 8, padding: 16 }
+  card:
+    background: "#FFFFFF"
+    border_radius: 8
+    shadow: "0 1px 3px rgba(0,0,0,0.08)"
 
 components:
-  kpi_revenue: { type: sheet, link: "charts/kpi_revenue.yaml", style: card, margin: "0 8 0 0" }
-  kpi_orders: { type: sheet, link: "charts/kpi_orders.yaml", style: card }
+  page_title:
+    text: "Overview"
+    preset: title
+
+  kpi_revenue:
+    sheet: charts/kpi_revenue.yaml
+    style: card
+
+  kpi_orders:
+    sheet: charts/kpi_orders.yaml
+    style: card
 
   kpi_row:
-    type: container
-    orientation: horizontal
-    height: 140
-    contains: [kpi_revenue, kpi_orders]
+    horizontal:
+      height: 140
+      gap: 16
+      contains:
+        - sheet: charts/kpi_revenue.yaml
+          style: card
+        - sheet: charts/kpi_orders.yaml
+          style: card
 
 root:
-  type: root
   orientation: vertical
+  padding: 24
+  gap: 20
   contains:
-    - type: text
-      content: "Overview"
-      preset: title
-      padding: "16 24"
-    - kpi_row                        # string reference to pre-defined container
-    - chart_area:
-        type: container
-        orientation: horizontal
-        padding: "16 24"
+    - page_title
+    - kpi_row
+    - horizontal:
+        gap: 16
         contains:
-          - revenue: { type: sheet, link: "charts/revenue.yaml", width: "60%", style: card, margin: "0 8 0 0" }
-          - orders: { type: sheet, link: "charts/orders.yaml", width: "40%", style: card }
+          - sheet: charts/revenue.yaml
+            width: "60%"
+            style: card
+            padding: 12
+          - sheet: charts/orders.yaml
+            style: card
+            padding: 12
 ```
 
 ---
