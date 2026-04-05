@@ -11,10 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from src.schema.layout_schema import (
-    RootComponent,
-    StyleProperties,
-)
+from src.schema.layout_schema import RootComponent
 from src.theme.theme_schema import ThemeSpec
 
 
@@ -46,12 +43,12 @@ LINK_DEFAULTS: dict[str, str] = {
 class RenderContext:
     """Carries shared state through the recursive tree walk."""
 
-    components: dict[str, Any]
-    styles: dict[str, StyleProperties]
     theme: ThemeSpec
     auto_id_counter: int = 0
     sheet_fit_modes: dict[str, str] = field(default_factory=dict)
     sheet_show_titles: dict[str, bool] = field(default_factory=dict)
+    sheet_content_dims: dict[str, tuple[int, int]] = field(default_factory=dict)
+    sheet_padding: dict[str, int] = field(default_factory=dict)
 
     def next_auto_id(self) -> str:
         """Generate next auto-ID for anonymous sheets."""
@@ -118,17 +115,19 @@ def resolve_styles(
 ) -> str:
     """Resolve component styles to a CSS inline style string.
 
+    Assumes the component has already been through flatten_dashboard, so all
+    style-derived properties are pre-merged onto the component.
+
     Resolution order:
     1. Structural CSS (overflow, display for horizontal children)
     2. Solver-computed pixel dimensions
     3. Theme defaults (font family)
     4. Type defaults (button or link)
     5. Text preset
-    6. Shared style
-    7. Inline overrides from __pydantic_extra__
-    8. Margin/padding
-    9. Sheet fit CSS
-    10. html escape hatch (raw CSS, appended last)
+    6. Extras from __pydantic_extra__ (includes style-merged visual props)
+    7. Margin/padding (model fields, may be style-merged)
+    8. Sheet fit CSS
+    9. html escape hatch (raw CSS, appended last)
     """
     css: dict[str, str] = {}
     comp_type = getattr(component, "type", None)
@@ -171,25 +170,7 @@ def resolve_styles(
         if preset.text_align:
             css["text-align"] = preset.text_align
 
-    # Step 6: Shared style
-    style_ref = getattr(component, "style", None)
-    if style_ref and style_ref in ctx.styles:
-        style_props = ctx.styles[style_ref]
-        for field_name in type(style_props).model_fields:
-            val = getattr(style_props, field_name)
-            if val is not None:
-                css_name = _css_prop_name(field_name)
-                if css_name == "shadow":
-                    css["box-shadow"] = str(val)
-                elif isinstance(val, (int, float)) and field_name in (
-                    "border_radius",
-                    "font_size",
-                ):
-                    css[css_name] = f"{val}px"
-                else:
-                    css[css_name] = str(val)
-
-    # Step 7: Inline overrides from __pydantic_extra__
+    # Step 6: Inline extras from __pydantic_extra__ (includes style-merged visual props)
     extras = getattr(component, "__pydantic_extra__", None) or {}
     for key, val in extras.items():
         if key in _STYLE_EXTRA_KEYS and val is not None:
@@ -210,13 +191,18 @@ def resolve_styles(
     if margin_css:
         css["margin"] = margin_css
 
-    padding = getattr(component, "padding", None)
-    padding_css = _format_spacing(padding)
-    if padding_css:
-        css["padding"] = padding_css
-
     # Step 9: Sheet fit CSS
     fit = getattr(component, "fit", None)
+
+    # For fitted sheets, skip CSS padding — Vega-Lite will handle it via
+    # its own padding + autosize:{contains:"padding"}.  CSS padding would
+    # shift the SVG inside the div without Vega knowing about it.
+    if not (comp_type == "sheet" and fit is not None):
+        padding = getattr(component, "padding", None)
+        padding_css = _format_spacing(padding)
+        if padding_css:
+            css["padding"] = padding_css
+
     if fit == "width":
         css["overflow-y"] = "auto"
     elif fit == "height":

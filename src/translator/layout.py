@@ -19,6 +19,7 @@ from src.schema.layout_schema import (
     RootComponent,
 )
 from src.theme.theme_schema import ThemeSpec
+from src.translator.layout_flatten import flatten_dashboard
 from src.translator.layout_solver import ResolvedNode, solve_layout
 from src.translator.layout_styles import RenderContext, resolve_styles
 
@@ -29,13 +30,13 @@ def translate_dashboard(
     chart_specs: dict[str, dict] | None = None,
 ) -> str:
     """Translate a DashboardSpec to a complete HTML page."""
-    components = dashboard.components or {}
-    styles = dashboard.styles or {}
+    ctx = RenderContext(theme=theme)
 
-    ctx = RenderContext(components=components, styles=styles, theme=theme)
+    # Flatten first: resolve all style refs and component refs
+    flat_tree = flatten_dashboard(dashboard)
 
     # Solve layout to get concrete pixel dimensions
-    resolved_tree = solve_layout(dashboard)
+    resolved_tree = solve_layout(flat_tree)
 
     body_html = render_node(resolved_tree, ctx)
 
@@ -47,6 +48,8 @@ def translate_dashboard(
         canvas=dashboard.canvas,
         sheet_fit_modes=ctx.sheet_fit_modes,
         sheet_show_titles=ctx.sheet_show_titles,
+        sheet_content_dims=ctx.sheet_content_dims,
+        sheet_padding=ctx.sheet_padding,
     )
 
 
@@ -82,7 +85,34 @@ def render_node(
     # Dispatch on type
     if isinstance(defn, (ContainerComponent, RootComponent)):
         orientation = _get_orientation(defn)
-        inner = "".join(render_node(c, ctx, parent_orientation=orientation) for c in node.children)
+        gap = getattr(defn, "gap", 0) or 0
+        child_htmls = [render_node(c, ctx, parent_orientation=orientation) for c in node.children]
+
+        if gap and len(child_htmls) > 1:
+            # Verify gap fits: children + gaps must not exceed content area
+            if orientation == "horizontal":
+                children_total = sum(c.outer_width for c in node.children)
+                available = node.content_width
+            else:
+                children_total = sum(c.outer_height for c in node.children)
+                available = node.content_height
+            total_gap = gap * (len(child_htmls) - 1)
+
+            if children_total + total_gap > available:
+                raise ValueError(
+                    f"Gap of {gap}px ({total_gap}px total) does not fit in container "
+                    f"'{node.name or 'root'}': children use {children_total}px, "
+                    f"content area is {available}px"
+                )
+
+            if orientation == "horizontal":
+                spacer = f'<div style="display: inline-block; width: {gap}px; height: 1px;"></div>'
+            else:
+                spacer = f'<div style="height: {gap}px;"></div>'
+            inner = spacer.join(child_htmls)
+        else:
+            inner = "".join(child_htmls)
+
         return f'<div style="{safe_css}">{inner}</div>'
 
     elif comp_type == "sheet":
@@ -93,6 +123,10 @@ def render_node(
         show_title = getattr(defn, "show_title", True)
         if not show_title:
             ctx.sheet_show_titles[sheet_name] = False
+        ctx.sheet_content_dims[sheet_name] = (node.content_width, node.content_height)
+        pad = getattr(defn, "padding", None)
+        if pad is not None and fit is not None:
+            ctx.sheet_padding[sheet_name] = int(pad) if isinstance(pad, (int, float)) else 0
         safe_name = html.escape(sheet_name, quote=True)
         return f'<div id="sheet-{safe_name}" style="{safe_css}"></div>'
 
@@ -124,6 +158,51 @@ def render_node(
     return ""
 
 
+def _is_compound_spec(spec: dict) -> bool:
+    """Check if a Vega-Lite spec is compound (facet/concat/repeat).
+
+    Compound specs don't support responsive container sizing — only
+    single-view and layered specs do.
+    """
+    return any(k in spec for k in ("facet", "hconcat", "vconcat", "concat", "repeat"))
+
+
+# Vega-Lite's default gap between facet cells.
+_VL_FACET_SPACING_DEFAULT = 20
+
+
+def _fit_compound_width(spec: dict, container_width: int, padding: int) -> None:
+    """Hot-fix: calculate per-cell width for faceted specs so the chart
+    fits horizontally in its container.
+
+    Vega-Lite compound specs don't support width:"container".  For faceted
+    specs we know `columns` at compile time, so we can derive the per-cell
+    width.  Height is left to Vega's default because the number of rows
+    depends on the data (unknown at layout time).
+
+    TODO: revisit with a proper facet sizing strategy.
+    """
+    columns = spec.get("columns", 1)
+    spacing = _VL_FACET_SPACING_DEFAULT
+    # Check for user-specified spacing in config
+    cfg = spec.get("config", {})
+    facet_cfg = cfg.get("facet", {})
+    if isinstance(facet_cfg.get("spacing"), (int, float)):
+        spacing = facet_cfg["spacing"]
+
+    available = container_width - padding * 2
+    cell_width = max(1, (available - spacing * (columns - 1)) // columns)
+
+    # Set width on the inner spec (cell-level), not top-level
+    if "spec" in spec:
+        inner = dict(spec["spec"])
+        inner["width"] = cell_width
+        spec["spec"] = inner
+    else:
+        # Non-facet compound (concat/repeat) — best-effort top-level
+        spec["width"] = cell_width
+
+
 def wrap_html_page(
     dashboard_name: str,
     body_html: str,
@@ -132,10 +211,14 @@ def wrap_html_page(
     canvas: Canvas,
     sheet_fit_modes: dict[str, str] | None = None,
     sheet_show_titles: dict[str, bool] | None = None,
+    sheet_content_dims: dict[str, tuple[int, int]] | None = None,
+    sheet_padding: dict[str, int] | None = None,
 ) -> str:
     """Wrap rendered component tree in a full HTML page."""
     fit_modes = sheet_fit_modes or {}
     show_titles = sheet_show_titles or {}
+    content_dims = sheet_content_dims or {}
+    pad_values = sheet_padding or {}
     body_font = theme.layout.font.family.body
 
     # Build vegaEmbed script
@@ -146,10 +229,50 @@ def wrap_html_page(
         for sheet_name, spec in chart_specs.items():
             modified_spec = dict(spec)
             fit = fit_modes.get(sheet_name)
-            if fit in ("width", "fill"):
-                modified_spec["width"] = "container"
-            if fit in ("height", "fill"):
-                modified_spec["height"] = "container"
+
+            if fit is not None:
+                # Transfer the sheet's padding to the Vega spec so
+                # autosize:{contains:"padding"} can absorb it.  CSS
+                # padding is suppressed on fitted sheets (it would shift
+                # the SVG without Vega knowing).  Also strip any theme
+                # config.padding so it doesn't conflict.
+                sheet_pad = pad_values.get(sheet_name, 0)
+                modified_spec["padding"] = sheet_pad
+                if "config" in modified_spec:
+                    config = dict(modified_spec["config"])
+                    config.pop("padding", None)
+                    modified_spec["config"] = config
+
+            compound = _is_compound_spec(modified_spec)
+            dims = content_dims.get(sheet_name)
+
+            if compound and fit and dims:
+                # Hot-fix: compound specs don't support width:"container".
+                # Fit width by calculating per-cell size from columns.
+                # Height is left to Vega (row count is data-dependent).
+                # TODO: revisit with a proper facet sizing strategy.
+                cw, _ch = dims
+                sheet_pad = modified_spec.get("padding", 0)
+                # CSS padding is suppressed for fitted sheets, so Vega
+                # fills the full outer dims.  Reconstruct outer from
+                # content + padding (solver subtracted it).
+                outer_w = cw + sheet_pad * 2
+                if fit in ("width", "fill"):
+                    _fit_compound_width(modified_spec, outer_w, sheet_pad)
+            else:
+                uses_container = False
+                if fit in ("width", "fill"):
+                    modified_spec["width"] = "container"
+                    uses_container = True
+                if fit in ("height", "fill"):
+                    modified_spec["height"] = "container"
+                    uses_container = True
+                if uses_container:
+                    modified_spec["autosize"] = {
+                        "type": "fit",
+                        "contains": "padding",
+                    }
+
             # show_title: false → null out the title
             if show_titles.get(sheet_name) is False:
                 modified_spec["title"] = None
