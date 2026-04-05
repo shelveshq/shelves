@@ -9,9 +9,16 @@ Resolves the style cascade for layout DSL components:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
-from src.schema.layout_schema import RootComponent
+from src.schema.layout_schema import (
+    ButtonComponent,
+    Component,
+    LinkComponent,
+    RootComponent,
+    SheetComponent,
+    TextComponent,
+)
 from src.theme.theme_schema import ThemeSpec
 
 
@@ -106,7 +113,7 @@ _STYLE_EXTRA_KEYS = {
 
 
 def resolve_styles(
-    component: Any,
+    component: Component | RootComponent,
     name: str | None,
     ctx: RenderContext,
     parent_orientation: Literal["horizontal", "vertical"] | None,
@@ -130,11 +137,9 @@ def resolve_styles(
     9. html escape hatch (raw CSS, appended last)
     """
     css: dict[str, str] = {}
-    comp_type = getattr(component, "type", None)
-    is_root = isinstance(component, RootComponent)
 
     # Step 1: Structural CSS
-    if is_root:
+    if isinstance(component, RootComponent):
         css["overflow"] = "hidden"
 
     # Children of horizontal containers are inline-block
@@ -149,29 +154,30 @@ def resolve_styles(
         css["height"] = f"{resolved_height}px"
 
     # Step 3: Theme defaults (font-family for text-bearing components)
-    if comp_type in ("text", "button", "link"):
+    if isinstance(component, (TextComponent, ButtonComponent, LinkComponent)):
         css["font-family"] = ctx.theme.layout.font.family.body
 
     # Step 4: Type defaults
-    if comp_type == "button":
+    if isinstance(component, ButtonComponent):
         for k, v in BUTTON_DEFAULTS.items():
             css[k] = v
-    elif comp_type == "link":
+    elif isinstance(component, LinkComponent):
         for k, v in LINK_DEFAULTS.items():
             css[k] = v
 
     # Step 5: Text preset
-    preset_name = getattr(component, "preset", None)
-    if preset_name and preset_name in ctx.theme.layout.presets:
-        preset = ctx.theme.layout.presets[preset_name]
-        css["font-size"] = f"{preset.font_size}px"
-        css["font-weight"] = str(preset.font_weight)
-        css["color"] = preset.color
-        if preset.text_align:
-            css["text-align"] = preset.text_align
+    if isinstance(component, TextComponent) and component.preset:
+        preset_name = component.preset
+        if preset_name in ctx.theme.layout.presets:
+            preset = ctx.theme.layout.presets[preset_name]
+            css["font-size"] = f"{preset.font_size}px"
+            css["font-weight"] = str(preset.font_weight)
+            css["color"] = preset.color
+            if preset.text_align:
+                css["text-align"] = preset.text_align
 
     # Step 6: Inline extras from __pydantic_extra__ (includes style-merged visual props)
-    extras = getattr(component, "__pydantic_extra__", None) or {}
+    extras = component.__pydantic_extra__ or {}
     for key, val in extras.items():
         if key in _STYLE_EXTRA_KEYS and val is not None:
             css_name = _css_prop_name(key)
@@ -185,21 +191,19 @@ def resolve_styles(
             else:
                 css[css_name] = str(val)
 
-    # Step 8: Margin and padding
-    margin = getattr(component, "margin", None)
-    margin_css = _format_spacing(margin)
+    # Step 7: Margin and padding
+    margin_css = _format_spacing(component.margin)
     if margin_css:
         css["margin"] = margin_css
 
-    # Step 9: Sheet fit CSS
-    fit = getattr(component, "fit", None)
+    # Step 8: Sheet fit CSS
+    fit = component.fit if isinstance(component, SheetComponent) else None
 
     # For fitted sheets, skip CSS padding — Vega-Lite will handle it via
     # its own padding + autosize:{contains:"padding"}.  CSS padding would
     # shift the SVG inside the div without Vega knowing about it.
-    if not (comp_type == "sheet" and fit is not None):
-        padding = getattr(component, "padding", None)
-        padding_css = _format_spacing(padding)
+    if not (isinstance(component, SheetComponent) and fit is not None):
+        padding_css = _format_spacing(component.padding)
         if padding_css:
             css["padding"] = padding_css
 
@@ -210,8 +214,8 @@ def resolve_styles(
     elif fit == "fill":
         css["overflow"] = "hidden"
 
-    # Step 10: Serialize CSS dict
-    html_escape = getattr(component, "html", None)
+    # Step 9: Serialize CSS dict
+    html_escape = component.html
 
     parts = [f"{k}: {v}" for k, v in css.items()]
     result = "; ".join(parts)

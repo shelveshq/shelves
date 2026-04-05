@@ -13,15 +13,10 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.schema.layout_schema import Component, ContainerComponent, RootComponent
 from src.translator.layout_flatten import FlatNode
 
 _SIZE_RE = re.compile(r"^(\d+)(px|%)?$")
-
-
-def _is_container(comp: Any) -> bool:
-    """Check if a component is a container (horizontal/vertical)."""
-    comp_type = getattr(comp, "type", None)
-    return comp_type in ("horizontal", "vertical")
 
 
 @dataclass
@@ -29,7 +24,7 @@ class ResolvedNode:
     """Output of the layout solver for a single element."""
 
     name: str | None
-    component: Any
+    component: Component | RootComponent
     outer_width: int
     outer_height: int
     content_width: int
@@ -272,9 +267,9 @@ def _resolve_children(
 
         # Recurse for containers using pre-resolved FlatNode children
         children: list[ResolvedNode] = []
-        if _is_container(comp):
+        if isinstance(comp, ContainerComponent):
             child_orientation = comp.type
-            child_gap = getattr(comp, "gap", 0) or 0
+            child_gap = comp.gap or 0
             children = _resolve_children(
                 flat_child.children,
                 content_w,
@@ -304,6 +299,9 @@ def solve_layout(flat_tree: FlatNode) -> ResolvedNode:
     root = flat_tree.component
     canvas = flat_tree.canvas
 
+    if not isinstance(root, RootComponent) or canvas is None:
+        raise ValueError("solve_layout requires a root FlatNode with canvas")
+
     # Root resolution
     root_margin = parse_spacing(root.margin)
     root_outer_w = canvas.width - root_margin[1] - root_margin[3]
@@ -313,7 +311,7 @@ def solve_layout(flat_tree: FlatNode) -> ResolvedNode:
     root_content_w = max(root_outer_w - root_padding[1] - root_padding[3], 0)
     root_content_h = max(root_outer_h - root_padding[0] - root_padding[2], 0)
 
-    root_gap = getattr(root, "gap", 0) or 0
+    root_gap = root.gap or 0
 
     children = _resolve_children(
         flat_tree.children,

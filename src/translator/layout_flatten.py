@@ -15,7 +15,11 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from src.schema.layout_schema import (
+    Canvas,
+    Component,
+    ContainerComponent,
     DashboardSpec,
+    RootComponent,
     StyleProperties,
     resolve_child,
 )
@@ -35,10 +39,10 @@ class FlatNode:
     """A fully-resolved node in the flattened tree. No indirection."""
 
     name: str | None
-    component: Any
+    component: Component | RootComponent
     children: list[FlatNode]
     origins: dict[str, PropertyOrigin]
-    canvas: Any = field(default=None)  # Canvas — only present on the root node
+    canvas: Canvas | None = field(default=None)  # only present on the root node
 
 
 def _merge_style_onto_component(
@@ -106,13 +110,12 @@ def _flatten_children(
 
         # Merge style if referenced
         origins: dict[str, PropertyOrigin] = {}
-        style_ref = getattr(comp, "style", None)
-        if style_ref and style_ref in styles:
-            comp, origins = _merge_style_onto_component(comp, styles[style_ref], style_ref)
+        if comp.style and comp.style in styles:
+            comp, origins = _merge_style_onto_component(comp, styles[comp.style], comp.style)
 
         # Recurse into containers
         children: list[FlatNode] = []
-        if hasattr(comp, "contains") and comp.contains:
+        if isinstance(comp, ContainerComponent) and comp.contains:
             children = _flatten_children(comp.contains, components, styles)
 
         result.append(FlatNode(name=name, component=comp, children=children, origins=origins))
@@ -131,11 +134,10 @@ def flatten_dashboard(spec: DashboardSpec) -> FlatNode:
     components = spec.components or {}
 
     # Handle root's own style
-    root = spec.root.model_copy()
+    root: RootComponent = spec.root.model_copy()
     root_origins: dict[str, PropertyOrigin] = {}
-    style_ref = getattr(root, "style", None)
-    if style_ref and style_ref in styles:
-        root, root_origins = _merge_style_onto_component(root, styles[style_ref], style_ref)
+    if root.style and root.style in styles:
+        root, root_origins = _merge_style_onto_component(root, styles[root.style], root.style)
 
     # Walk root.contains
     root_children = _flatten_children(root.contains, components, styles)

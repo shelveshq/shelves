@@ -13,10 +13,16 @@ import json
 from typing import Literal
 
 from src.schema.layout_schema import (
+    BlankComponent,
+    ButtonComponent,
     Canvas,
     ContainerComponent,
     DashboardSpec,
+    ImageComponent,
+    LinkComponent,
     RootComponent,
+    SheetComponent,
+    TextComponent,
 )
 from src.theme.theme_schema import ThemeSpec
 from src.translator.layout_flatten import flatten_dashboard
@@ -53,11 +59,11 @@ def translate_dashboard(
     )
 
 
-def _get_orientation(defn: object) -> str:
+def _get_orientation(defn: RootComponent | ContainerComponent) -> Literal["horizontal", "vertical"]:
     """Get orientation from a container or root component."""
     if isinstance(defn, RootComponent):
         return defn.orientation
-    return getattr(defn, "type", "vertical")
+    return defn.type
 
 
 def render_node(
@@ -68,7 +74,6 @@ def render_node(
     """Recursively render a ResolvedNode tree to HTML."""
     defn = node.component
     name = node.name
-    comp_type = getattr(defn, "type", None)
 
     # Resolve CSS styles with solver-computed dimensions
     css = resolve_styles(
@@ -85,7 +90,7 @@ def render_node(
     # Dispatch on type
     if isinstance(defn, (ContainerComponent, RootComponent)):
         orientation = _get_orientation(defn)
-        gap = getattr(defn, "gap", 0) or 0
+        gap = defn.gap or 0
         child_htmls = [render_node(c, ctx, parent_orientation=orientation) for c in node.children]
 
         if gap and len(child_htmls) > 1:
@@ -115,32 +120,31 @@ def render_node(
 
         return f'<div style="{safe_css}">{inner}</div>'
 
-    elif comp_type == "sheet":
-        sheet_name = name or getattr(defn, "name", None) or ctx.next_auto_id()
-        fit = getattr(defn, "fit", None)
-        if fit is not None:
-            ctx.sheet_fit_modes[sheet_name] = fit
-        show_title = getattr(defn, "show_title", True)
-        if not show_title:
+    elif isinstance(defn, SheetComponent):
+        sheet_name = name or defn.name or ctx.next_auto_id()
+        if defn.fit is not None:
+            ctx.sheet_fit_modes[sheet_name] = defn.fit
+        if not defn.show_title:
             ctx.sheet_show_titles[sheet_name] = False
         ctx.sheet_content_dims[sheet_name] = (node.content_width, node.content_height)
-        pad = getattr(defn, "padding", None)
-        if pad is not None and fit is not None:
-            ctx.sheet_padding[sheet_name] = int(pad) if isinstance(pad, (int, float)) else 0
+        if defn.padding is not None and defn.fit is not None:
+            ctx.sheet_padding[sheet_name] = (
+                int(defn.padding) if isinstance(defn.padding, (int, float)) else 0
+            )
         safe_name = html.escape(sheet_name, quote=True)
         return f'<div id="sheet-{safe_name}" style="{safe_css}"></div>'
 
-    elif comp_type == "text":
+    elif isinstance(defn, TextComponent):
         escaped_content = html.escape(defn.content)
         return f'<div style="{safe_css}">{escaped_content}</div>'
 
-    elif comp_type in ("button", "link"):
+    elif isinstance(defn, (ButtonComponent, LinkComponent)):
         target_attr = f' target="{defn.target}"' if defn.target != "_self" else ""
         escaped_text = html.escape(defn.text)
         escaped_href = html.escape(defn.href, quote=True)
         return f'<a href="{escaped_href}"{target_attr} style="{safe_css}">{escaped_text}</a>'
 
-    elif comp_type == "image":
+    elif isinstance(defn, ImageComponent):
         escaped_src = html.escape(defn.src, quote=True)
         escaped_alt = html.escape(defn.alt, quote=True)
         img_css = css
@@ -152,7 +156,7 @@ def render_node(
         safe_img_css = html.escape(img_css, quote=True)
         return f'<img src="{escaped_src}" alt="{escaped_alt}" style="{safe_img_css}">'
 
-    elif comp_type == "blank":
+    elif isinstance(defn, BlankComponent):
         return f'<div style="{safe_css}"></div>'
 
     return ""
