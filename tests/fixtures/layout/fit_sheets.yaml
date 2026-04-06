@@ -1,0 +1,29 @@
+dashboard: "Fit Sheets Demo"
+canvas:
+  width: 1440
+  height: 900
+
+root:
+  orientation: vertical
+  padding: 24
+  gap: 16
+  contains:
+    - horizontal:
+        height: 400
+        gap: 16
+        contains:
+          - sheet: charts/wide_chart.yaml
+            name: wide_chart
+            fit: width
+            width: "50%"
+          - sheet: charts/tall_chart.yaml
+            name: tall_chart
+            fit: height
+
+    - sheet: charts/full_chart.yaml
+      name: full_chart
+      fit: fill
+
+    - sheet: charts/fixed_chart.yaml
+      name: fixed_chart
+      height: 200

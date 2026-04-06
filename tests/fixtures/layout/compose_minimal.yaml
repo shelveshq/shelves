@@ -1,0 +1,8 @@
+dashboard: "Compose Test"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: simple_bar.yaml
+      name: revenue_chart
+      width: "100%"

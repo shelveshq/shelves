@@ -1,0 +1,11 @@
+dashboard: "Fit Modes"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: simple_bar.yaml
+      name: wide_chart
+      fit: width
+    - sheet: simple_bar.yaml
+      name: full_chart
+      fit: fill

@@ -1,0 +1,73 @@
+dashboard: "Sales Overview"
+description: "Weekly sales KPIs and revenue trends"
+canvas:
+  width: 1440
+  height: 900
+
+styles:
+  card:
+    background: "#FFFFFF"
+    border: "1px solid #E5E7EB"
+    border_radius: 8
+    shadow: "0 1px 3px rgba(0,0,0,0.08)"
+
+components:
+  kpi_revenue:
+    sheet: charts/kpi_revenue.yaml
+    style: card
+  kpi_orders:
+    sheet: charts/kpi_orders.yaml
+    style: card
+  kpi_arpu:
+    sheet: charts/kpi_arpu.yaml
+    style: card
+  kpi_customers:
+    sheet: charts/kpi_customers.yaml
+    style: card
+
+root:
+  orientation: vertical
+  padding: 24
+  gap: 20
+  contains:
+
+    # ── Header ──
+    - horizontal:
+        height: 56
+        gap: 12
+        padding: "0 24"
+        background: "#F8F9FA"
+        border_bottom: "1px solid #DEE2E6"
+        contains:
+          - image: assets/logo.svg
+            alt: "Acme Corp"
+            height: 28
+            width: 100
+          - text: "Sales Overview"
+            preset: title
+            font_size: 20
+          - blank:
+          - button: "Detailed Report →"
+            href: "/dashboards/sales_detail"
+
+    # ── KPI Row ──
+    - horizontal:
+        height: 120
+        gap: 16
+        contains:
+          - kpi_revenue
+          - kpi_orders
+          - kpi_arpu
+          - kpi_customers
+
+    # ── Charts Row ──
+    - horizontal:
+        gap: 16
+        contains:
+          - sheet: charts/revenue_by_country.yaml
+            width: "60%"
+            style: card
+            padding: 12
+          - sheet: charts/orders_trend.yaml
+            style: card
+            padding: 12

@@ -1,0 +1,9 @@
+dashboard: "Minimal Dashboard"
+canvas:
+  width: 1440
+  height: 900
+root:
+  orientation: vertical
+  contains:
+    - text: "Hello World"
+      preset: title

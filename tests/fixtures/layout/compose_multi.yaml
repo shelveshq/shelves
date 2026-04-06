@@ -1,0 +1,13 @@
+dashboard: "Multi Chart"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        contains:
+          - sheet: simple_bar.yaml
+            name: bar_chart
+            width: "50%"
+          - sheet: line_chart.yaml
+            name: line_chart
+            width: "50%"

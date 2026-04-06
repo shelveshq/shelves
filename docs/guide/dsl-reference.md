@@ -588,6 +588,14 @@ facet:
 
 ---
 
+## Dashboards (Layout DSL)
+
+Charter also supports a Layout DSL for composing multi-chart dashboards. Dashboard YAML files use a different top-level structure (`dashboard`, `canvas`, `root` instead of `sheet`, `cols`, `rows`).
+
+See the **[Dashboards guide](./dashboards.md)** for the complete Layout DSL reference.
+
+---
+
 ## Not yet supported
 
 The following features are parsed and validated by the schema but **will raise `NotImplementedError` at compilation time**. They are planned for upcoming releases.

@@ -78,6 +78,40 @@ rows: revenue
 marks: bar
 ```
 
+## Rendering a dashboard
+
+Dashboards compose multiple charts into a single HTML page with layout, text, navigation, and styling. Write a dashboard YAML file that references your chart files:
+
+```yaml
+# dashboards/sales_overview.yaml
+dashboard: "Sales Overview"
+canvas: { width: 1440, height: 900 }
+
+root:
+  orientation: vertical
+  contains:
+    - text: "Sales Overview"
+      preset: title
+      padding: "16 24"
+    - horizontal:
+        padding: "0 24"
+        contains:
+          - sheet: "charts/revenue.yaml"
+            width: "60%"
+          - sheet: "charts/orders.yaml"
+            width: "40%"
+```
+
+Then render it:
+
+```bash
+python -m src.cli.render dashboards/sales_overview.yaml
+```
+
+For dashboards, each chart resolves its own data from its data model's configured source. The `--data` flag is not used with dashboard files — pass it only when rendering individual charts.
+
+See the [Dashboards guide](./dashboards.md) for the full Layout DSL reference, component types, styling, and complete examples.
+
 ## Python API
 
 ```python

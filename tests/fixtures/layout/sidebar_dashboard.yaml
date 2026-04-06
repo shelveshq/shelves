@@ -1,0 +1,63 @@
+dashboard: "Executive Summary"
+canvas:
+  width: 1440
+  height: 900
+
+styles:
+  card:
+    background: "#FFFFFF"
+    border: "1px solid #E5E7EB"
+    border_radius: 8
+    shadow: "0 1px 3px rgba(0,0,0,0.08)"
+
+root:
+  orientation: horizontal
+  contains:
+
+    # ── Sidebar ──
+    - vertical:
+        width: 220
+        background: "#1E293B"
+        padding: "24 16"
+        gap: 8
+        contains:
+          - image: assets/logo_white.svg
+            height: 24
+            width: 100
+          - blank:
+            height: 16
+          - button: "Overview"
+            href: "/dashboards/overview"
+            color: "#FFFFFF"
+            html: "font-weight: bold;"
+          - button: "Sales"
+            href: "/dashboards/sales"
+            color: "#94A3B8"
+          - button: "Customers"
+            href: "/dashboards/customers"
+            color: "#94A3B8"
+
+    # ── Main content ──
+    - vertical:
+        padding: 24
+        gap: 16
+        contains:
+          - text: "Executive Summary"
+            preset: title
+          - text: "Updated daily · All figures in USD"
+            preset: caption
+
+          - horizontal:
+              gap: 16
+              contains:
+                - sheet: charts/revenue_trend.yaml
+                  width: "65%"
+                  style: card
+                  padding: 12
+                - sheet: charts/revenue_by_region.yaml
+                  style: card
+                  padding: 12
+
+          - sheet: charts/order_details.yaml
+            style: card
+            padding: 12

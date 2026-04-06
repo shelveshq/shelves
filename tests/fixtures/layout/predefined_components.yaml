@@ -1,0 +1,49 @@
+dashboard: "Multi-Page Overview"
+canvas: { width: 1440, height: 900 }
+
+styles:
+  card:
+    background: "#FFFFFF"
+    border_radius: 8
+    shadow: "0 1px 3px rgba(0,0,0,0.08)"
+
+components:
+  page_title:
+    text: "Overview"
+    preset: title
+
+  kpi_revenue:
+    sheet: charts/kpi_revenue.yaml
+    style: card
+
+  kpi_orders:
+    sheet: charts/kpi_orders.yaml
+    style: card
+
+  kpi_row:
+    horizontal:
+      height: 140
+      gap: 16
+      contains:
+        - sheet: charts/kpi_revenue.yaml
+          style: card
+        - sheet: charts/kpi_orders.yaml
+          style: card
+
+root:
+  orientation: vertical
+  padding: 24
+  gap: 20
+  contains:
+    - page_title
+    - kpi_row
+    - horizontal:
+        gap: 16
+        contains:
+          - sheet: charts/revenue.yaml
+            width: "60%"
+            style: card
+            padding: 12
+          - sheet: charts/orders.yaml
+            style: card
+            padding: 12
