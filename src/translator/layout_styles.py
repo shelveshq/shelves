@@ -55,7 +55,7 @@ class RenderContext:
     sheet_fit_modes: dict[str, str] = field(default_factory=dict)
     sheet_show_titles: dict[str, bool] = field(default_factory=dict)
     sheet_content_dims: dict[str, tuple[int, int]] = field(default_factory=dict)
-    sheet_padding: dict[str, int] = field(default_factory=dict)
+    sheet_padding: dict[str, int | dict[str, int]] = field(default_factory=dict)
 
     def next_auto_id(self) -> str:
         """Generate next auto-ID for anonymous sheets."""

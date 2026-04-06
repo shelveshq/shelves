@@ -457,10 +457,9 @@ root:
   contains:
     - text: "Only"
 """)
-        # The gap value should not appear in the output since there's nothing to space
-        # (20px may appear as a size elsewhere, so check no spacer div specifically)
         # With one child, no spacer div should be inserted
-        assert html.count("height: 20px") == 0 or "Only" in html
+        # Check that no spacer div with the gap height exists
+        assert '<div style="height: 20px;"></div>' not in html
 
     def test_horizontal_gap_spacer_count(self):
         """N children should produce N-1 spacer divs."""
@@ -652,6 +651,58 @@ root:
         assert "padding" not in spec.get("config", {})
         # Other config properties preserved
         assert spec["config"]["mark"]["color"] == "red"
+
+    def test_fit_sheet_string_padding_transferred_to_vega(self):
+        """A fitted sheet with string padding shorthand should transfer per-side
+        padding to the Vega spec as a {top, right, bottom, left} object."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: asym
+      fit: fill
+      padding: "8 16"
+""",
+            chart_specs={"asym": {"mark": "bar"}},
+        )
+
+        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m.group(1))
+        spec = specs["sheet-asym"]
+        # String "8 16" → {top:8, right:16, bottom:8, left:16}
+        assert spec["padding"] == {"top": 8, "right": 16, "bottom": 8, "left": 16}
+
+    def test_fit_sheet_four_value_padding_transferred_to_vega(self):
+        """A fitted sheet with 4-value padding shorthand should transfer correctly."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: fourpad
+      fit: fill
+      padding: "10 20 30 40"
+""",
+            chart_specs={"fourpad": {"mark": "bar"}},
+        )
+
+        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m.group(1))
+        spec = specs["sheet-fourpad"]
+        assert spec["padding"] == {"top": 10, "right": 20, "bottom": 30, "left": 40}
 
     def test_no_fit_keeps_css_padding_and_vega_padding(self):
         """Without fit mode, both CSS padding and Vega config.padding stay as-is."""

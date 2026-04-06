@@ -81,7 +81,7 @@ def _build(
         yaml_string = yaml_path.read_text()
         raw = yaml_lib.safe_load(yaml_string)
 
-        if "dashboard" in raw:
+        if isinstance(raw, dict) and "dashboard" in raw:
             html = _build_dashboard(
                 yaml_path, no_theme, theme_path, chart_dir, data_dir, models_dir
             )
@@ -260,7 +260,7 @@ def main():
 
     # Detect mode
     raw = yaml_lib.safe_load(yaml_path.read_text())
-    is_dashboard = "dashboard" in raw
+    is_dashboard = isinstance(raw, dict) and "dashboard" in raw
 
     state = _State()
 

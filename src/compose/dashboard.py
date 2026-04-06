@@ -105,7 +105,7 @@ def _walk_flat_tree(
     """Recursively walk a FlatNode tree and collect sheet components."""
     comp = node.component
     if isinstance(comp, SheetComponent):
-        sheet_name = getattr(comp, "name", None) or node.name or f"auto-{_next_auto(auto_counter)}"
+        sheet_name = node.name or f"auto-{_next_auto(auto_counter)}"
         if sheet_name not in sheets:
             sheets[sheet_name] = comp.link
     for child in node.children:

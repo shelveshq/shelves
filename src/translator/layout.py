@@ -26,7 +26,7 @@ from src.schema.layout_schema import (
 )
 from src.theme.theme_schema import ThemeSpec
 from src.translator.layout_flatten import flatten_dashboard
-from src.translator.layout_solver import ResolvedNode, solve_layout
+from src.translator.layout_solver import ResolvedNode, parse_spacing, solve_layout
 from src.translator.layout_styles import RenderContext, resolve_styles
 
 
@@ -104,10 +104,13 @@ def render_node(
             total_gap = gap * (len(child_htmls) - 1)
 
             if children_total + total_gap > available:
-                raise ValueError(
+                import warnings
+
+                warnings.warn(
                     f"Gap of {gap}px ({total_gap}px total) does not fit in container "
                     f"'{node.name or 'root'}': children use {children_total}px, "
-                    f"content area is {available}px"
+                    f"content area is {available}px",
+                    stacklevel=2,
                 )
 
             if orientation == "horizontal":
@@ -121,16 +124,23 @@ def render_node(
         return f'<div style="{safe_css}">{inner}</div>'
 
     elif isinstance(defn, SheetComponent):
-        sheet_name = name or defn.name or ctx.next_auto_id()
+        sheet_name = name or ctx.next_auto_id()
         if defn.fit is not None:
             ctx.sheet_fit_modes[sheet_name] = defn.fit
         if not defn.show_title:
             ctx.sheet_show_titles[sheet_name] = False
         ctx.sheet_content_dims[sheet_name] = (node.content_width, node.content_height)
         if defn.padding is not None and defn.fit is not None:
-            ctx.sheet_padding[sheet_name] = (
-                int(defn.padding) if isinstance(defn.padding, (int, float)) else 0
-            )
+            top, right, bottom, left = parse_spacing(defn.padding)
+            if top == right == bottom == left:
+                ctx.sheet_padding[sheet_name] = top
+            else:
+                ctx.sheet_padding[sheet_name] = {
+                    "top": top,
+                    "right": right,
+                    "bottom": bottom,
+                    "left": left,
+                }
         safe_name = html.escape(sheet_name, quote=True)
         return f'<div id="sheet-{safe_name}" style="{safe_css}"></div>'
 
@@ -175,7 +185,7 @@ def _is_compound_spec(spec: dict) -> bool:
 _VL_FACET_SPACING_DEFAULT = 20
 
 
-def _fit_compound_width(spec: dict, container_width: int, padding: int) -> None:
+def _fit_compound_width(spec: dict, container_width: int, padding: int | dict[str, int]) -> None:
     """Hot-fix: calculate per-cell width for faceted specs so the chart
     fits horizontally in its container.
 
@@ -194,7 +204,11 @@ def _fit_compound_width(spec: dict, container_width: int, padding: int) -> None:
     if isinstance(facet_cfg.get("spacing"), (int, float)):
         spacing = facet_cfg["spacing"]
 
-    available = container_width - padding * 2
+    if isinstance(padding, dict):
+        h_pad = padding.get("left", 0) + padding.get("right", 0)
+    else:
+        h_pad = int(padding) * 2
+    available = container_width - h_pad
     cell_width = max(1, (available - spacing * (columns - 1)) // columns)
 
     # Set width on the inner spec (cell-level), not top-level
@@ -216,7 +230,7 @@ def wrap_html_page(
     sheet_fit_modes: dict[str, str] | None = None,
     sheet_show_titles: dict[str, bool] | None = None,
     sheet_content_dims: dict[str, tuple[int, int]] | None = None,
-    sheet_padding: dict[str, int] | None = None,
+    sheet_padding: dict[str, int | dict[str, int]] | None = None,
 ) -> str:
     """Wrap rendered component tree in a full HTML page."""
     fit_modes = sheet_fit_modes or {}
@@ -256,13 +270,18 @@ def wrap_html_page(
                 # Height is left to Vega (row count is data-dependent).
                 # TODO: revisit with a proper facet sizing strategy.
                 cw, _ch = dims
-                sheet_pad = modified_spec.get("padding", 0)
+                raw_pad = modified_spec.get("padding", 0)
+                # Extract horizontal padding for width calculation
+                if isinstance(raw_pad, dict):
+                    h_pad = raw_pad.get("left", 0) + raw_pad.get("right", 0)
+                else:
+                    h_pad = int(raw_pad) * 2
                 # CSS padding is suppressed for fitted sheets, so Vega
                 # fills the full outer dims.  Reconstruct outer from
                 # content + padding (solver subtracted it).
-                outer_w = cw + sheet_pad * 2
+                outer_w = cw + h_pad
                 if fit in ("width", "fill"):
-                    _fit_compound_width(modified_spec, outer_w, sheet_pad)
+                    _fit_compound_width(modified_spec, outer_w, raw_pad)
             else:
                 uses_container = False
                 if fit in ("width", "fill"):

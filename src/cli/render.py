@@ -56,7 +56,7 @@ def main():
     yaml_string = Path(args.yaml_path).read_text()
     raw = yaml_lib.safe_load(yaml_string)
 
-    if "dashboard" in raw:
+    if isinstance(raw, dict) and "dashboard" in raw:
         _render_dashboard(args, raw)
     else:
         _render_chart(args, yaml_string)

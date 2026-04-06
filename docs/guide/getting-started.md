@@ -88,20 +88,18 @@ dashboard: "Sales Overview"
 canvas: { width: 1440, height: 900 }
 
 root:
-  type: root
   orientation: vertical
   contains:
-    - type: text
-      content: "Sales Overview"
+    - text: "Sales Overview"
       preset: title
       padding: "16 24"
-    - charts:
-        type: container
-        orientation: horizontal
+    - horizontal:
         padding: "0 24"
         contains:
-          - revenue: { type: sheet, link: "charts/revenue.yaml", width: "60%" }
-          - orders: { type: sheet, link: "charts/orders.yaml", width: "40%" }
+          - sheet: "charts/revenue.yaml"
+            width: "60%"
+          - sheet: "charts/orders.yaml"
+            width: "40%"
 ```
 
 Then render it:

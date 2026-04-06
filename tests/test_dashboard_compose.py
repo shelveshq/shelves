@@ -74,6 +74,40 @@ class TestDashboardCompose:
         assert 'id="sheet-revenue"' in html
         assert "vegaEmbed" in html
 
+    def test_compose_predefined_with_divergent_name(self):
+        """When a predefined component's ref name differs from its name property,
+        the chart spec key and HTML element ID must still match (both use ref name)."""
+
+        # Write a temp fixture: ref name is "rev_kpi", but name property is "revenue"
+        yaml_str = """\
+dashboard: "Divergent Name"
+canvas: { width: 800, height: 600 }
+components:
+  rev_kpi:
+    sheet: simple_bar.yaml
+    name: revenue
+root:
+  orientation: vertical
+  contains:
+    - rev_kpi
+"""
+        dashboard_path = LAYOUT_DIR / "_tmp_divergent_name.yaml"
+        dashboard_path.write_text(yaml_str)
+        try:
+            html = compose_dashboard(
+                dashboard_path=dashboard_path,
+                chart_base_dir=YAML_DIR,
+                data_dir=DATA_DIR,
+                models_dir=MODELS_DIR,
+            )
+            # The ref name "rev_kpi" should be used everywhere, not "revenue"
+            assert 'id="sheet-rev_kpi"' in html
+            assert "vegaEmbed" in html
+            # The chart spec must be keyed by the same name used in the DOM
+            assert "sheet-rev_kpi" in html
+        finally:
+            dashboard_path.unlink(missing_ok=True)
+
     def test_compose_with_fit_modes(self):
         """fit property flows through to VL spec and CSS."""
         html = _compose("compose_fit.yaml")

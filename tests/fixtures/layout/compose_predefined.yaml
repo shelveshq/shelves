@@ -4,7 +4,6 @@ canvas: { width: 1440, height: 900 }
 components:
   revenue:
     sheet: simple_bar.yaml
-    name: revenue
     width: "60%"
 
 root:

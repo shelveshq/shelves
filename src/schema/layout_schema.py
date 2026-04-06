@@ -89,7 +89,6 @@ class SheetComponent(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: Literal["sheet"] = "sheet"
     link: str
-    name: str | None = None
     fit: Literal["width", "height", "fill"] | None = None
     show_title: bool = True
     width: SizeValue = None
@@ -265,7 +264,13 @@ def resolve_child(
     if not type_keys:
         raise ValueError(f"No known type key found in {node!r}. Known types: {sorted(KNOWN_TYPES)}")
 
-    type_key = type_keys.pop()
+    if len(type_keys) > 1:
+        raise ValueError(
+            f"Multiple known type keys found in {node!r}: {sorted(type_keys)}. "
+            "Exactly one known type key is required."
+        )
+
+    type_key = next(iter(type_keys))
 
     # Shape 2: Leaf type (multi-key dict)
     if type_key in KNOWN_LEAF_TYPES:
