@@ -236,13 +236,15 @@ class TestLoader:
         model = load_model("orders", models_dir=FIXTURES_DIR)
         assert model.model == "orders"
 
-    def test_different_dirs_cached_independently(self):
+    def test_different_dirs_cached_independently(self, tmp_path):
         """Two different models_dir values produce independent cache entries."""
         # Load from FIXTURES_DIR
         m1 = load_model("orders", models_dir=FIXTURES_DIR)
-        # Load from the production models dir (same file content, different path)
-        production_dir = Path(__file__).parent.parent / "models"
-        m2 = load_model("orders", models_dir=production_dir)
+        # Copy the model to a temp dir so we have two distinct paths
+        import shutil
+
+        shutil.copy(FIXTURES_DIR / "orders.yaml", tmp_path / "orders.yaml")
+        m2 = load_model("orders", models_dir=tmp_path)
         # Different cache keys → different instances
         assert m1 is not m2
         # But same logical content
