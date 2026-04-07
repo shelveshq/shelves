@@ -10,7 +10,7 @@ build/
 docs/plans/
 /model
 .coverage
-models/cube_*.yaml
+models/
 charts/
 dashboards/
 .env
