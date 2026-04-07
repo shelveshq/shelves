@@ -7,7 +7,7 @@ Tests for multi-measure shelves compiled to repeat or vconcat.
 import pytest
 from shelves.schema.chart_schema import parse_chart
 from shelves.translator.translate import translate_chart
-from tests.conftest import load_yaml, compile_fixture
+from tests.conftest import load_yaml, compile_fixture, MODELS_DIR
 
 
 class TestStackedPanels:
@@ -117,4 +117,4 @@ rows:
         assert spec.rows[0].axis == "independent"
 
         with pytest.raises(NotImplementedError):
-            translate_chart(spec)
+            translate_chart(spec, models_dir=MODELS_DIR)

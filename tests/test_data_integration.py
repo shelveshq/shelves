@@ -53,7 +53,7 @@ class TestResolveData:
     def test_no_cube_source_raises_when_no_rows(self, simple_vl, simple_spec):
         # orders model has inline source, not cube — should raise ValueError
         with pytest.raises(ValueError, match="No data provided"):
-            resolve_data(simple_vl, simple_spec)
+            resolve_data(simple_vl, simple_spec, models_dir=MODELS_DIR)
 
     @respx.mock
     def test_cube_fetch_when_no_rows(self, monkeypatch):

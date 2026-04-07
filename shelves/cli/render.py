@@ -88,9 +88,10 @@ def _render_dashboard(args, raw):
 def _render_chart(args, yaml_string):
     """Render a chart YAML file (existing pipeline)."""
     spec = parse_chart(yaml_string)
+    models_dir = Path(args.models_dir) if args.models_dir else None
 
     # Translate
-    vl_spec = translate_chart(spec)
+    vl_spec = translate_chart(spec, models_dir=models_dir)
 
     # Theme
     if not args.no_theme:
@@ -108,7 +109,7 @@ def _render_chart(args, yaml_string):
         # Try to auto-load from model's configured source
         from shelves.models.loader import load_model
 
-        model = load_model(spec.data)
+        model = load_model(spec.data, models_dir=models_dir)
         if model.source and model.source.type == "inline":
             data_path = Path(model.source.path)
             if data_path.exists():
@@ -118,7 +119,7 @@ def _render_chart(args, yaml_string):
                 print(f"Warning: model source path {data_path} not found")
         else:
             # Cube source or no source — try Cube.dev
-            vl_spec = resolve_data(vl_spec, spec)
+            vl_spec = resolve_data(vl_spec, spec, models_dir=models_dir)
 
     # Render
     html = render_html(vl_spec, title=spec.sheet)
