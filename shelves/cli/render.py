@@ -21,6 +21,7 @@ import json
 from pathlib import Path
 
 import yaml as yaml_lib
+from dotenv import load_dotenv
 
 from shelves.schema.chart_schema import parse_chart
 from shelves.translator.translate import translate_chart
@@ -30,6 +31,7 @@ from shelves.render.to_html import render_html
 
 
 def main():
+    load_dotenv()
     parser = argparse.ArgumentParser(description="Render a chart or dashboard YAML to HTML")
     parser.add_argument("yaml_path", help="Path to chart or dashboard YAML file")
     parser.add_argument("--data", help="Path to JSON data file (array of row objects)")
