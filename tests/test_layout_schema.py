@@ -11,7 +11,7 @@ These tests define expected behavior for the implementation to follow.
 import pytest
 
 from tests.conftest import load_layout_yaml
-from src.schema.layout_schema import (
+from shelves.schema.layout_schema import (
     parse_dashboard,
     resolve_child,
 )

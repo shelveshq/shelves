@@ -12,10 +12,10 @@ import httpx
 import pytest
 import respx
 
-from src.schema.chart_schema import parse_chart
-from src.models.loader import load_model, clear_model_cache
-from src.models.resolver import ModelResolver
-from src.data.cube_client import (
+from shelves.schema.chart_schema import parse_chart
+from shelves.models.loader import load_model, clear_model_cache
+from shelves.models.resolver import ModelResolver
+from shelves.data.cube_client import (
     CubeConfig,
     CubeConfigError,
     CubeQueryError,

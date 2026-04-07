@@ -10,9 +10,9 @@ These tests define expected behavior for the implementation to follow.
 
 import warnings
 
-from src.schema.layout_schema import parse_dashboard
-from src.translator.layout_flatten import flatten_dashboard
-from src.translator.layout_solver import (
+from shelves.schema.layout_schema import parse_dashboard
+from shelves.translator.layout_flatten import flatten_dashboard
+from shelves.translator.layout_solver import (
     parse_spacing,
     solve_layout,
 )

@@ -12,12 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from src.models.loader import load_model, clear_model_cache
-from src.models.resolver import ModelResolver
-from src.schema.chart_schema import AxisChannelConfig, ColorFieldMapping, ShelfFilter, FieldSort
-from src.translator.encodings import build_color, build_field_encoding, _auto_inject_from_model
-from src.translator.filters import build_transforms
-from src.translator.sort import apply_sort
+from shelves.models.loader import load_model, clear_model_cache
+from shelves.models.resolver import ModelResolver
+from shelves.schema.chart_schema import AxisChannelConfig, ColorFieldMapping, ShelfFilter, FieldSort
+from shelves.translator.encodings import build_color, build_field_encoding, _auto_inject_from_model
+from shelves.translator.filters import build_transforms
+from shelves.translator.sort import apply_sort
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "models"
 

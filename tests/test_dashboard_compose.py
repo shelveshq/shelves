@@ -13,8 +13,8 @@ import pytest
 
 from tests.conftest import DATA_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
 
-from src.compose.dashboard import compose_dashboard
-from src.theme.merge import load_theme
+from shelves.compose.dashboard import compose_dashboard
+from shelves.theme.merge import load_theme
 
 THEMES_DIR = Path(__file__).parent / "fixtures" / "themes"
 
@@ -126,9 +126,9 @@ root:
 
     def test_compose_dashboard_with_no_sheets(self):
         """Dashboard with only text components produces valid HTML, no vegaEmbed calls."""
-        from src.schema.layout_schema import parse_dashboard
-        from src.theme.merge import load_theme as lt
-        from src.translator.layout import translate_dashboard
+        from shelves.schema.layout_schema import parse_dashboard
+        from shelves.theme.merge import load_theme as lt
+        from shelves.translator.layout import translate_dashboard
 
         yaml_str = """\
 dashboard: "Text Only"
@@ -208,7 +208,7 @@ class TestCLI:
             [
                 sys.executable,
                 "-m",
-                "src.cli.render",
+                "shelves.cli.render",
                 "tests/fixtures/layout/compose_minimal.yaml",
                 "--chart-dir",
                 "tests/fixtures/yaml",
@@ -231,7 +231,7 @@ class TestCLI:
             [
                 sys.executable,
                 "-m",
-                "src.cli.render",
+                "shelves.cli.render",
                 "tests/fixtures/yaml/simple_bar.yaml",
                 "--data",
                 "tests/fixtures/data/orders.json",

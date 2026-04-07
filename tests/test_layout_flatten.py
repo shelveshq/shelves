@@ -7,9 +7,9 @@ into a single resolved tree before the solver and renderer consume it.
 
 import warnings
 
-from src.schema.layout_schema import parse_dashboard
-from src.translator.layout_flatten import FlatNode, flatten_dashboard
-from src.translator.layout_solver import solve_layout
+from shelves.schema.layout_schema import parse_dashboard
+from shelves.translator.layout_flatten import FlatNode, flatten_dashboard
+from shelves.translator.layout_solver import solve_layout
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────

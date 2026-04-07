@@ -7,11 +7,11 @@ and the full YAML -> HTML pipeline.
 
 import json
 
-from src.render.to_html import render_html
-from src.theme.merge import merge_theme, load_theme
-from src.data.bind import bind_data
-from src.schema.chart_schema import parse_chart
-from src.translator.translate import translate_chart
+from shelves.render.to_html import render_html
+from shelves.theme.merge import merge_theme, load_theme
+from shelves.data.bind import bind_data
+from shelves.schema.chart_schema import parse_chart
+from shelves.translator.translate import translate_chart
 from tests.conftest import load_yaml, load_data, MODELS_DIR
 
 

@@ -10,6 +10,6 @@
 
 ## Rules
 
-- **DSL changes require doc updates.** Any change to `src/schema/chart_schema.py` MUST be accompanied by updates to `guide/dsl-reference.md` and (if applicable) `guide/getting-started.md`. See `src/schema/CLAUDE.md` for the full list of what triggers this.
+- **DSL changes require doc updates.** Any change to `shelves/schema/chart_schema.py` MUST be accompanied by updates to `guide/dsl-reference.md` and (if applicable) `guide/getting-started.md`. See `shelves/schema/CLAUDE.md` for the full list of what triggers this.
 - **Foundational docs are reference material.** They describe the overall vision and architecture. Update them only when the project direction or high-level architecture changes — not for incremental feature work.
 - **Plans are ephemeral.** They capture implementation strategy for a specific ticket. They don't need to be kept in sync with code after the work is done.

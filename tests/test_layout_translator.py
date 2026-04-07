@@ -10,12 +10,12 @@ These tests define expected behavior for the implementation to follow.
 
 from tests.conftest import load_layout_yaml
 
-from src.schema.layout_schema import (
+from shelves.schema.layout_schema import (
     parse_dashboard,
 )
-from src.theme.merge import load_theme
-from src.translator.layout import translate_dashboard
-from src.translator.layout_styles import RenderContext, resolve_styles
+from shelves.theme.merge import load_theme
+from shelves.translator.layout import translate_dashboard
+from shelves.translator.layout_styles import RenderContext, resolve_styles
 
 
 # ─── Helpers ──────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ def _make_ctx(theme=None):
 
 def _resolve_component_styles(entry, ctx=None, parent_orientation="vertical", **kwargs):
     """Parse a type-led entry, resolve it, and return CSS string."""
-    from src.schema.layout_schema import resolve_child
+    from shelves.schema.layout_schema import resolve_child
 
     _, comp = resolve_child(entry, {})
     ctx = ctx or _make_ctx()
@@ -61,7 +61,7 @@ class TestStyleCascade:
 
     def test_shared_style_applies(self):
         """Shared style properties resolve to CSS after flatten."""
-        from src.translator.layout_flatten import flatten_dashboard
+        from shelves.translator.layout_flatten import flatten_dashboard
 
         yaml_str = """\
 dashboard: "Test"
@@ -100,7 +100,7 @@ root:
 
     def test_full_cascade(self):
         """All levels of the cascade work together."""
-        from src.translator.layout_flatten import flatten_dashboard
+        from shelves.translator.layout_flatten import flatten_dashboard
 
         yaml_str = """\
 dashboard: "Test"

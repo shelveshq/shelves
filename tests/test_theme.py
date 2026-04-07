@@ -6,8 +6,8 @@ Tests for ThemeSpec loading, preset color resolution, and merge_theme integratio
 
 from pathlib import Path
 
-from src.theme.merge import load_theme, merge_theme
-from src.theme.theme_schema import ThemeSpec
+from shelves.theme.merge import load_theme, merge_theme
+from shelves.theme.theme_schema import ThemeSpec
 
 
 # ─── Theme Loading ────────────────────────────────────────────────
