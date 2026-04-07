@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Area-specific context lives in sub-directory `CLAUDE.md` files (`src/schema/`, `src/translator/`, `src/data/`, `src/models/`, `docs/`, `tests/`).
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Area-specific context lives in sub-directory `CLAUDE.md` files (`shelves/schema/`, `shelves/translator/`, `shelves/data/`, `shelves/models/`, `docs/`, `tests/`).
 
 ## What This Project Is
 
@@ -17,8 +17,8 @@ python3 -m venv .venv
 
 # All commands use .venv/bin/ prefix
 .venv/bin/pytest
-.venv/bin/ruff check src tests
-.venv/bin/ruff format src tests
+.venv/bin/ruff check shelves tests
+.venv/bin/ruff format shelves tests
 ```
 
 ## Commands
@@ -28,30 +28,30 @@ python3 -m venv .venv
 .venv/bin/pytest
 
 # Lint and format
-.venv/bin/ruff check src tests
-.venv/bin/ruff format src tests
+.venv/bin/ruff check shelves tests
+.venv/bin/ruff format shelves tests
 
 # Render a chart (inline data)
-.venv/bin/python -m src.cli.render tests/fixtures/yaml/simple_bar.yaml --data tests/fixtures/data/orders.json
+.venv/bin/python -m shelves.cli.render tests/fixtures/yaml/simple_bar.yaml --data tests/fixtures/data/orders.json
 
 # Render a chart (Cube data — requires CUBE_API_URL and CUBE_API_TOKEN env vars)
-.venv/bin/python -m src.cli.render tests/fixtures/yaml/cube_sales_by_category.yaml
+.venv/bin/python -m shelves.cli.render tests/fixtures/yaml/cube_sales_by_category.yaml
 
 # Dev server with live reload (open http://localhost:8089)
-.venv/bin/python -m src.cli.dev tests/fixtures/yaml/simple_bar.yaml --data tests/fixtures/data/orders.json
+.venv/bin/python -m shelves.cli.dev tests/fixtures/yaml/simple_bar.yaml --data tests/fixtures/data/orders.json
 ```
 
 ## Architecture Overview
 
 The pipeline has four stages (each is pure/composable):
 
-1. **Parse** (`src/schema/`) — YAML → `ChartSpec` via Pydantic
-2. **Translate** (`src/translator/`) — `ChartSpec` → Vega-Lite dict
-3. **Compose** (`src/theme/`, `src/render/`) — Theme merge → HTML rendering with vegaEmbed CDN
-4. **Data** (`src/data/`) — Inline binding or Cube.dev fetching
-5. **Models** (`src/models/`) — Reusable semantic model definitions for field type resolution
+1. **Parse** (`shelves/schema/`) — YAML → `ChartSpec` via Pydantic
+2. **Translate** (`shelves/translator/`) — `ChartSpec` → Vega-Lite dict
+3. **Compose** (`shelves/theme/`, `shelves/render/`) — Theme merge → HTML rendering with vegaEmbed CDN
+4. **Data** (`shelves/data/`) — Inline binding or Cube.dev fetching
+5. **Models** (`shelves/models/`) — Reusable semantic model definitions for field type resolution
 
-Public API: `parse_chart`, `translate_chart`, `merge_theme`, `bind_data`, `resolve_data`, `render_html` (exported from `src/__init__.py`).
+Public API: `parse_chart`, `translate_chart`, `merge_theme`, `bind_data`, `resolve_data`, `render_html` (exported from `shelves/__init__.py`).
 
 See each module's `CLAUDE.md` for detailed design decisions, file descriptions, and rules.
 

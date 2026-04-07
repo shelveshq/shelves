@@ -5,60 +5,36 @@
 Requires Python 3.11+.
 
 ```bash
-pip install -e ".[dev]"
+pip install shelves-bi
 ```
 
-## Rendering a chart
+## Connect to Cube
 
-Write a YAML file following the [DSL Reference](./dsl-reference.md), then render it to HTML:
+Shelves connects to [Cube.dev](https://cube.dev) for data. Set your credentials in a `.env` file or as environment variables:
 
 ```bash
-# Render without data (produces a Vega-Lite spec with no data values)
-charter-render path/to/chart.yaml
-
-# Render with inline JSON data
-charter-render path/to/chart.yaml --data path/to/data.json
-
-# Custom output path
-charter-render path/to/chart.yaml --out output/my-chart.html
-
-# Skip default theme
-charter-render path/to/chart.yaml --no-theme
+CUBE_API_URL=http://localhost:4000
+CUBE_API_TOKEN=your-cube-api-token
 ```
 
-### Custom theme
+## Define a model
 
-Pass a custom theme file to change colors, fonts, and spacing:
-
-```bash
-python -m src.cli.render my_chart.yaml --data data.json --theme my_theme.yaml
-```
-
-See [Theme](dsl-reference.md#theme) in the DSL reference for the full theme file format.
-
-The data file should be a JSON array of row objects:
-
-```json
-[
-  {"country": "US", "revenue": 5000, "week": "2024-01-01"},
-  {"country": "UK", "revenue": 3200, "week": "2024-01-01"}
-]
-```
-
-Output defaults to `output/<sheet-name-slug>.html`.
-
-## Using data models
-
-Instead of declaring measures and dimensions in every chart, define them once in a model file:
+Models map your Cube cubes to the measures and dimensions your charts can use. Define them once, reference from any chart:
 
 ```yaml
 # models/orders.yaml
 model: orders
 label: Orders
+
+source:
+  type: cube
+  cube: orders
+
 measures:
   revenue:
     label: Revenue
     format: "$,.0f"
+    aggregation: sum
 dimensions:
   country:
     label: Country
@@ -66,21 +42,51 @@ dimensions:
     type: temporal
     label: Week
     defaultGrain: week
+    format:
+      week: "%b %d"
+      month: "%b %Y"
 ```
 
-Then reference the model by name in your chart:
+## Write a chart
+
+Charts reference a model by name. Measures, dimensions, formats, and sort orders are all resolved from the model:
 
 ```yaml
+# charts/revenue_by_country.yaml
 sheet: "Revenue by Country"
 data: orders
 cols: country
 rows: revenue
 marks: bar
+color: country
+sort:
+  field: revenue
+  order: descending
 ```
 
-## Rendering a dashboard
+## Render
 
-Dashboards compose multiple charts into a single HTML page with layout, text, navigation, and styling. Write a dashboard YAML file that references your chart files:
+```bash
+# Single chart
+shelves-render charts/revenue_by_country.yaml --models-dir models/
+
+# Custom output path
+shelves-render charts/revenue_by_country.yaml --models-dir models/ --out output/chart.html
+
+# Skip default theme
+shelves-render charts/revenue_by_country.yaml --models-dir models/ --no-theme
+
+# Custom theme
+shelves-render charts/revenue_by_country.yaml --models-dir models/ --theme my_theme.yaml
+```
+
+See [Theme](dsl-reference.md#theme) in the DSL reference for the full theme file format.
+
+Output defaults to `output/<sheet-name-slug>.html`.
+
+## Dashboards
+
+Dashboards compose multiple charts into a single HTML page with layout, text, navigation, and styling:
 
 ```yaml
 # dashboards/sales_overview.yaml
@@ -102,44 +108,43 @@ root:
             width: "40%"
 ```
 
-Then render it:
-
 ```bash
-python -m src.cli.render dashboards/sales_overview.yaml
+shelves-render dashboards/sales_overview.yaml --chart-dir charts/ --models-dir models/
 ```
 
-For dashboards, each chart resolves its own data from its data model's configured source. The `--data` flag is not used with dashboard files — pass it only when rendering individual charts.
+Each chart resolves its own data from its model's configured source. See the [Dashboards guide](./dashboards.md) for the full Layout DSL reference.
 
-See the [Dashboards guide](./dashboards.md) for the full Layout DSL reference, component types, styling, and complete examples.
+## Dev server
+
+Live reload while editing charts:
+
+```bash
+shelves-dev charts/revenue_by_country.yaml --models-dir models/
+```
+
+Opens at http://localhost:8089 and refreshes on YAML changes.
 
 ## Python API
 
 ```python
-from pathlib import Path
-from src import parse_chart, translate_chart, merge_theme, bind_data, render_html
+from shelves import parse_chart, translate_chart, merge_theme, render_html
+from shelves.data.bind import resolve_data
 
-yaml_string = Path("chart.yaml").read_text()
-
-spec   = parse_chart(yaml_string)       # validate YAML → ChartSpec
-vl     = translate_chart(spec)          # compile → Vega-Lite dict
-themed = merge_theme(vl)               # apply default theme
-bound  = bind_data(themed, rows)       # attach data rows
-html   = render_html(bound)            # standalone HTML with vegaEmbed
+spec   = parse_chart(yaml_string)          # YAML → ChartSpec
+vl     = translate_chart(spec)             # ChartSpec → Vega-Lite dict
+themed = merge_theme(vl)                   # apply default theme
+final  = resolve_data(themed, spec)        # fetch from Cube and bind
+html   = render_html(final)                # standalone HTML with vegaEmbed
 ```
 
-Each step is independent and composable. You can skip `merge_theme` or `bind_data` if you don't need them.
+Each step is independent and composable. You can skip `merge_theme` or `resolve_data` if you don't need them.
 
-## Running tests
-
-```bash
-pytest                # all tests
-pytest -v             # verbose
-pytest tests/test_translator.py::TestSingleMarkCharts::test_simple_bar  # single test
-```
-
-## Linting
+## Development
 
 ```bash
-ruff check src tests
-ruff format src tests
+git clone https://github.com/shelveshq/shelves.git
+cd shelves
+python3 -m venv .venv
+.venv/bin/pip install -e ".[dev]"
+.venv/bin/pytest
 ```

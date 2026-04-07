@@ -4,8 +4,8 @@ Shared test fixtures and helpers.
 
 from pathlib import Path
 
-from src.schema.chart_schema import parse_chart
-from src.translator.translate import translate_chart
+from shelves.schema.chart_schema import parse_chart
+from shelves.translator.translate import translate_chart
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 YAML_DIR = FIXTURES_DIR / "yaml"

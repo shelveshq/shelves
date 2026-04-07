@@ -5,8 +5,8 @@ Tests for multi-measure shelves compiled to repeat or vconcat.
 """
 
 import pytest
-from src.schema.chart_schema import parse_chart
-from src.translator.translate import translate_chart
+from shelves.schema.chart_schema import parse_chart
+from shelves.translator.translate import translate_chart
 from tests.conftest import load_yaml, compile_fixture
 
 

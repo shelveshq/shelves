@@ -8,7 +8,7 @@ Tests both valid specs (should pass) and invalid specs (should raise).
 import pytest
 from pydantic import ValidationError
 
-from src.schema.chart_schema import parse_chart
+from shelves.schema.chart_schema import parse_chart
 from tests.conftest import load_yaml
 
 

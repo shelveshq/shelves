@@ -1,8 +1,8 @@
-# Charter DSL Reference
+# Shelves DSL Reference
 
 **DSL Version: 0.4.0**
 
-This document is the authoritative reference for the Charter YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
+This document is the authoritative reference for the Shelves YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
 ## Spec structure
 
@@ -371,17 +371,17 @@ tooltip: [country, revenue]
 
 ## Theme
 
-Charter uses a `theme.yaml` file to control visual styling across all charts and dashboards. The theme has two sections:
+Shelves uses a `theme.yaml` file to control visual styling across all charts and dashboards. The theme has two sections:
 
 - **`chart`** — Vega-Lite config properties (colors, fonts, padding, mark defaults). Applied to every chart via `spec.config`.
 - **`layout`** — Tokens for the Layout DSL (text presets, surface colors, typography). Used by dashboard rendering.
 
 ### Using the default theme
 
-By default, Charter applies its built-in theme. No configuration needed:
+By default, Shelves applies its built-in theme. No configuration needed:
 
 ```bash
-python -m src.cli.render my_chart.yaml --data data.json
+shelves-render my_chart.yaml --data data.json
 ```
 
 ### Using a custom theme
@@ -389,7 +389,7 @@ python -m src.cli.render my_chart.yaml --data data.json
 Create a `theme.yaml` file and pass it via `--theme`:
 
 ```bash
-python -m src.cli.render my_chart.yaml --data data.json --theme my_theme.yaml
+shelves-render my_chart.yaml --data data.json --theme my_theme.yaml
 ```
 
 ### Theme file structure
@@ -467,7 +467,7 @@ You can also use hex values directly: `color: "#ff0000"`.
 To render without any theme applied:
 
 ```bash
-python -m src.cli.render my_chart.yaml --data data.json --no-theme
+shelves-render my_chart.yaml --data data.json --no-theme
 ```
 
 ---
@@ -590,7 +590,7 @@ facet:
 
 ## Dashboards (Layout DSL)
 
-Charter also supports a Layout DSL for composing multi-chart dashboards. Dashboard YAML files use a different top-level structure (`dashboard`, `canvas`, `root` instead of `sheet`, `cols`, `rows`).
+Shelves also supports a Layout DSL for composing multi-chart dashboards. Dashboard YAML files use a different top-level structure (`dashboard`, `canvas`, `root` instead of `sheet`, `cols`, `rows`).
 
 See the **[Dashboards guide](./dashboards.md)** for the complete Layout DSL reference.
 

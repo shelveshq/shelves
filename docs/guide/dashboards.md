@@ -76,10 +76,10 @@ root:
 
 ```bash
 # Render to HTML
-python -m src.cli.render dashboards/sales_overview.yaml
+shelves-render dashboards/sales_overview.yaml
 
 # With a custom theme
-python -m src.cli.render dashboards/sales_overview.yaml --theme my_theme.yaml
+shelves-render dashboards/sales_overview.yaml --theme my_theme.yaml
 ```
 
 The output is a self-contained HTML file with all charts embedded.

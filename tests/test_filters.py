@@ -16,9 +16,9 @@ DSL reference says:
 import pytest
 from pydantic import ValidationError
 
-from src.schema.chart_schema import parse_chart
+from shelves.schema.chart_schema import parse_chart
 from tests.conftest import MODELS_DIR
-from src.translator.translate import translate_chart
+from shelves.translator.translate import translate_chart
 
 
 # ---------------------------------------------------------------------------

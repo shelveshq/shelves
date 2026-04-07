@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from src.schema.chart_schema import parse_chart
-from src.translator.translate import translate_chart
-from src.models.loader import clear_model_cache
+from shelves.schema.chart_schema import parse_chart
+from shelves.translator.translate import translate_chart
+from shelves.models.loader import clear_model_cache
 
 from tests.conftest import load_yaml
 

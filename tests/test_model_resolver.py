@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from src.models.loader import load_model, clear_model_cache
-from src.models.resolver import ModelResolver
-from src.schema.field_types import FieldTypeResolver
+from shelves.models.loader import load_model, clear_model_cache
+from shelves.models.resolver import ModelResolver
+from shelves.schema.field_types import FieldTypeResolver
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "models"
 
