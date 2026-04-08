@@ -44,4 +44,4 @@ Initial public release as `shelves-bi` on [PyPI](https://pypi.org/project/shelve
 - Published as `shelves-bi` on PyPI (`pip install shelves-bi`)
 - Import as `import shelves` / `from shelves import ...`
 - PEP 561 `py.typed` marker for type checker support
-- MIT license
+- Apache 2.0 license
