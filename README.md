@@ -157,4 +157,4 @@ python3 -m venv .venv
 
 ## License
 
-MIT
+Apache 2.0
