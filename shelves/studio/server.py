@@ -10,23 +10,157 @@ Endpoints:
   GET  /project   → returns the project directory tree as JSON
   GET  /file      → reads file content (query param: path)
   PUT  /file      → writes file content (query param: path, body: content)
-
-WebSocket /ws and PTY /ws/terminal are implemented in KAN-205 and KAN-210.
+  WS   /ws        → WebSocket endpoint for live-reload push (server → client)
 """
 
 from __future__ import annotations
 
+import asyncio
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+
+logger = logging.getLogger("shelves.studio.server")
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
 # File extensions shown in the project tree
 _TREE_EXTENSIONS = {".yaml", ".yml", ".json"}
+
+
+class ConnectionManager:
+    """
+    Manages active WebSocket connections for broadcast.
+
+    One instance per app (stored in app.state) for test isolation.
+    Not designed for multi-process deployments — Studio is a local dev tool.
+    """
+
+    def __init__(self) -> None:
+        self._connections: set[WebSocket] = set()
+
+    async def connect(self, ws: WebSocket) -> None:
+        """Accept and register a WebSocket connection."""
+        await ws.accept()
+        self._connections.add(ws)
+
+    def disconnect(self, ws: WebSocket) -> None:
+        """Remove a WebSocket connection from the set."""
+        self._connections.discard(ws)
+
+    async def broadcast(self, message: dict) -> None:
+        """
+        Send a JSON message to all connected clients.
+
+        Removes any client that fails to receive the message (disconnected).
+        """
+        dead: set[WebSocket] = set()
+        for ws in list(self._connections):
+            try:
+                await ws.send_json(message)
+            except Exception:
+                dead.add(ws)
+        for ws in dead:
+            self._connections.discard(ws)
+
+    @property
+    def client_count(self) -> int:
+        return len(self._connections)
+
+
+def _make_lifespan(project_dir: Path, theme_path: Path | None, models_dir: Path):
+    """
+    Create a FastAPI lifespan context manager that starts/stops the file watcher.
+    """
+    from shelves.studio.watcher import should_compile, watch_project
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        manager: ConnectionManager = app.state.manager
+        stop_event = asyncio.Event()
+
+        async def on_change(event: str, abs_path: Path) -> None:
+            try:
+                rel = str(abs_path.relative_to(project_dir))
+            except ValueError:
+                rel = abs_path.name
+
+            await manager.broadcast({"type": "file_change", "event": event, "path": rel})
+
+            if should_compile(abs_path) and event != "deleted":
+                await _compile_file_and_broadcast(abs_path, rel, manager, models_dir, theme_path)
+
+        task = asyncio.create_task(watch_project(project_dir, on_change, stop_event))
+        try:
+            yield
+        finally:
+            stop_event.set()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    return lifespan
+
+
+async def _compile_file_and_broadcast(
+    abs_path: Path,
+    rel: str,
+    manager: ConnectionManager,
+    models_dir: Path,
+    theme_path: Path | None,
+) -> None:
+    """Read a YAML file, compile it, and broadcast the result."""
+    from shelves.schema.chart_schema import parse_chart
+    from shelves.theme.merge import load_theme, merge_theme
+    from shelves.translator.translate import translate_chart
+
+    try:
+        content = abs_path.read_text()
+        if not content.strip():
+            await manager.broadcast(
+                {
+                    "type": "compile_result",
+                    "path": rel,
+                    "vega_lite_spec": None,
+                    "errors": ["Empty YAML body"],
+                    "warnings": [],
+                }
+            )
+            return
+
+        spec = parse_chart(content)
+        vl_spec = translate_chart(spec, models_dir=models_dir if models_dir.exists() else None)
+
+        if theme_path is not None:
+            theme = load_theme(theme_path)
+            vl_spec = merge_theme(vl_spec, theme)
+
+        await manager.broadcast(
+            {
+                "type": "compile_result",
+                "path": rel,
+                "vega_lite_spec": vl_spec,
+                "errors": [],
+                "warnings": [],
+            }
+        )
+    except Exception as e:
+        await manager.broadcast(
+            {
+                "type": "compile_result",
+                "path": rel,
+                "vega_lite_spec": None,
+                "errors": [str(e)],
+                "warnings": [],
+            }
+        )
 
 
 def create_app(
@@ -43,12 +177,16 @@ def create_app(
     Returns:
         Configured FastAPI instance.
     """
-    app = FastAPI(title="Shelves Studio")
+    models_dir = project_dir / "models"
+    lifespan = _make_lifespan(project_dir, theme_path, models_dir)
+
+    app = FastAPI(title="Shelves Studio", lifespan=lifespan)
 
     # Store configuration in app state so route handlers can access it
     app.state.project_dir = project_dir
     app.state.theme_path = theme_path
-    app.state.models_dir = project_dir / "models"
+    app.state.models_dir = models_dir
+    app.state.manager = ConnectionManager()
 
     # CORS — allow localhost origins for browser access during development
     app.add_middleware(
@@ -90,6 +228,16 @@ def create_app(
     async def put_file(request: Request) -> JSONResponse | Response:
         return await _put_file(request)
 
+    @app.websocket("/ws")
+    async def ws_endpoint(ws: WebSocket) -> None:
+        manager: ConnectionManager = ws.app.state.manager
+        await manager.connect(ws)
+        try:
+            while True:
+                await ws.receive_text()
+        except WebSocketDisconnect:
+            manager.disconnect(ws)
+
     return app
 
 
@@ -99,8 +247,8 @@ def create_app(
 async def _compile_yaml(request: Request) -> JSONResponse:
     """POST /compile — compile YAML body to Vega-Lite spec."""
     from shelves.schema.chart_schema import parse_chart
-    from shelves.translator.translate import translate_chart
     from shelves.theme.merge import load_theme, merge_theme
+    from shelves.translator.translate import translate_chart
 
     yaml_body = (await request.body()).decode("utf-8")
 
