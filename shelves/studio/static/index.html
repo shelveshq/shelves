@@ -3,23 +3,592 @@
 <head>
   <meta charset="utf-8" />
   <title>Shelves Studio</title>
+
+  <!-- Vega / Vega-Lite / vega-embed (global script tags — KAN-207 uses these) -->
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+
   <style>
-    body {
-      margin: 0; padding: 48px;
+    /* ─── Reset & Base ───────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0; padding: 0;
+      height: 100%;
+      background: #1e1e1e;
+      color: #ccc;
       font-family: Inter, system-ui, sans-serif;
-      background: #1e1e1e; color: #ccc;
-      display: flex; align-items: center; justify-content: center;
-      height: 100vh;
-      box-sizing: border-box;
+      font-size: 13px;
+      overflow: hidden;
     }
-    .logo { font-size: 24px; font-weight: 600; color: #fff; }
-    .sub { font-size: 14px; color: #888; margin-top: 8px; }
+
+    /* ─── Page Layout: toolbar on top, workspace fills rest ─── */
+    body {
+      display: grid;
+      grid-template-rows: 40px 1fr;
+      grid-template-areas:
+        "toolbar"
+        "workspace";
+    }
+
+    /* ─── Toolbar ─────────────────────────────────────────────── */
+    #toolbar {
+      grid-area: toolbar;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #252526;
+      border-bottom: 1px solid #1a1a1a;
+      padding: 0 12px;
+      gap: 12px;
+      overflow: hidden;
+    }
+
+    #tab-bar {
+      display: flex;
+      align-items: stretch;
+      gap: 2px;
+      overflow: hidden;
+      flex: 1;
+      height: 100%;
+    }
+
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      cursor: pointer;
+      color: #888;
+      font-size: 12px;
+      white-space: nowrap;
+      border-right: 1px solid #1a1a1a;
+      background: #2d2d2d;
+      transition: background 0.1s, color 0.1s;
+      user-select: none;
+    }
+
+    .tab:hover { background: #333; color: #ccc; }
+    .tab.active { background: #1e1e1e; color: #fff; border-top: 1px solid #4a9eff; }
+    .tab.dirty::before { content: "●"; font-size: 8px; color: #e5c07b; }
+
+    .tab-close {
+      background: none; border: none; color: #666;
+      cursor: pointer; padding: 0 2px; font-size: 14px; line-height: 1;
+    }
+    .tab-close:hover { color: #fff; }
+
+    #toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    /* Status badge */
+    #status-badge {
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 10px;
+      font-weight: 500;
+      background: #2a2a2a;
+      color: #888;
+      border: 1px solid #444;
+    }
+    #status-badge.status-valid  { background: #1a3a1a; color: #4ec94e; border-color: #2d5a2d; }
+    #status-badge.status-error  { background: #3a1a1a; color: #f48771; border-color: #5a2d2d; }
+
+    /* View toggle buttons */
+    #view-toggles { display: flex; gap: 4px; }
+
+    .view-btn {
+      background: transparent;
+      border: 1px solid #444;
+      color: #888;
+      padding: 3px 12px;
+      font-size: 11px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-family: inherit;
+      transition: background 0.1s, color 0.1s;
+    }
+    .view-btn.active  { background: #333; color: #fff; border-color: #666; }
+    .view-btn:hover:not(.active) { background: #2a2a2a; color: #ccc; }
+
+    /* ─── Workspace: editor pane + handle + preview pane ─────── */
+    #workspace {
+      grid-area: workspace;
+      display: grid;
+      grid-template-columns: var(--editor-width, 50%) 6px 1fr;
+      overflow: hidden;
+    }
+
+    /* ─── Editor Pane ────────────────────────────────────────── */
+    #editor-pane {
+      background: #1e1e1e;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #editor {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ─── Resize Handle ──────────────────────────────────────── */
+    #resize-handle {
+      background: #2a2a2a;
+      cursor: col-resize;
+      transition: background 0.15s;
+    }
+    #resize-handle:hover, #resize-handle.dragging { background: #4a9eff; }
+
+    /* ─── Preview Pane ───────────────────────────────────────── */
+    #preview-pane {
+      background: #1e1e1e;
+      overflow: auto;
+      position: relative;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+    }
+
+    #preview {
+      width: 100%;
+      padding: 16px;
+    }
+
+    /* Vega charts white background */
+    #preview .vega-embed {
+      background: #ffffff;
+      border-radius: 6px;
+      padding: 12px;
+    }
+
+    /* JSON view */
+    #json-view {
+      display: none;
+      width: 100%;
+      height: 100%;
+      padding: 16px;
+      margin: 0;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 12px;
+      color: #d4d4d4;
+      background: #1e1e1e;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+
+    .json-key    { color: #9cdcfe; }
+    .json-string { color: #ce9178; }
+    .json-number { color: #b5cea8; }
+    .json-bool   { color: #569cd6; }
+    .json-null   { color: #569cd6; }
+
+    /* Error overlay */
+    #error-overlay {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: #1e1e1e;
+      padding: 24px;
+      overflow: auto;
+    }
+
+    .error-card {
+      background: #2d2020;
+      border: 1px solid #5a2020;
+      border-radius: 8px;
+      padding: 16px;
+      max-width: 640px;
+    }
+
+    .error-title {
+      color: #f48771;
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .error-item {
+      color: #d4d4d4;
+      font-family: monospace;
+      font-size: 11px;
+      margin-bottom: 8px;
+      white-space: pre-wrap;
+    }
+
+    /* Preview placeholder */
+    .preview-placeholder {
+      color: #555;
+      font-size: 13px;
+      text-align: center;
+      padding: 48px 24px;
+      align-self: center;
+    }
   </style>
 </head>
 <body>
-  <div>
-    <div class="logo">Shelves Studio</div>
-    <div class="sub">Server running. Workspace loading...</div>
+
+  <!-- Top toolbar: file tabs + status badge + view toggles -->
+  <div id="toolbar">
+    <div id="tab-bar"></div>
+    <div id="toolbar-right">
+      <span id="status-badge">Ready</span>
+      <div id="view-toggles">
+        <button class="view-btn active" data-view="chart">Chart</button>
+        <button class="view-btn" data-view="json">JSON</button>
+      </div>
+    </div>
   </div>
+
+  <!-- Main workspace: Monaco editor | resize handle | preview pane -->
+  <div id="workspace">
+    <div id="editor-pane">
+      <div id="editor"></div>
+    </div>
+    <div id="resize-handle"></div>
+    <div id="preview-pane">
+      <div id="preview">
+        <div class="preview-placeholder">Open a YAML file to see the chart preview.</div>
+      </div>
+      <pre id="json-view"></pre>
+      <div id="error-overlay"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    // ─── CDN Imports ───────────────────────────────────────────────
+    import loader from 'https://cdn.jsdelivr.net/npm/@monaco-editor/loader@1.5.0/+esm';
+    import { configureMonacoYaml } from 'https://cdn.jsdelivr.net/npm/monaco-yaml@5/+esm';
+
+    // ─── Constants ─────────────────────────────────────────────────
+    const COMPILE_DEBOUNCE_MS = 300;
+    const WS_RECONNECT_MS = 2000;
+    const STORAGE_KEY_SETTINGS = 'shelves-studio-settings';
+    const STORAGE_KEY_PANE_WIDTH = 'shelves-studio-pane-width';
+
+    // ─── State ─────────────────────────────────────────────────────
+    let editor = null;
+    let currentFile = null; // { path: string, dirty: boolean } | null
+    let tabs = [];           // [{ path, dirty }]
+    let compileTimer = null;
+    let ws = null;
+
+    // ─── Settings ──────────────────────────────────────────────────
+    function loadSettings() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY_SETTINGS) || '{}');
+      } catch { return {}; }
+    }
+
+    function saveSettings(settings) {
+      localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+    }
+
+    function applySettings(settings) {
+      if (!editor) return;
+      editor.updateOptions({
+        minimap:   { enabled: settings.minimap  ?? true },
+        wordWrap:  (settings.wordWrap  ?? true) ? 'on' : 'off',
+        fontSize:  settings.fontSize ?? 13,
+      });
+    }
+
+    // ─── Monaco Initialization ─────────────────────────────────────
+    const settings = loadSettings();
+
+    const monaco = await loader.init();
+
+    // Fetch ChartSpec JSON Schema for YAML autocomplete + validation
+    let schema = null;
+    try {
+      schema = await fetch('/schema').then(r => r.json());
+    } catch (e) {
+      console.warn('[shelves] Could not load /schema for Monaco YAML:', e);
+    }
+
+    configureMonacoYaml(monaco, {
+      enableSchemaRequest: false,
+      schemas: schema ? [{
+        uri: window.location.origin + '/schema',
+        fileMatch: ['*'],
+        schema: schema,
+      }] : [],
+    });
+
+    editor = monaco.editor.create(document.getElementById('editor'), {
+      value: '',
+      language: 'yaml',
+      theme: 'vs-dark',
+      minimap:  { enabled: settings.minimap ?? true },
+      wordWrap: (settings.wordWrap ?? true) ? 'on' : 'off',
+      fontSize:  settings.fontSize ?? 13,
+      automaticLayout: true,
+      scrollBeyondLastLine: false,
+      renderLineHighlight: 'line',
+      tabSize: 2,
+    });
+
+    // Debounced compile on every keystroke
+    editor.onDidChangeModelContent(() => {
+      if (currentFile) { currentFile.dirty = true; }
+      renderTabBar();
+      clearTimeout(compileTimer);
+      compileTimer = setTimeout(compileCurrentContent, COMPILE_DEBOUNCE_MS);
+    });
+
+    // Cmd+S / Ctrl+S → save
+    editor.addCommand(
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+      () => saveCurrentFile(),
+    );
+
+    // ─── Compile ───────────────────────────────────────────────────
+    async function compileCurrentContent() {
+      const content = editor.getValue();
+      if (!content.trim()) {
+        document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+          detail: { vega_lite_spec: null, errors: [], warnings: [], path: currentFile?.path ?? null },
+        }));
+        updateStatusBadge([]);
+        return;
+      }
+      try {
+        const resp = await fetch('/compile', {
+          method: 'POST',
+          body: content,
+        });
+        const result = await resp.json();
+        document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+          detail: { ...result, path: currentFile?.path ?? null },
+        }));
+        updateStatusBadge(result.errors ?? []);
+      } catch (e) {
+        console.error('[shelves] compile error:', e);
+      }
+    }
+
+    // ─── Status Badge ──────────────────────────────────────────────
+    function updateStatusBadge(errors) {
+      const badge = document.getElementById('status-badge');
+      if (errors.length === 0) {
+        badge.textContent = 'Valid';
+        badge.className = 'status-valid';
+      } else {
+        badge.textContent = `${errors.length} error${errors.length > 1 ? 's' : ''}`;
+        badge.className = 'status-error';
+      }
+    }
+
+    // ─── File Tab Management ───────────────────────────────────────
+    async function openFile(path) {
+      // Switch to existing tab if already open
+      const existing = tabs.find(t => t.path === path);
+      if (existing) {
+        currentFile = existing;
+        const resp = await fetch(`/file?path=${encodeURIComponent(path)}`);
+        if (resp.ok) {
+          const { content } = await resp.json();
+          editor.setValue(content);
+        }
+        renderTabBar();
+        compileCurrentContent();
+        return;
+      }
+
+      // Fetch file content and open new tab
+      try {
+        const resp = await fetch(`/file?path=${encodeURIComponent(path)}`);
+        if (!resp.ok) { console.warn('[shelves] file not found:', path); return; }
+        const { content } = await resp.json();
+        const tab = { path, dirty: false };
+        tabs.push(tab);
+        currentFile = tab;
+        editor.setValue(content);
+        renderTabBar();
+        compileCurrentContent();
+      } catch (e) {
+        console.error('[shelves] openFile error:', e);
+      }
+    }
+
+    function switchToTab(path) {
+      const tab = tabs.find(t => t.path === path);
+      if (!tab) return;
+      currentFile = tab;
+      // Re-fetch fresh content
+      fetch(`/file?path=${encodeURIComponent(path)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) editor.setValue(data.content); })
+        .catch(console.error);
+      renderTabBar();
+    }
+
+    function closeTab(path) {
+      const idx = tabs.findIndex(t => t.path === path);
+      if (idx === -1) return;
+      tabs.splice(idx, 1);
+      if (currentFile?.path === path) {
+        if (tabs.length > 0) {
+          switchToTab(tabs[Math.max(0, idx - 1)].path);
+        } else {
+          currentFile = null;
+          editor.setValue('');
+          updateStatusBadge([]);
+          document.getElementById('status-badge').textContent = 'Ready';
+          document.getElementById('status-badge').className = '';
+        }
+      }
+      renderTabBar();
+    }
+
+    function renderTabBar() {
+      const bar = document.getElementById('tab-bar');
+      bar.innerHTML = '';
+      for (const tab of tabs) {
+        const el = document.createElement('div');
+        el.className = 'tab' +
+          (tab === currentFile ? ' active' : '') +
+          (tab.dirty ? ' dirty' : '');
+        el.title = tab.path;
+
+        const name = document.createElement('span');
+        name.textContent = tab.path.split('/').pop();
+        el.appendChild(name);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'tab-close';
+        closeBtn.textContent = '×';
+        closeBtn.title = 'Close';
+        closeBtn.onclick = (e) => { e.stopPropagation(); closeTab(tab.path); };
+        el.appendChild(closeBtn);
+
+        el.onclick = () => switchToTab(tab.path);
+        bar.appendChild(el);
+      }
+    }
+
+    // ─── Save ──────────────────────────────────────────────────────
+    async function saveCurrentFile() {
+      if (!currentFile) return;
+      const content = editor.getValue();
+      try {
+        await fetch(`/file?path=${encodeURIComponent(currentFile.path)}`, {
+          method: 'PUT',
+          body: content,
+        });
+        currentFile.dirty = false;
+        renderTabBar();
+      } catch (e) {
+        console.error('[shelves] save error:', e);
+      }
+    }
+
+    // ─── WebSocket ─────────────────────────────────────────────────
+    function connectWebSocket() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+      ws.onmessage = (event) => {
+        let msg;
+        try { msg = JSON.parse(event.data); } catch { return; }
+
+        if (msg.type === 'compile_result') {
+          // Forward to preview pane via custom event
+          document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+            detail: msg,
+          }));
+          updateStatusBadge(msg.errors ?? []);
+
+        } else if (msg.type === 'file_change') {
+          // If the changed file is currently open and not dirty, reload it
+          if (currentFile && currentFile.path === msg.path && !currentFile.dirty) {
+            fetch(`/file?path=${encodeURIComponent(msg.path)}`)
+              .then(r => r.ok ? r.json() : null)
+              .then(data => {
+                if (data) {
+                  editor.setValue(data.content);
+                  compileCurrentContent();
+                }
+              })
+              .catch(console.error);
+          }
+        }
+      };
+
+      ws.onclose = () => {
+        ws = null;
+        setTimeout(connectWebSocket, WS_RECONNECT_MS);
+      };
+
+      ws.onerror = (e) => {
+        console.warn('[shelves] WS error:', e);
+        // close handler will retry
+      };
+    }
+
+    // ─── Resize Handle ─────────────────────────────────────────────
+    (function initResizeHandle() {
+      const handle = document.getElementById('resize-handle');
+      const workspace = document.getElementById('workspace');
+
+      // Restore saved width
+      const saved = localStorage.getItem(STORAGE_KEY_PANE_WIDTH);
+      if (saved) {
+        document.documentElement.style.setProperty('--editor-width', saved + '%');
+      }
+
+      let dragging = false;
+
+      handle.addEventListener('mousedown', (e) => {
+        dragging = true;
+        handle.classList.add('dragging');
+        e.preventDefault();
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const rect = workspace.getBoundingClientRect();
+        let pct = ((e.clientX - rect.left) / rect.width) * 100;
+        pct = Math.max(15, Math.min(85, pct));
+        document.documentElement.style.setProperty('--editor-width', pct + '%');
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.classList.remove('dragging');
+        // Persist
+        const current = parseFloat(
+          getComputedStyle(document.documentElement)
+            .getPropertyValue('--editor-width')
+        ) || 50;
+        localStorage.setItem(STORAGE_KEY_PANE_WIDTH, current.toFixed(1));
+      });
+    })();
+
+    // ─── View Toggle ───────────────────────────────────────────────
+    document.querySelectorAll('.view-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        // KAN-207 preview logic listens for this
+        document.dispatchEvent(new CustomEvent('shelves:view-change', {
+          detail: { view: btn.dataset.view },
+        }));
+      });
+    });
+
+    // ─── Expose public API (used by file explorer KAN-208) ─────────
+    window.shelvesStudio = { openFile };
+
+    // ─── Start WebSocket ───────────────────────────────────────────
+    connectWebSocket();
+  </script>
 </body>
 </html>

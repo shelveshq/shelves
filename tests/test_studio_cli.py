@@ -78,6 +78,19 @@ class TestServerIndexPage:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert "<title>Shelves Studio</title>" in response.text
+        # KAN-206: Monaco editor workspace elements
+        assert "monaco-editor" in response.text
+        assert 'id="editor"' in response.text
+        assert 'id="preview"' in response.text
+
+    def test_workspace_layout_structure(self):
+        """GET / returns HTML with workspace layout regions."""
+        client = _client()
+        response = client.get("/")
+        assert response.status_code == 200
+        assert 'id="toolbar"' in response.text
+        assert 'id="editor-pane"' in response.text
+        assert 'id="preview-pane"' in response.text
 
 
 # ─── Compile Endpoint ────────────────────────────────────────────
