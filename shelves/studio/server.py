@@ -166,6 +166,9 @@ async def _compile_file_and_broadcast(
 def create_app(
     project_dir: Path,
     theme_path: Path | None = None,
+    models_dir: Path | None = None,
+    charts_dir: Path | None = None,
+    dashboards_dir: Path | None = None,
 ) -> FastAPI:
     """
     Create and configure the FastAPI application for Shelves Studio.
@@ -173,19 +176,27 @@ def create_app(
     Args:
         project_dir: Absolute path to the analyst's project directory.
         theme_path: Optional absolute path to a theme YAML file.
+        models_dir: Directory containing model YAML files. Defaults to project_dir/models.
+        charts_dir: Directory containing chart YAML files. Defaults to project_dir/charts.
+        dashboards_dir: Directory containing dashboard YAML files. Defaults to project_dir/dashboards.
 
     Returns:
         Configured FastAPI instance.
     """
-    models_dir = project_dir / "models"
-    lifespan = _make_lifespan(project_dir, theme_path, models_dir)
+    resolved_models = models_dir or (project_dir / "models")
+    resolved_charts = charts_dir or (project_dir / "charts")
+    resolved_dashboards = dashboards_dir or (project_dir / "dashboards")
+
+    lifespan = _make_lifespan(project_dir, theme_path, resolved_models)
 
     app = FastAPI(title="Shelves Studio", lifespan=lifespan)
 
     # Store configuration in app state so route handlers can access it
     app.state.project_dir = project_dir
     app.state.theme_path = theme_path
-    app.state.models_dir = models_dir
+    app.state.models_dir = resolved_models
+    app.state.charts_dir = resolved_charts
+    app.state.dashboards_dir = resolved_dashboards
     app.state.manager = ConnectionManager()
 
     # CORS — allow localhost origins for browser access during development
@@ -347,8 +358,9 @@ def _resolve_safe(project_dir: Path, rel: str) -> tuple[Path, str | None]:
 
 def _build_tree(path: Path, root: Path) -> list[dict[str, Any]]:
     """
-    Build a directory tree as a list of {name, type, children?} dicts.
+    Build a directory tree as a list of {name, type, path, children?} dicts.
 
+    path is the relative path from root (e.g., "charts/revenue.yaml").
     Only includes files with extensions in _TREE_EXTENSIONS and directories.
     Sorts: directories first, then alphabetically.
     """
@@ -364,10 +376,11 @@ def _build_tree(path: Path, root: Path) -> list[dict[str, Any]]:
     for child in children:
         if child.name.startswith("."):
             continue
+        rel = str(child.relative_to(root))
         if child.is_dir():
             subtree = _build_tree(child, root)
-            entries.append({"name": child.name, "type": "dir", "children": subtree})
+            entries.append({"name": child.name, "type": "dir", "path": rel, "children": subtree})
         elif child.is_file() and child.suffix in _TREE_EXTENSIONS:
-            entries.append({"name": child.name, "type": "file"})
+            entries.append({"name": child.name, "type": "file", "path": rel})
 
     return entries

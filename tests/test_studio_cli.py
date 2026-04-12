@@ -44,12 +44,29 @@ class TestCliArgumentParsing:
         """All CLI flags are parsed with correct types."""
         parser = build_parser()
         args = parser.parse_args(
-            ["--port", "9000", "--no-browser", "--dir", "/tmp/project", "--theme", "mytheme.yaml"]
+            [
+                "--port",
+                "9000",
+                "--no-browser",
+                "--dir",
+                "/tmp/project",
+                "--theme",
+                "mytheme.yaml",
+                "--charts-dir",
+                "/tmp/charts",
+                "--dashboards-dir",
+                "/tmp/dashboards",
+                "--models-dir",
+                "/tmp/models",
+            ]
         )
         assert args.port == 9000
         assert args.no_browser is True
         assert args.dir == "/tmp/project"
         assert args.theme == "mytheme.yaml"
+        assert args.charts_dir == "/tmp/charts"
+        assert args.dashboards_dir == "/tmp/dashboards"
+        assert args.models_dir == "/tmp/models"
 
     def test_cli_default_arguments(self):
         """Default values match the spec."""
@@ -59,6 +76,9 @@ class TestCliArgumentParsing:
         assert args.no_browser is False
         assert args.dir == "."
         assert args.theme is None
+        assert args.charts_dir is None
+        assert args.dashboards_dir is None
+        assert args.models_dir is None
 
     def test_cli_port_must_be_int(self):
         """Non-integer port raises argparse error."""
@@ -103,6 +123,14 @@ class TestServerIndexPage:
         assert 'id="preview"' in response.text
         assert 'id="error-overlay"' in response.text
         assert 'id="json-view"' in response.text
+
+    def test_workspace_includes_sidebar(self):
+        """GET / returns HTML with file explorer sidebar DOM elements."""
+        client = _client()
+        response = client.get("/")
+        assert response.status_code == 200
+        assert 'id="sidebar"' in response.text
+        assert 'id="file-tree"' in response.text
 
 
 # ─── Compile Endpoint ────────────────────────────────────────────
@@ -199,6 +227,52 @@ class TestProjectEndpoint:
             assert "name" in entry
             assert "type" in entry
             assert entry["type"] in ("file", "dir")
+
+    def test_project_tree_includes_path(self):
+        """Each tree entry has a path field with relative path from project root."""
+        client = _client()
+        response = client.get("/project")
+        tree = response.json()
+
+        def check_paths(entries, prefix=""):
+            for entry in entries:
+                assert "path" in entry, f"Missing 'path' on entry: {entry}"
+                if prefix:
+                    assert entry["path"].startswith(prefix), (
+                        f"Expected path to start with '{prefix}', got '{entry['path']}'"
+                    )
+                if entry["type"] == "dir" and "children" in entry:
+                    check_paths(entry["children"], entry["path"] + "/")
+
+        check_paths(tree)
+
+    def test_project_tree_nested_path(self, tmp_path):
+        """Nested directory paths are correctly constructed relative to project root."""
+        from starlette.testclient import TestClient
+
+        # Create nested structure: charts/sales/revenue.yaml
+        (tmp_path / "charts" / "sales").mkdir(parents=True)
+        (tmp_path / "charts" / "sales" / "revenue.yaml").write_text("sheet: test\n")
+
+        app = create_app(project_dir=tmp_path)
+        client = TestClient(app)
+        response = client.get("/project")
+        tree = response.json()
+
+        # Find charts dir
+        charts = next((e for e in tree if e["name"] == "charts"), None)
+        assert charts is not None
+        assert charts["path"] == "charts"
+
+        # Find sales subdir
+        sales = next((e for e in charts["children"] if e["name"] == "sales"), None)
+        assert sales is not None
+        assert sales["path"] == "charts/sales"
+
+        # Find revenue.yaml file
+        revenue = next((e for e in sales["children"] if e["name"] == "revenue.yaml"), None)
+        assert revenue is not None
+        assert revenue["path"] == "charts/sales/revenue.yaml"
 
 
 # ─── File Endpoints ──────────────────────────────────────────────
