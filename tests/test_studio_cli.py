@@ -152,7 +152,6 @@ marks: bar
         assert response.status_code == 200
         body = response.json()
         assert body["errors"] == []
-        assert body["warnings"] == []
         spec = body["vega_lite_spec"]
         assert spec is not None
         assert spec["mark"] == "bar"
@@ -178,6 +177,68 @@ marks: bar
         body = response.json()
         assert body["vega_lite_spec"] is None
         assert len(body["errors"]) > 0
+
+    def test_compile_dashboard_yaml_skips_chart_parse(self):
+        """POST /compile with dashboard YAML returns null spec and no errors."""
+        client = _client()
+        dashboard_yaml = "dashboard: Superstore\nlayout:\n  type: grid\n"
+        response = client.post("/compile", content=dashboard_yaml)
+        assert response.status_code == 200
+        body = response.json()
+        # Dashboard files are not charts — compile should skip gracefully
+        assert body["vega_lite_spec"] is None
+        assert body["errors"] == []
+
+    def test_compile_calls_resolve_data(self):
+        """POST /compile calls resolve_data to bind data from models (e.g. Cube)."""
+        from unittest.mock import patch
+
+        from starlette.testclient import TestClient
+
+        app = create_app(project_dir=PROJECT_DIR)
+        client = TestClient(app)
+
+        fake_rows = [{"country": "US", "revenue": 100}]
+
+        def mock_resolve(spec, chart_spec, models_dir=None):
+            import copy
+
+            result = copy.deepcopy(spec)
+            result["data"] = {"values": fake_rows}
+            return result
+
+        with patch("shelves.data.bind.resolve_data", side_effect=mock_resolve) as mock_rd:
+            response = client.post("/compile", content=self._VALID_YAML)
+
+        assert mock_rd.called, "Expected resolve_data to be called during compile"
+        body = response.json()
+        assert body["errors"] == []
+        spec = body["vega_lite_spec"]
+        assert spec is not None
+        assert "data" in spec, "Expected resolve_data to bind data onto the spec"
+        assert spec["data"]["values"] == fake_rows
+
+    def test_compile_data_resolution_failure_returns_warning(self):
+        """When resolve_data raises, compile still returns the spec with a warning."""
+        from unittest.mock import patch
+
+        from starlette.testclient import TestClient
+
+        app = create_app(project_dir=PROJECT_DIR)
+        client = TestClient(app)
+
+        with patch(
+            "shelves.data.bind.resolve_data",
+            side_effect=ValueError("No Cube source configured"),
+        ):
+            response = client.post("/compile", content=self._VALID_YAML)
+
+        body = response.json()
+        # Spec should still be returned (not null) — data resolution failure is non-fatal
+        assert body["vega_lite_spec"] is not None
+        assert body["errors"] == []
+        assert len(body["warnings"]) > 0
+        assert "data" in body["warnings"][0].lower() or "cube" in body["warnings"][0].lower()
 
 
 # ─── Schema Endpoint ─────────────────────────────────────────────

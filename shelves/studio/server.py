@@ -117,6 +117,9 @@ async def _compile_file_and_broadcast(
     theme_path: Path | None,
 ) -> None:
     """Read a YAML file, compile it, and broadcast the result."""
+    import yaml as _yaml
+
+    from shelves.data.bind import resolve_data
     from shelves.schema.chart_schema import parse_chart
     from shelves.theme.merge import load_theme, merge_theme
     from shelves.translator.translate import translate_chart
@@ -135,6 +138,11 @@ async def _compile_file_and_broadcast(
             )
             return
 
+        # Skip non-chart YAML (e.g. dashboards, models)
+        raw = _yaml.safe_load(content)
+        if not isinstance(raw, dict) or "sheet" not in raw:
+            return
+
         spec = parse_chart(content)
         vl_spec = translate_chart(spec, models_dir=models_dir if models_dir.exists() else None)
 
@@ -142,13 +150,20 @@ async def _compile_file_and_broadcast(
             theme = load_theme(theme_path)
             vl_spec = merge_theme(vl_spec, theme)
 
+        # Resolve data from models (Cube sources)
+        warnings: list[str] = []
+        try:
+            vl_spec = resolve_data(vl_spec, spec, models_dir=models_dir)
+        except Exception as e:
+            warnings.append(f"Data resolution skipped: {e}")
+
         await manager.broadcast(
             {
                 "type": "compile_result",
                 "path": rel,
                 "vega_lite_spec": vl_spec,
                 "errors": [],
-                "warnings": [],
+                "warnings": warnings,
             }
         )
     except Exception as e:
@@ -257,6 +272,9 @@ def create_app(
 
 async def _compile_yaml(request: Request) -> JSONResponse:
     """POST /compile — compile YAML body to Vega-Lite spec."""
+    import yaml as _yaml
+
+    from shelves.data.bind import resolve_data
     from shelves.schema.chart_schema import parse_chart
     from shelves.theme.merge import load_theme, merge_theme
     from shelves.translator.translate import translate_chart
@@ -265,6 +283,14 @@ async def _compile_yaml(request: Request) -> JSONResponse:
 
     if not yaml_body.strip():
         return JSONResponse({"vega_lite_spec": None, "errors": ["Empty YAML body"], "warnings": []})
+
+    # Skip non-chart YAML (e.g. dashboards, models)
+    try:
+        raw = _yaml.safe_load(yaml_body)
+        if not isinstance(raw, dict) or "sheet" not in raw:
+            return JSONResponse({"vega_lite_spec": None, "errors": [], "warnings": []})
+    except Exception:
+        pass  # Let parse_chart handle malformed YAML
 
     try:
         spec = parse_chart(yaml_body)
@@ -285,7 +311,15 @@ async def _compile_yaml(request: Request) -> JSONResponse:
         except Exception as e:
             return JSONResponse({"vega_lite_spec": None, "errors": [str(e)], "warnings": []})
 
-    return JSONResponse({"vega_lite_spec": vl_spec, "errors": [], "warnings": []})
+    # Resolve data from models (Cube sources)
+    warnings: list[str] = []
+    try:
+        models_dir = request.app.state.models_dir
+        vl_spec = resolve_data(vl_spec, spec, models_dir=models_dir)
+    except Exception as e:
+        warnings.append(f"Data resolution skipped: {e}")
+
+    return JSONResponse({"vega_lite_spec": vl_spec, "errors": [], "warnings": warnings})
 
 
 async def _get_schema() -> JSONResponse:

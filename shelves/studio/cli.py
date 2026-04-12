@@ -5,8 +5,9 @@ Usage:
   shelves-studio                    # start on localhost:5173, open browser
   shelves-studio --port 8080        # custom port
   shelves-studio --no-browser       # skip auto-open
-  shelves-studio --dir charts/      # project directory
+  shelves-studio --dir myproject/   # project directory
   shelves-studio --theme mytheme.yaml
+  shelves-studio --charts-dir src/charts --models-dir src/models
 
 Starts a FastAPI dev server and (by default) opens a browser tab.
 Press Ctrl+C to stop.
@@ -57,14 +58,32 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to a custom theme YAML file",
     )
+    parser.add_argument(
+        "--charts-dir",
+        default=None,
+        help="Directory containing chart YAML files (default: <dir>/charts)",
+    )
+    parser.add_argument(
+        "--dashboards-dir",
+        default=None,
+        help="Directory containing dashboard YAML files (default: <dir>/dashboards)",
+    )
+    parser.add_argument(
+        "--models-dir",
+        default=None,
+        help="Directory containing model YAML files (default: <dir>/models)",
+    )
     return parser
 
 
 def main() -> None:
     """Entry point for the shelves-studio CLI command."""
     import uvicorn
+    from dotenv import load_dotenv
 
     from shelves.studio.server import create_app
+
+    load_dotenv()  # Load environment variables from .env file (for CUBE_API_URL, etc.)
 
     parser = build_parser()
     args = parser.parse_args()
@@ -83,16 +102,30 @@ def main() -> None:
     if args.theme:
         theme_path = Path(args.theme).resolve()
 
+    # Resolve directory overrides (default to subdirs of project_dir)
+    models_dir = Path(args.models_dir).resolve() if args.models_dir else None
+    charts_dir = Path(args.charts_dir).resolve() if args.charts_dir else None
+    dashboards_dir = Path(args.dashboards_dir).resolve() if args.dashboards_dir else None
+
     # Build the app
-    app = create_app(project_dir=project_dir, theme_path=theme_path)
+    app = create_app(
+        project_dir=project_dir,
+        theme_path=theme_path,
+        models_dir=models_dir,
+        charts_dir=charts_dir,
+        dashboards_dir=dashboards_dir,
+    )
 
     url = f"http://localhost:{args.port}"
 
     # Print startup banner (mirrors shelves-dev style)
     print("Shelves Studio")
-    print(f"  Project:  {project_dir}")
-    print(f"  Preview:  {url}")
-    print(f"  Theme:    {theme_path or 'Default'}")
+    print(f"  Project:     {project_dir}")
+    print(f"  Charts:      {app.state.charts_dir}")
+    print(f"  Dashboards:  {app.state.dashboards_dir}")
+    print(f"  Models:      {app.state.models_dir}")
+    print(f"  Theme:       {theme_path or 'Default'}")
+    print(f"  Preview:     {url}")
     print("  Press Ctrl+C to stop\n")
 
     # Schedule browser open after a short delay (gives uvicorn time to bind)

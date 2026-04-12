@@ -253,7 +253,6 @@ class TestWatchIntegration:
                 assert len(compile_msgs) == 1
                 assert compile_msgs[0]["path"] == "chart.yaml"
                 assert compile_msgs[0]["errors"] == []
-                assert compile_msgs[0]["warnings"] == []
                 spec = compile_msgs[0]["vega_lite_spec"]
                 assert spec is not None
                 assert spec["mark"] == "bar"
