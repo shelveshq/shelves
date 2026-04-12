@@ -92,6 +92,18 @@ class TestServerIndexPage:
         assert 'id="editor-pane"' in response.text
         assert 'id="preview-pane"' in response.text
 
+    def test_workspace_includes_vega_libraries(self):
+        """GET / returns HTML with Vega CDN scripts and preview DOM elements."""
+        client = _client()
+        response = client.get("/")
+        assert response.status_code == 200
+        # KAN-207: Vega CDN scripts
+        assert "vega-embed" in response.text
+        # KAN-207: Preview DOM elements
+        assert 'id="preview"' in response.text
+        assert 'id="error-overlay"' in response.text
+        assert 'id="json-view"' in response.text
+
 
 # ─── Compile Endpoint ────────────────────────────────────────────
 
