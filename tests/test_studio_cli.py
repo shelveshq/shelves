@@ -1,0 +1,300 @@
+"""
+Studio CLI Tests — KAN-211
+
+Tests for the shelves-studio CLI entry point and FastAPI server.
+Covers: argument parsing, server startup, compile endpoint, file endpoints,
+project tree endpoint, and graceful shutdown.
+"""
+
+from __future__ import annotations
+
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+from tests.conftest import FIXTURES_DIR
+
+# ─── Imports under test ──────────────────────────────────────────
+# These will fail with ImportError until the module is created (expected red state).
+from shelves.studio.cli import build_parser
+from shelves.studio.server import create_app
+
+# ─── Helpers ─────────────────────────────────────────────────────
+
+PROJECT_DIR = FIXTURES_DIR  # tests/fixtures/ — has models/, yaml/, data/ subdirs
+
+
+def _client():
+    """Create a TestClient for the studio FastAPI app."""
+    from starlette.testclient import TestClient
+
+    app = create_app(project_dir=PROJECT_DIR)
+    return TestClient(app)
+
+
+# ─── CLI Argument Parsing ─────────────────────────────────────────
+
+
+class TestCliArgumentParsing:
+    def test_cli_argument_parsing_all_flags(self):
+        """All CLI flags are parsed with correct types."""
+        parser = build_parser()
+        args = parser.parse_args(
+            ["--port", "9000", "--no-browser", "--dir", "/tmp/project", "--theme", "mytheme.yaml"]
+        )
+        assert args.port == 9000
+        assert args.no_browser is True
+        assert args.dir == "/tmp/project"
+        assert args.theme == "mytheme.yaml"
+
+    def test_cli_default_arguments(self):
+        """Default values match the spec."""
+        parser = build_parser()
+        args = parser.parse_args([])
+        assert args.port == 5173
+        assert args.no_browser is False
+        assert args.dir == "."
+        assert args.theme is None
+
+    def test_cli_port_must_be_int(self):
+        """Non-integer port raises argparse error."""
+        parser = build_parser()
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--port", "abc"])
+
+
+# ─── Server: Index Page ──────────────────────────────────────────
+
+
+class TestServerIndexPage:
+    def test_get_root_returns_html(self):
+        """GET / returns 200 with HTML content type and Shelves Studio title."""
+        client = _client()
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "<title>Shelves Studio</title>" in response.text
+
+
+# ─── Compile Endpoint ────────────────────────────────────────────
+
+
+class TestCompileEndpoint:
+    _VALID_YAML = """\
+sheet: "Test"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+"""
+
+    def test_compile_valid_yaml_returns_spec(self):
+        """POST /compile with valid YAML returns vega_lite_spec and empty errors."""
+        client = _client()
+        response = client.post("/compile", content=self._VALID_YAML)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["errors"] == []
+        assert body["warnings"] == []
+        spec = body["vega_lite_spec"]
+        assert spec is not None
+        assert spec["mark"] == "bar"
+        assert spec["encoding"]["x"]["field"] == "country"
+        assert spec["encoding"]["y"]["field"] == "revenue"
+
+    def test_compile_invalid_yaml_returns_errors(self):
+        """POST /compile with invalid YAML returns null spec and structured errors."""
+        client = _client()
+        bad_yaml = "sheet: Test\nmarks: bar\n"  # missing required data/rows/cols
+        response = client.post("/compile", content=bad_yaml)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["vega_lite_spec"] is None
+        assert len(body["errors"]) > 0
+        assert body["warnings"] == []
+
+    def test_compile_empty_body_returns_errors(self):
+        """POST /compile with empty body returns structured errors, not 500."""
+        client = _client()
+        response = client.post("/compile", content="")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["vega_lite_spec"] is None
+        assert len(body["errors"]) > 0
+
+
+# ─── Schema Endpoint ─────────────────────────────────────────────
+
+
+class TestSchemaEndpoint:
+    def test_get_schema_returns_json_schema(self):
+        """GET /schema returns a valid JSON Schema object."""
+        client = _client()
+        response = client.get("/schema")
+        assert response.status_code == 200
+        schema = response.json()
+        assert schema["type"] == "object"
+        assert "properties" in schema
+
+
+# ─── Project Endpoint ────────────────────────────────────────────
+
+
+class TestProjectEndpoint:
+    def test_get_project_returns_tree(self):
+        """GET /project returns a non-empty directory tree."""
+        client = _client()
+        response = client.get("/project")
+        assert response.status_code == 200
+        tree = response.json()
+        # Should contain at least one entry from the fixtures dir
+        assert isinstance(tree, list)
+        assert len(tree) > 0
+
+    def test_get_project_empty_dir(self, tmp_path):
+        """GET /project for an empty directory returns an empty list."""
+        from starlette.testclient import TestClient
+
+        app = create_app(project_dir=tmp_path)
+        client = TestClient(app)
+        response = client.get("/project")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_project_tree_structure(self):
+        """Each tree entry has name and type fields."""
+        client = _client()
+        response = client.get("/project")
+        tree = response.json()
+        for entry in tree:
+            assert "name" in entry
+            assert "type" in entry
+            assert entry["type"] in ("file", "dir")
+
+
+# ─── File Endpoints ──────────────────────────────────────────────
+
+
+class TestFileEndpoints:
+    def test_get_file_returns_content(self):
+        """GET /file?path=yaml/simple_bar.yaml returns file content."""
+        client = _client()
+        response = client.get("/file", params={"path": "yaml/simple_bar.yaml"})
+        assert response.status_code == 200
+        body = response.json()
+        assert "content" in body
+        assert "sheet:" in body["content"]
+
+    def test_get_file_not_found(self):
+        """GET /file for nonexistent file returns 404."""
+        client = _client()
+        response = client.get("/file", params={"path": "yaml/does_not_exist.yaml"})
+        assert response.status_code == 404
+
+    def test_get_file_path_traversal_rejected(self):
+        """GET /file with path traversal attempt returns 400."""
+        client = _client()
+        response = client.get("/file", params={"path": "../../etc/passwd"})
+        assert response.status_code == 400
+
+    def test_put_file_writes_content(self, tmp_path):
+        """PUT /file writes content to disk."""
+        from starlette.testclient import TestClient
+
+        app = create_app(project_dir=tmp_path)
+        client = TestClient(app)
+
+        content = "sheet: Test\nmarks: bar\n"
+        response = client.put("/file", params={"path": "test.yaml"}, content=content)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["ok"] is True
+
+        written = (tmp_path / "test.yaml").read_text()
+        assert written == content
+
+    def test_put_file_path_traversal_rejected(self, tmp_path):
+        """PUT /file with path traversal attempt returns 400."""
+        from starlette.testclient import TestClient
+
+        app = create_app(project_dir=tmp_path)
+        client = TestClient(app)
+        response = client.put("/file", params={"path": "../../evil.txt"}, content="pwned")
+        assert response.status_code == 400
+
+
+# ─── Graceful Shutdown ───────────────────────────────────────────
+
+
+class TestGracefulShutdown:
+    def test_graceful_shutdown_on_sigint(self, tmp_path):
+        """SIGINT causes the server process to exit cleanly (exit code 0)."""
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "shelves.studio.cli",
+                "--no-browser",
+                "--port",
+                "15173",
+                "--dir",
+                str(tmp_path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        # Give uvicorn time to start
+        time.sleep(2.0)
+        proc.send_signal(signal.SIGINT)
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            pytest.fail("Server did not exit within 5 seconds after SIGINT")
+        assert proc.returncode == 0, f"Expected exit 0, got {proc.returncode}"
+
+
+# ─── Edge Cases ──────────────────────────────────────────────────
+
+
+class TestCliValidation:
+    def test_nonexistent_dir_exits_nonzero(self, tmp_path):
+        """--dir pointing to a nonexistent path exits with code 1."""
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "shelves.studio.cli",
+                "--no-browser",
+                "--dir",
+                "/nonexistent_shelves_test_path_xyz",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 1
+        assert "not found" in result.stderr.lower() or "not found" in result.stdout.lower()
+
+    def test_dir_is_file_exits_nonzero(self):
+        """--dir pointing to a file exits with code 1."""
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "shelves.studio.cli",
+                "--no-browser",
+                "--dir",
+                "pyproject.toml",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(Path(__file__).parent.parent),
+        )
+        assert result.returncode == 1
+        assert (
+            "not a directory" in result.stderr.lower() or "not a directory" in result.stdout.lower()
+        )
