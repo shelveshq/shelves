@@ -9,6 +9,9 @@
   <script src="https://cdn.jsdelivr.net/npm/vega-lite@6"></script>
   <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
 
+  <!-- xterm.js (KAN-210 terminal panel) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/css/xterm.min.css">
+
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -55,7 +58,7 @@
       --radius-lg: 10px;
 
       --sidebar-width: 220px;
-      --editor-width: 1fr;
+      --editor-width: 25%;
     }
 
     /* ─── Reset & Base ───────────────────────────────────────── */
@@ -75,11 +78,32 @@
     /* ─── Page Layout ────────────────────────────────────────── */
     body {
       display: grid;
-      grid-template-rows: 42px 1fr;
+      grid-template-rows: 42px 1fr auto auto;
       grid-template-areas:
         "toolbar"
-        "workspace";
+        "workspace"
+        "tree-strip"
+        "terminal";
     }
+
+    #component-tree-strip { grid-area: tree-strip; }
+
+    /* ─── Component Tree Strip ───────────────────────────────────── */
+    .tree-node {
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      cursor: default;
+    }
+    .tree-container { color: var(--text-muted); }
+    .tree-sheet {
+      color: var(--accent);
+      background: var(--accent-surface);
+      cursor: pointer;
+    }
+    .tree-sheet:hover { background: var(--accent-glow); }
+    .tree-leaf { color: var(--text-faint); }
+    .tree-separator { color: var(--text-faint); margin: 0 2px; }
+    .tree-arrow { color: var(--text-faint); margin: 0 4px; }
 
     /* ─── Toolbar ─────────────────────────────────────────────── */
     #toolbar {
@@ -571,6 +595,115 @@
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--bg-active); border-radius: 4px; }
+
+    /* ─── Terminal Panel ─────────────────────────────────────────── */
+    #terminal-panel {
+      grid-area: terminal;
+      background: var(--bg-deep);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    #terminal-panel.collapsed {
+      display: none;
+    }
+
+    #terminal-resize-handle {
+      height: 4px;
+      background: var(--border-subtle);
+      cursor: row-resize;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    #terminal-resize-handle:hover,
+    #terminal-resize-handle.dragging {
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+
+    #terminal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 8px;
+      height: 32px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+
+    #terminal-tabs {
+      display: flex;
+      align-items: stretch;
+      gap: 1px;
+      overflow-x: auto;
+      flex: 1;
+      height: 100%;
+    }
+
+    .terminal-tab {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 10px;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 450;
+      white-space: nowrap;
+      background: transparent;
+      border: none;
+      transition: color 0.15s, background 0.15s;
+    }
+    .terminal-tab:hover { color: var(--text-secondary); background: var(--bg-hover); }
+    .terminal-tab.active { color: var(--text-primary); background: var(--bg-deep); }
+
+    #terminal-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    #terminal-actions button {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 4px 6px;
+      border-radius: var(--radius-sm);
+      transition: color 0.15s, background 0.15s;
+    }
+    #terminal-actions button:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    #terminal-container {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #terminal-toolbar-btn {
+      background: none;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 11px;
+      font-family: var(--font-ui);
+      padding: 3px 10px;
+      border-radius: var(--radius-md);
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+    }
+    #terminal-toolbar-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+      border-color: var(--border-default);
+    }
   </style>
 </head>
 <body>
@@ -592,7 +725,9 @@
       <div id="view-toggles">
         <button class="view-btn active" data-view="chart">Chart</button>
         <button class="view-btn" data-view="json">JSON</button>
+        <button class="view-btn" data-view="dashboard">Dashboard</button>
       </div>
+      <button id="terminal-toolbar-btn" title="Toggle terminal (Ctrl+`)">&#9638; Terminal</button>
     </div>
   </div>
 
@@ -613,9 +748,29 @@
       <div id="preview">
         <div class="preview-placeholder">Open a YAML file to see the chart preview</div>
       </div>
+      <div id="dashboard-preview" style="display:none; width:100%; height:100%; position:relative; overflow:hidden; align-items:flex-start; justify-content:center; padding:16px; box-sizing:border-box;">
+        <iframe id="dashboard-iframe"
+          sandbox="allow-scripts"
+          style="border:none; transform-origin:top left; position:absolute; top:16px; left:16px; width:1440px; height:900px; background:#ffffff; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.3),0 8px 24px rgba(0,0,0,0.15);"
+        ></iframe>
+      </div>
       <pre id="json-view"></pre>
       <div id="error-overlay"></div>
     </div>
+  </div>
+  <div id="component-tree-strip" style="display:none; height:36px; background:var(--bg-surface); border-top:1px solid var(--border-subtle); align-items:center; padding:0 12px; gap:4px; overflow-x:auto; overflow-y:hidden; white-space:nowrap; font-size:11px; font-family:var(--font-mono); color:var(--text-secondary); scrollbar-width:thin; scrollbar-color:var(--bg-active) transparent;"></div>
+
+  <!-- Terminal Panel (KAN-210) -->
+  <div id="terminal-panel" class="collapsed">
+    <div id="terminal-resize-handle"></div>
+    <div id="terminal-header">
+      <div id="terminal-tabs"></div>
+      <div id="terminal-actions">
+        <button id="terminal-new" title="New terminal">+</button>
+        <button id="terminal-toggle" title="Toggle terminal">&#9660;</button>
+      </div>
+    </div>
+    <div id="terminal-container"></div>
   </div>
 
   <script type="module">
@@ -1268,6 +1423,468 @@
 
     // ─── Initial tree load ─────────────────────────────────────────
     fetchTree();
+
+    // ════════════════════════════════════════════════════════════════
+    // KAN-209: Dashboard Composition View
+    // ════════════════════════════════════════════════════════════════
+
+    // ─── Dashboard State ──────────────────────────────────────────
+    let dashboardMode = false;
+    const CANVAS_WIDTH = 1440;
+    const CANVAS_HEIGHT = 900;
+    const TREE_STRIP_HEIGHT = 36;
+
+    // ─── DOM refs ─────────────────────────────────────────────────
+    const elDashboardPreview = document.getElementById('dashboard-preview');
+    const elDashboardIframe  = document.getElementById('dashboard-iframe');
+    const elTreeStrip        = document.getElementById('component-tree-strip');
+
+    // ─── Dashboard Detection ──────────────────────────────────────
+    function isDashboardYaml(content) {
+      const lines = content.split('\n').slice(0, 20);
+      return lines.some(line => /^dashboard\s*:/.test(line));
+    }
+
+    // ─── Dashboard Compile ────────────────────────────────────────
+    async function compileDashboardContent() {
+      const content = editor.getValue();
+      if (!content.trim()) {
+        document.dispatchEvent(new CustomEvent('shelves:dashboard-result', {
+          detail: { html: null, errors: [], warnings: [], component_tree: [] },
+        }));
+        return;
+      }
+      try {
+        const resp = await fetch('/compile-dashboard', {
+          method: 'POST',
+          body: content,
+        });
+        const result = await resp.json();
+        document.dispatchEvent(new CustomEvent('shelves:dashboard-result', {
+          detail: result,
+        }));
+        updateStatusBadge(result.errors ?? [], result.warnings ?? []);
+      } catch (e) {
+        console.error('[shelves] dashboard compile error:', e);
+      }
+    }
+
+    // ─── Dashboard Preview Rendering ──────────────────────────────
+    function renderDashboardPreview(result) {
+      // Hide chart preview elements
+      elPreview.style.display = 'none';
+      elJsonView.style.display = 'none';
+
+      if (!result || result.html === null) {
+        showErrorOverlay(result?.errors ?? ['Dashboard compile failed.']);
+        elDashboardPreview.style.display = 'none';
+        return;
+      }
+
+      hideErrorOverlay();
+      elDashboardPreview.style.display = 'flex';
+
+      // Build srcdoc with click-through listener injected
+      const clickScript = `
+        <script>
+          document.addEventListener('click', function(e) {
+            var el = e.target.closest('[data-chart-link]');
+            if (el) {
+              window.parent.postMessage({ type: 'sheet-click', link: el.dataset.chartLink }, '*');
+            }
+          });
+        <\\/script>
+      `;
+      elDashboardIframe.srcdoc = result.html + clickScript;
+
+      // Scale iframe to fit preview pane
+      scaleDashboardIframe();
+
+      // Render component tree strip
+      renderComponentTreeStrip(result.component_tree ?? []);
+    }
+
+    function scaleDashboardIframe() {
+      const paneRect = elDashboardPreview.getBoundingClientRect();
+      const availW = paneRect.width  - 32; // 16px padding each side
+      const availH = paneRect.height - 32;
+      if (availW <= 0 || availH <= 0) return;
+      const scale = Math.min(availW / CANVAS_WIDTH, availH / CANVAS_HEIGHT);
+      elDashboardIframe.style.transform = `scale(${scale})`;
+    }
+
+    // Rescale on resize
+    new ResizeObserver(scaleDashboardIframe).observe(elDashboardPreview);
+
+    // ─── Component Tree Strip ─────────────────────────────────────
+    function renderComponentTreeStrip(tree) {
+      elTreeStrip.innerHTML = '';
+      if (!tree || tree.length === 0) {
+        elTreeStrip.style.display = 'none';
+        return;
+      }
+      elTreeStrip.style.display = 'flex';
+
+      let prevDepth = null;
+      for (let i = 0; i < tree.length; i++) {
+        const node = tree[i];
+
+        // Insert arrow when going deeper, dot between same-depth siblings
+        if (prevDepth !== null) {
+          const sep = document.createElement('span');
+          if (node.depth > prevDepth) {
+            sep.className = 'tree-arrow';
+            sep.textContent = '→';
+          } else {
+            sep.className = 'tree-separator';
+            sep.textContent = '·';
+          }
+          elTreeStrip.appendChild(sep);
+        }
+
+        const span = document.createElement('span');
+        const label = node.type === 'sheet'
+          ? (node.name || node.type)
+          : node.type === 'vertical' ? 'container (v)'
+          : node.type === 'horizontal' ? 'container (h)'
+          : node.type;
+
+        if (node.type === 'sheet') {
+          span.className = 'tree-node tree-sheet';
+          span.title = node.link || '';
+          span.addEventListener('click', () => {
+            if (node.link) window.shelvesStudio.openFile(node.link);
+          });
+        } else if (node.type === 'vertical' || node.type === 'horizontal') {
+          span.className = 'tree-node tree-container';
+        } else {
+          span.className = 'tree-node tree-leaf';
+        }
+
+        span.textContent = label;
+        elTreeStrip.appendChild(span);
+        prevDepth = node.depth;
+      }
+    }
+
+    // ─── Layout Switching ─────────────────────────────────────────
+    function applyDashboardLayout() {
+      dashboardMode = true;
+      document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+      const dashBtn = document.querySelector('.view-btn[data-view="dashboard"]');
+      if (dashBtn) dashBtn.classList.add('active');
+      currentView = 'dashboard';
+      elTreeStrip.style.display = 'flex';
+    }
+
+    function restoreChartLayout() {
+      dashboardMode = false;
+      document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+      const chartBtn = document.querySelector('.view-btn[data-view="chart"]');
+      if (chartBtn) chartBtn.classList.add('active');
+      currentView = 'chart';
+      elTreeStrip.style.display = 'none';
+      elDashboardPreview.style.display = 'none';
+    }
+
+    // ─── Patch compileCurrentContent to route dashboard files ─────
+    const _origCompile = compileCurrentContent;
+    // Replace the global compile function
+    window._shelvesDashboardCompile = compileDashboardContent;
+
+    // Override the editor change handler by wrapping compileCurrentContent
+    editor.onDidChangeModelContent.dispose?.(); // no-op if not possible
+    // Re-register via setTimeout trick: the original handler calls compileCurrentContent by closure.
+    // Instead, override by redefining the function used by the debounced timer.
+    // We patch via the compile timer callback approach:
+    function compileDashboardOrChart() {
+      const content = editor.getValue();
+      if (!content.trim()) {
+        if (dashboardMode) restoreChartLayout();
+        document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+          detail: { vega_lite_spec: null, errors: [], warnings: [], path: currentFile?.path ?? null },
+        }));
+        updateStatusBadge([]);
+        return;
+      }
+      if (isDashboardYaml(content)) {
+        if (!dashboardMode) applyDashboardLayout();
+        compileDashboardContent();
+      } else {
+        if (dashboardMode) restoreChartLayout();
+        _origCompile();
+      }
+    }
+
+    // Re-wire editor content change to use new router
+    editor.onDidChangeModelContent(() => {
+      if (currentFile) { currentFile.dirty = true; }
+      renderTabBar();
+      clearTimeout(compileTimer);
+      compileTimer = setTimeout(compileDashboardOrChart, COMPILE_DEBOUNCE_MS);
+    });
+
+    // ─── Dashboard Result Listener ────────────────────────────────
+    document.addEventListener('shelves:dashboard-result', (e) => {
+      if (currentView === 'json') {
+        // Show component_tree as JSON for debugging
+        elPreview.style.display = 'none';
+        elDashboardPreview.style.display = 'none';
+        hideErrorOverlay();
+        elJsonView.style.display = 'block';
+        elJsonView.innerHTML = highlightJson(JSON.stringify(e.detail.component_tree, null, 2));
+      } else {
+        renderDashboardPreview(e.detail);
+      }
+    });
+
+    // ─── WS dashboard_compile_result handler ─────────────────────
+    const _origWsOnMessage2 = ws ? ws.onmessage : null;
+    function patchWsForDashboard(wsInstance) {
+      const prevHandler = wsInstance.onmessage;
+      wsInstance.onmessage = (event) => {
+        if (prevHandler) prevHandler.call(wsInstance, event);
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'dashboard_compile_result') {
+            document.dispatchEvent(new CustomEvent('shelves:dashboard-result', {
+              detail: msg,
+            }));
+            updateStatusBadge(msg.errors ?? [], msg.warnings ?? []);
+          }
+        } catch {}
+      };
+    }
+    if (ws) patchWsForDashboard(ws);
+
+    // ─── Iframe click-through ─────────────────────────────────────
+    window.addEventListener('message', (event) => {
+      if (event.data?.type === 'sheet-click') {
+        const chartPath = event.data.link;
+        window.shelvesStudio.openFile(chartPath);
+      }
+    });
+
+    // ════════════════════════════════════════════════════════════════
+    // KAN-210: Integrated Terminal Panel
+    // ════════════════════════════════════════════════════════════════
+
+    // ─── xterm.js CDN Imports ────────────────────────────────────
+    const { Terminal } = await import('https://cdn.jsdelivr.net/npm/@xterm/xterm@5/+esm');
+    const { FitAddon } = await import('https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0/+esm');
+
+    // ─── Terminal State ──────────────────────────────────────────
+    let terminals = [];       // [{ id, term, fitAddon, ws, name, container }]
+    let activeTerminalId = null;
+    let terminalPanelHeight = parseInt(localStorage.getItem('shelves-studio-terminal-height') || '250');
+    let terminalPanelVisible = false;
+    const STORAGE_KEY_TERM_HEIGHT = 'shelves-studio-terminal-height';
+    let _termIdCounter = 0;
+
+    // ─── Create Terminal Tab ─────────────────────────────────────
+    function createTerminal() {
+      const id = ++_termIdCounter;
+      const name = `Terminal ${id}`;
+
+      // xterm.js Terminal instance
+      const term = new Terminal({
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: 13,
+        theme: {
+          background: '#141417',
+          foreground: '#e8e6e3',
+          cursor: '#6c8cff',
+          selectionBackground: '#6c8cff33',
+        },
+        cursorBlink: true,
+        scrollback: 5000,
+      });
+      const fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
+
+      // Container element for this terminal instance
+      const container = document.createElement('div');
+      container.dataset.termId = id;
+      container.style.cssText = 'display:none; width:100%; height:100%; position:absolute; inset:0;';
+      document.getElementById('terminal-container').appendChild(container);
+
+      // WebSocket connection
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const termWs = new WebSocket(`${proto}://${location.host}/ws/terminal`);
+
+      termWs.onopen = () => {
+        term.open(container);
+        fitAddon.fit();
+        const { rows, cols } = term;
+        termWs.send(JSON.stringify({ type: 'resize', rows, cols }));
+      };
+
+      termWs.onmessage = (event) => {
+        let msg;
+        try { msg = JSON.parse(event.data); } catch { return; }
+        if (msg.type === 'output') {
+          // Decode base64 and write to terminal
+          const binary = atob(msg.data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          term.write(bytes);
+        } else if (msg.type === 'exit') {
+          term.writeln('\r\n\x1b[2m[Process exited]\x1b[0m');
+          const entry = terminals.find(t => t.id === id);
+          if (entry) {
+            const tabEl = document.querySelector(`.terminal-tab[data-term-id="${id}"]`);
+            if (tabEl) tabEl.style.opacity = '0.5';
+          }
+        }
+      };
+
+      termWs.onerror = () => {
+        term.writeln('\r\n\x1b[31m[Connection error]\x1b[0m');
+      };
+
+      termWs.onclose = () => {
+        // Tab remains open in disconnected state
+      };
+
+      // Forward keystrokes to PTY
+      term.onData((data) => {
+        if (termWs.readyState === WebSocket.OPEN) {
+          termWs.send(JSON.stringify({ type: 'input', data }));
+        }
+      });
+
+      // Resize observer: fit terminal when container size changes
+      const ro = new ResizeObserver(() => {
+        if (activeTerminalId === id && terminalPanelVisible) {
+          fitAddon.fit();
+          if (termWs.readyState === WebSocket.OPEN) {
+            const { rows, cols } = term;
+            termWs.send(JSON.stringify({ type: 'resize', rows, cols }));
+          }
+        }
+      });
+      ro.observe(document.getElementById('terminal-container'));
+
+      const entry = { id, term, fitAddon, ws: termWs, name, container, ro };
+      terminals.push(entry);
+
+      // Create tab UI
+      const tabEl = document.createElement('div');
+      tabEl.className = 'terminal-tab';
+      tabEl.dataset.termId = id;
+      tabEl.innerHTML = `<span>${name}</span><span style="margin-left:6px;cursor:pointer;opacity:0.6" title="Close">&times;</span>`;
+      tabEl.addEventListener('click', (e) => {
+        if (e.target.tagName === 'SPAN' && e.target.title === 'Close') {
+          closeTerminal(id);
+        } else {
+          switchTerminal(id);
+        }
+      });
+      document.getElementById('terminal-tabs').appendChild(tabEl);
+
+      switchTerminal(id);
+    }
+
+    // ─── Switch Terminal Tab ─────────────────────────────────────
+    function switchTerminal(id) {
+      terminals.forEach(({ container, id: tid }) => {
+        container.style.display = tid === id ? 'block' : 'none';
+      });
+      document.querySelectorAll('.terminal-tab').forEach(el => {
+        el.classList.toggle('active', parseInt(el.dataset.termId) === id);
+      });
+      const entry = terminals.find(t => t.id === id);
+      if (entry) {
+        entry.fitAddon.fit();
+      }
+      activeTerminalId = id;
+    }
+
+    // ─── Close Terminal Tab ──────────────────────────────────────
+    function closeTerminal(id) {
+      const idx = terminals.findIndex(t => t.id === id);
+      if (idx === -1) return;
+      const entry = terminals[idx];
+      entry.ro.disconnect();
+      if (entry.ws.readyState === WebSocket.OPEN) entry.ws.close();
+      entry.term.dispose();
+      entry.container.remove();
+      terminals.splice(idx, 1);
+      document.querySelector(`.terminal-tab[data-term-id="${id}"]`)?.remove();
+      if (terminals.length > 0) {
+        switchTerminal(terminals[Math.max(0, idx - 1)].id);
+      } else {
+        activeTerminalId = null;
+        toggleTerminalPanel(); // hide panel when last terminal closed
+      }
+    }
+
+    // ─── Toggle Terminal Panel ────────────────────────────────────
+    function toggleTerminalPanel() {
+      terminalPanelVisible = !terminalPanelVisible;
+      const panel = document.getElementById('terminal-panel');
+      if (terminalPanelVisible) {
+        if (terminals.length === 0) createTerminal();
+        panel.classList.remove('collapsed');
+        panel.style.height = terminalPanelHeight + 'px';
+        if (activeTerminalId !== null) {
+          const entry = terminals.find(t => t.id === activeTerminalId);
+          if (entry) entry.fitAddon.fit();
+        }
+      } else {
+        panel.classList.add('collapsed');
+        panel.style.height = '';
+      }
+    }
+
+    // ─── Keyboard shortcut: Ctrl+` toggles panel ─────────────────
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === '`') {
+        e.preventDefault();
+        toggleTerminalPanel();
+      }
+    });
+
+    // ─── Toolbar button ───────────────────────────────────────────
+    document.getElementById('terminal-toolbar-btn').addEventListener('click', toggleTerminalPanel);
+    document.getElementById('terminal-new').addEventListener('click', createTerminal);
+    document.getElementById('terminal-toggle').addEventListener('click', toggleTerminalPanel);
+
+    // ─── Terminal Panel Resize Handle ────────────────────────────
+    (function initTerminalResizeHandle() {
+      const handle = document.getElementById('terminal-resize-handle');
+      let dragging = false;
+      let startY = 0;
+      let startH = 0;
+
+      handle.addEventListener('mousedown', (e) => {
+        dragging = true;
+        startY = e.clientY;
+        startH = terminalPanelHeight;
+        handle.classList.add('dragging');
+        e.preventDefault();
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const delta = startY - e.clientY;
+        terminalPanelHeight = Math.max(80, Math.min(800, startH + delta));
+        document.getElementById('terminal-panel').style.height = terminalPanelHeight + 'px';
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.classList.remove('dragging');
+        localStorage.setItem(STORAGE_KEY_TERM_HEIGHT, String(terminalPanelHeight));
+        if (activeTerminalId !== null) {
+          const entry = terminals.find(t => t.id === activeTerminalId);
+          if (entry) entry.fitAddon.fit();
+        }
+      });
+    })();
   </script>
 </body>
 </html>

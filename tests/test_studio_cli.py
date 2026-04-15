@@ -132,6 +132,24 @@ class TestServerIndexPage:
         assert 'id="sidebar"' in response.text
         assert 'id="file-tree"' in response.text
 
+    def test_workspace_includes_dashboard_elements(self):
+        """GET / returns HTML with dashboard preview DOM elements."""
+        client = _client()
+        response = client.get("/")
+        assert response.status_code == 200
+        assert 'id="dashboard-preview"' in response.text
+        assert 'id="component-tree-strip"' in response.text
+        assert 'data-view="dashboard"' in response.text
+
+    def test_workspace_includes_terminal_panel(self):
+        """GET / returns HTML with terminal panel DOM elements and xterm.js CDN."""
+        client = _client()
+        response = client.get("/")
+        assert response.status_code == 200
+        assert 'id="terminal-panel"' in response.text
+        assert 'id="terminal-tabs"' in response.text
+        assert "xterm" in response.text
+
 
 # ─── Compile Endpoint ────────────────────────────────────────────
 
@@ -416,6 +434,189 @@ class TestGracefulShutdown:
             proc.kill()
             pytest.fail("Server did not exit within 5 seconds after SIGINT")
         assert proc.returncode == 0, f"Expected exit 0, got {proc.returncode}"
+
+
+# ─── Compile Dashboard Endpoint ─────────────────────────────────
+
+
+class TestCompileDashboardEndpoint:
+    _CHART_YAML = "sheet: Simple\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n"
+
+    _DASHBOARD_YAML = """\
+dashboard: "Test Dashboard"
+canvas:
+  width: 1440
+  height: 900
+root:
+  orientation: vertical
+  contains:
+    - sheet: simple.yaml
+      name: revenue_chart
+      width: "100%"
+"""
+
+    _DASHBOARD_TWO_SHEETS = """\
+dashboard: "Two Sheet Dashboard"
+canvas:
+  width: 1440
+  height: 900
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        contains:
+          - sheet: simple.yaml
+            name: sheet_a
+            width: "50%"
+          - sheet: simple.yaml
+            name: sheet_b
+            width: "50%"
+"""
+
+    def _make_project(self, tmp_path):
+        (tmp_path / "charts").mkdir()
+        (tmp_path / "charts" / "simple.yaml").write_text(self._CHART_YAML)
+
+    def test_compile_dashboard_returns_html(self, tmp_path):
+        """POST /compile-dashboard with valid YAML returns HTML and empty errors."""
+        from starlette.testclient import TestClient
+
+        self._make_project(tmp_path)
+        app = create_app(project_dir=tmp_path)
+        client = TestClient(app)
+
+        response = client.post("/compile-dashboard", content=self._DASHBOARD_YAML)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["errors"] == []
+        assert body["html"] is not None
+        assert "<!DOCTYPE html>" in body["html"]
+        assert isinstance(body["warnings"], list)
+        assert isinstance(body["component_tree"], list)
+        # Root node is vertical
+        assert body["component_tree"][0]["type"] == "vertical"
+
+    def test_compile_dashboard_component_tree_structure(self, tmp_path):
+        """POST /compile-dashboard returns flat component_tree with correct structure."""
+        from starlette.testclient import TestClient
+
+        self._make_project(tmp_path)
+        app = create_app(project_dir=tmp_path)
+        client = TestClient(app)
+
+        response = client.post("/compile-dashboard", content=self._DASHBOARD_TWO_SHEETS)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["errors"] == []
+        tree = body["component_tree"]
+        assert isinstance(tree, list)
+
+        # Root node
+        root = tree[0]
+        assert root["depth"] == 0
+        assert root["type"] == "vertical"
+
+        # Children have depth 1
+        children = [n for n in tree if n["depth"] == 1]
+        assert len(children) > 0
+
+        # Sheet nodes have type "sheet" and a link field
+        sheets = [n for n in tree if n["type"] == "sheet"]
+        assert len(sheets) == 2
+        for s in sheets:
+            assert "link" in s
+            assert s["link"] == "simple.yaml"
+
+    def test_compile_dashboard_invalid_yaml(self, tmp_path):
+        """POST /compile-dashboard with invalid dashboard YAML returns errors."""
+        from starlette.testclient import TestClient
+
+        app = create_app(project_dir=tmp_path)
+        client = TestClient(app)
+
+        response = client.post("/compile-dashboard", content="dashboard: test\n")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["html"] is None
+        assert len(body["errors"]) > 0
+        assert body["warnings"] == []
+        assert body["component_tree"] == []
+
+    def test_compile_dashboard_missing_chart(self, tmp_path):
+        """POST /compile-dashboard with a missing chart reference returns errors."""
+        from starlette.testclient import TestClient
+
+        app = create_app(project_dir=tmp_path)
+        client = TestClient(app)
+
+        yaml_body = """\
+dashboard: "Missing Chart"
+canvas:
+  width: 1440
+  height: 900
+root:
+  orientation: vertical
+  contains:
+    - sheet: nonexistent.yaml
+      name: bad_sheet
+      width: "100%"
+"""
+        response = client.post("/compile-dashboard", content=yaml_body)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["html"] is None
+        assert len(body["errors"]) > 0
+        assert any("not found" in e.lower() for e in body["errors"])
+        assert body["component_tree"] == []
+
+
+# ─── Terminal Endpoint ──────────────────────────────────────────
+
+
+class TestTerminalEndpoint:
+    def test_terminal_ws_connects(self):
+        """WebSocket connection to /ws/terminal is accepted and can be closed cleanly."""
+        client = _client()
+        with client.websocket_connect("/ws/terminal") as ws:
+            # Connection accepted — no exception raised
+            assert ws is not None
+        # Context manager exit closes cleanly
+
+    def test_terminal_ws_resize_message(self):
+        """Server handles resize message without error; connection stays open."""
+        client = _client()
+        with client.websocket_connect("/ws/terminal") as ws:
+            ws.send_json({"type": "resize", "rows": 24, "cols": 80})
+            # No exception raised — connection remains open
+
+    def test_terminal_ws_input_message(self):
+        """Server writes input to PTY and returns at least one output message."""
+        client = _client()
+        with client.websocket_connect("/ws/terminal") as ws:
+            # Send input to the shell
+            ws.send_json({"type": "input", "data": "echo hello\r"})
+            # Receive at least one output message (may be shell prompt or echo output)
+            msg = ws.receive_json()
+            assert msg["type"] == "output"
+            assert "data" in msg
+            # data is base64-encoded — must be a valid string
+            import base64
+
+            decoded = base64.b64decode(msg["data"])
+            assert isinstance(decoded, bytes)
+
+    def test_multiple_terminal_connections(self):
+        """Each WebSocket connection gets an independent PTY; both can be closed."""
+        client = _client()
+        with client.websocket_connect("/ws/terminal") as ws1:
+            with client.websocket_connect("/ws/terminal") as ws2:
+                # Both connections accepted
+                assert ws1 is not None
+                assert ws2 is not None
+                # Send resize to ws1 only — ws2 remains unaffected
+                ws1.send_json({"type": "resize", "rows": 30, "cols": 120})
+            # ws2 closed cleanly
+        # ws1 closed cleanly
 
 
 # ─── Edge Cases ──────────────────────────────────────────────────

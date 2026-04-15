@@ -138,8 +138,15 @@ async def _compile_file_and_broadcast(
             )
             return
 
-        # Skip non-chart YAML (e.g. dashboards, models)
+        # Route dashboard YAML to the dashboard pipeline
         raw = _yaml.safe_load(content)
+        if isinstance(raw, dict) and "dashboard" in raw:
+            await _compile_dashboard_file_and_broadcast(
+                abs_path, rel, manager, models_dir, theme_path
+            )
+            return
+
+        # Skip non-chart YAML (e.g. models)
         if not isinstance(raw, dict) or "sheet" not in raw:
             return
 
@@ -174,6 +181,42 @@ async def _compile_file_and_broadcast(
                 "vega_lite_spec": None,
                 "errors": [str(e)],
                 "warnings": [],
+            }
+        )
+
+
+async def _compile_dashboard_file_and_broadcast(
+    abs_path: Path,
+    rel: str,
+    manager: ConnectionManager,
+    models_dir: Path,
+    theme_path: Path | None,
+    charts_dir: Path | None = None,
+) -> None:
+    """Read a dashboard YAML file, compile it, and broadcast the result."""
+    try:
+        content = abs_path.read_text()
+        project_dir = abs_path.parent
+        resolved_charts = charts_dir or (project_dir / "charts")
+        result = await _run_dashboard_pipeline(
+            content, project_dir, resolved_charts, theme_path, models_dir=models_dir
+        )
+        await manager.broadcast(
+            {
+                "type": "dashboard_compile_result",
+                "path": rel,
+                **result,
+            }
+        )
+    except Exception as e:
+        await manager.broadcast(
+            {
+                "type": "dashboard_compile_result",
+                "path": rel,
+                "html": None,
+                "errors": [str(e)],
+                "warnings": [],
+                "component_tree": [],
             }
         )
 
@@ -254,6 +297,10 @@ def create_app(
     async def put_file(request: Request) -> JSONResponse | Response:
         return await _put_file(request)
 
+    @app.post("/compile-dashboard")
+    async def compile_dashboard(request: Request) -> JSONResponse:
+        return await _compile_dashboard_yaml(request)
+
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket) -> None:
         manager: ConnectionManager = ws.app.state.manager
@@ -263,6 +310,89 @@ def create_app(
                 await ws.receive_text()
         except WebSocketDisconnect:
             manager.disconnect(ws)
+
+    @app.websocket("/ws/terminal")
+    async def ws_terminal(ws: WebSocket) -> None:
+        """
+        Terminal WebSocket endpoint.
+
+        Protocol (client -> server):
+            {"type": "input", "data": "<string>"}     — keystrokes to write to PTY
+            {"type": "resize", "rows": N, "cols": N}  — terminal resize event
+
+        Protocol (server -> client):
+            {"type": "output", "data": "<base64>"}     — PTY output (base64-encoded)
+            {"type": "exit", "code": N}                — shell process exited
+
+        Each connection gets its own PtyManager instance.
+        On disconnect, the PTY is closed and the subprocess terminated.
+        """
+        import base64 as _base64
+
+        from shelves.studio.terminal import PtyManager
+
+        await ws.accept()
+        project_dir = str(ws.app.state.project_dir)
+        mgr = PtyManager(cwd=project_dir)
+        try:
+            mgr.spawn()
+        except OSError as e:
+            await ws.send_json({"type": "exit", "code": -1, "error": str(e)})
+            await ws.close()
+            return
+
+        async def _read_loop() -> None:
+            try:
+                while mgr.is_alive:
+                    data = await mgr.read()
+                    if not data:
+                        break
+                    await ws.send_json(
+                        {"type": "output", "data": _base64.b64encode(data).decode("ascii")}
+                    )
+                # Shell exited
+                code = mgr._proc.returncode if mgr._proc else 0
+                try:
+                    await ws.send_json({"type": "exit", "code": code or 0})
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        read_task = asyncio.create_task(_read_loop())
+
+        try:
+            while True:
+                try:
+                    raw = await ws.receive_text()
+                except WebSocketDisconnect:
+                    break
+                try:
+                    import json as _json
+
+                    msg = _json.loads(raw)
+                except Exception:
+                    # Malformed JSON — close gracefully
+                    break
+                msg_type = msg.get("type")
+                if msg_type == "input":
+                    data_str = msg.get("data", "")
+                    if data_str:
+                        mgr.write(data_str.encode())
+                elif msg_type == "resize":
+                    rows = int(msg.get("rows", 24))
+                    cols = int(msg.get("cols", 80))
+                    mgr.resize(rows, cols)
+                # Unknown types are silently ignored
+        except Exception:
+            pass
+        finally:
+            read_task.cancel()
+            try:
+                await read_task
+            except asyncio.CancelledError:
+                pass
+            mgr.close()
 
     return app
 
@@ -365,6 +495,175 @@ async def _put_file(request: Request) -> JSONResponse | Response:
     resolved.write_text(content)
 
     return JSONResponse({"ok": True, "path": rel})
+
+
+async def _compile_dashboard_yaml(request: Request) -> JSONResponse:
+    """POST /compile-dashboard — compile dashboard YAML body to HTML + component tree."""
+    yaml_body = (await request.body()).decode("utf-8")
+
+    if not yaml_body.strip():
+        return JSONResponse(
+            {"html": None, "errors": ["Empty YAML body"], "warnings": [], "component_tree": []}
+        )
+
+    import yaml as _yaml
+
+    try:
+        raw = _yaml.safe_load(yaml_body)
+    except Exception:
+        return JSONResponse(
+            {
+                "html": None,
+                "errors": ["Failed to parse YAML"],
+                "warnings": [],
+                "component_tree": [],
+            }
+        )
+
+    if not isinstance(raw, dict) or "dashboard" not in raw:
+        return JSONResponse(
+            {
+                "html": None,
+                "errors": ["Not a dashboard YAML"],
+                "warnings": [],
+                "component_tree": [],
+            }
+        )
+
+    project_dir: Path = request.app.state.project_dir
+    charts_dir: Path = request.app.state.charts_dir
+    theme_path: Path | None = request.app.state.theme_path
+    models_dir: Path = request.app.state.models_dir
+    result = await _run_dashboard_pipeline(
+        yaml_body, project_dir, charts_dir, theme_path, models_dir=models_dir
+    )
+    return JSONResponse(result)
+
+
+async def _run_dashboard_pipeline(
+    yaml_body: str,
+    project_dir: Path,
+    charts_dir: Path,
+    theme_path: Path | None,
+    models_dir: Path | None = None,
+) -> dict:
+    """Run the dashboard compilation pipeline and return a result dict."""
+    from shelves.data.bind import resolve_data
+    from shelves.schema.chart_schema import parse_chart
+    from shelves.schema.layout_schema import parse_dashboard
+    from shelves.theme.merge import load_theme, merge_theme
+    from shelves.translator.layout import translate_dashboard
+    from shelves.translator.layout_flatten import flatten_dashboard
+    from shelves.translator.translate import translate_chart
+
+    try:
+        spec = parse_dashboard(yaml_body)
+    except Exception as e:
+        return {"html": None, "errors": [str(e)], "warnings": [], "component_tree": []}
+
+    flat_root = flatten_dashboard(spec)
+    component_tree = _build_component_tree(flat_root)
+
+    # Discover sheets (name → link)
+    from shelves.compose.dashboard import _discover_sheets
+
+    sheets = _discover_sheets(spec)
+
+    # Load theme
+    try:
+        theme = load_theme(theme_path) if theme_path else load_theme()
+    except Exception:
+        from shelves.theme.theme_schema import ThemeSpec
+
+        theme = ThemeSpec()
+
+    # Compile each referenced chart (resolved relative to charts_dir)
+    warnings: list[str] = []
+    chart_specs: dict[str, dict] = {}
+    for name, link in sheets.items():
+        chart_path = charts_dir / link
+        if not chart_path.exists():
+            return {
+                "html": None,
+                "errors": [f"Chart file not found: {link} (sheet '{name}')"],
+                "warnings": [],
+                "component_tree": [],
+            }
+        try:
+            chart_yaml = chart_path.read_text()
+            chart_spec = parse_chart(chart_yaml)
+            vl = translate_chart(
+                chart_spec, models_dir=models_dir if models_dir and models_dir.exists() else None
+            )
+            vl = merge_theme(vl, theme)
+            # Data binding (best-effort)
+            try:
+                vl = resolve_data(vl, chart_spec, models_dir=models_dir)
+            except Exception as de:
+                warnings.append(f"Data resolution skipped for '{name}': {de}")
+            chart_specs[name] = vl
+        except Exception as e:
+            warnings.append(f"Chart '{name}' ({link}): {e}")
+
+    html = translate_dashboard(spec, theme, chart_specs)
+    html = _inject_click_targets(html, sheets)
+
+    return {"html": html, "errors": [], "warnings": warnings, "component_tree": component_tree}
+
+
+def _build_component_tree(flat_root: Any) -> list[dict]:
+    """Walk a FlatNode tree and produce a flat list for the component tree strip.
+
+    Walk order is depth-first pre-order.
+    Each entry: {name, type, depth, link?, children_count}
+    """
+    from shelves.schema.layout_schema import SheetComponent
+    from shelves.translator.layout_flatten import FlatNode
+
+    result: list[dict] = []
+
+    def _walk(node: FlatNode, depth: int) -> None:
+        comp = node.component
+        comp_type = type(comp).__name__.lower().replace("component", "")
+        # Normalize type names
+        if hasattr(comp, "orientation"):
+            comp_type = getattr(comp, "orientation", "vertical")
+        elif isinstance(comp, SheetComponent):
+            comp_type = "sheet"
+
+        entry: dict = {
+            "name": node.name,
+            "type": comp_type,
+            "depth": depth,
+            "children_count": len(node.children),
+        }
+        if isinstance(comp, SheetComponent):
+            entry["link"] = comp.link
+
+        result.append(entry)
+        for child in node.children:
+            _walk(child, depth + 1)
+
+    _walk(flat_root, 0)
+    return result
+
+
+def _inject_click_targets(html: str, sheets: dict[str, str]) -> str:
+    """Add data-chart-link attributes and dashed borders to sheet divs in dashboard HTML.
+
+    Merges click-target styles into the existing style attribute rather than
+    adding a duplicate (browsers ignore the second style= attribute).
+    """
+    import re
+
+    for name, link in sheets.items():
+        pattern = rf'(<div id="sheet-{re.escape(name)}")\s+(style=")'
+        replacement = (
+            rf'\1 data-chart-link="{link}"'
+            r" \2border: 2px dashed rgba(108,140,255,0.4); cursor: pointer; "
+        )
+        html = re.sub(pattern, replacement, html, count=1)
+    return html
 
 
 # ─── Helpers ─────────────────────────────────────────────────────
