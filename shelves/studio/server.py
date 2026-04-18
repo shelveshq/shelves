@@ -24,6 +24,7 @@ from typing import Any
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 logger = logging.getLogger("shelves.studio.server")
 
@@ -393,6 +394,9 @@ def create_app(
             except asyncio.CancelledError:
                 pass
             mgr.close()
+
+    # Serve static assets (JS modules, CSS) — must come after explicit routes
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
     return app
 

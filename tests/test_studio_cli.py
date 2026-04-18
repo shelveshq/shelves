@@ -98,8 +98,8 @@ class TestServerIndexPage:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert "<title>Shelves Studio</title>" in response.text
-        # KAN-206: Monaco editor workspace elements
-        assert "monaco-editor" in response.text
+        # KAN-206: Monaco editor loaded via modular JS entry point
+        assert "/static/js/main.js" in response.text
         assert 'id="editor"' in response.text
         assert 'id="preview"' in response.text
 
