@@ -24,6 +24,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+studio = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "watchfiles>=1.0",
+    "websockets>=14.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
@@ -43,6 +49,7 @@ Repository = "https://github.com/shelveshq/shelves"
 [project.scripts]
 shelves-render = "shelves.cli.render:main"
 shelves-dev = "shelves.cli.dev:main"
+shelves-studio = "shelves.studio.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -54,6 +61,11 @@ include = ["shelves*"]
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
+"shelves.studio" = [
+    "static/*.html",
+    "static/*.css",
+    "static/js/*.js",
+]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["CLAUDE.md"]

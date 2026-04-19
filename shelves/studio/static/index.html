@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Shelves Studio</title>
+
+  <!-- Vega / Vega-Lite / vega-embed (global scripts for chart rendering) -->
+  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+
+  <!-- xterm.js CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/css/xterm.min.css">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+  <!-- Top toolbar -->
+  <div id="toolbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
+          <path d="M3 3v18h18"/><path d="m7 12 4-4 4 4 4-6"/>
+        </svg>
+      </div>
+      <span class="brand-name">Studio</span>
+    </div>
+    <button id="sidebar-toggle" title="Toggle sidebar">&#9776;</button>
+    <div id="tab-bar"></div>
+    <div id="toolbar-right">
+      <span id="status-badge">Ready</span>
+      <div id="view-toggles">
+        <button class="view-btn active" data-view="chart">Chart</button>
+        <button class="view-btn" data-view="json">JSON</button>
+        <button class="view-btn" data-view="dashboard">Dashboard</button>
+      </div>
+      <button id="terminal-toolbar-btn" title="Toggle terminal (Ctrl+`)">&#9638; Terminal</button>
+    </div>
+  </div>
+
+  <!-- Main workspace -->
+  <div id="workspace">
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <span>Explorer</span>
+        <button id="sidebar-toggle-inner" title="Collapse sidebar">&#9664;</button>
+      </div>
+      <div id="file-tree"></div>
+    </div>
+    <div id="editor-pane">
+      <div id="editor"></div>
+    </div>
+    <div id="resize-handle"></div>
+    <div id="preview-pane">
+      <div id="preview">
+        <div id="chart-card">
+          <div id="chart-container">
+            <div class="preview-placeholder">Open a YAML file to see the chart preview</div>
+          </div>
+        </div>
+      </div>
+      <div id="dashboard-preview">
+        <iframe id="dashboard-iframe" sandbox="allow-scripts"></iframe>
+      </div>
+      <pre id="json-view"></pre>
+      <div id="error-overlay"></div>
+    </div>
+  </div>
+  <div id="component-tree-strip"></div>
+
+  <!-- Terminal Panel -->
+  <div id="terminal-panel" class="collapsed">
+    <div id="terminal-resize-handle"></div>
+    <div id="terminal-header">
+      <div id="terminal-tabs"></div>
+      <div id="terminal-actions">
+        <button id="terminal-new" title="New terminal">+</button>
+        <button id="terminal-toggle" title="Toggle terminal">&#9660;</button>
+      </div>
+    </div>
+    <div id="terminal-container"></div>
+  </div>
+
+  <!-- Application modules -->
+  <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

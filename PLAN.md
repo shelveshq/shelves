@@ -1,4 +1,4 @@
-# Implementation Plan: Charter — AI-Native Visual Analytics Platform
+# Implementation Plan: Shelves — AI-Native Visual Analytics Platform
 
 ## Pipeline
 
@@ -8,7 +8,7 @@ YAML chart spec
     → Translator (Vega-Lite dict)
     → Theme merge
     → Data bind
-    → HTML render (Phase 1) / Charter Studio (Phase 5) / Web app (Phase 6)
+    → HTML render (Phase 1) / Shelves Studio (Phase 5) / Web app (Phase 6)
 ```
 
 ---
@@ -27,7 +27,7 @@ Adds the `layer` property on MeasureEntry. Overlaid marks sharing an axis,
 with independent/shared scale resolution. Layers nest inside stacked panels
 (the "stacked layers" pattern).
 
-### Phase 2+ — Theme pipeline, semantic layer, layout DSL, Charter Studio, web app
+### Phase 2+ — Theme pipeline, semantic layer, layout DSL, Shelves Studio, web app
 
 See Future Phases table at the bottom.
 
@@ -225,7 +225,7 @@ rows:
 ## File Structure
 
 ```
-charter/
+declarative-charter/
 ├── PLAN.md
 ├── pyproject.toml
 ├── README.md
@@ -316,7 +316,7 @@ charter/
     ├── Vision.md
     ├── DESIGN_final_multi_measure.md
     ├── Layout_DSL_Specification.md
-    ├── Charter_Studio_Design.md
+    ├── Shelves_Studio_Design.md
     └── plans/                           # Per-ticket plan documents
         └── TICKET-ID.md
 ```
@@ -439,6 +439,6 @@ Dev: pytest >= 8.0, syrupy >= 4.0 (snapshot testing)
 |-------|------|-----------|
 | **2** | Theme pipeline (Figma → Style Dictionary) | `theme/`, `tools/` |
 | **4** | Layout DSL (dashboards, static HTML) | `schema/layout_schema.py`, `translator/layout.py` |
-| **5** | Charter Studio (local dev server + native app) | `studio/` |
+| **5** | Shelves Studio (local dev server + native app) — Stage 1 in progress | `shelves/studio/` |
 | **6** | Web app (hosted, business users) | `app/` |
 | **7** | Production (VegaFusion, caching, auth) | Infrastructure |
