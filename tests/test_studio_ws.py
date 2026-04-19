@@ -21,9 +21,13 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 
-from tests.conftest import MODELS_DIR
+from tests.conftest import MODELS_DIR, SubprocessOutputDrainer
 
-from shelves.studio.server import ConnectionManager, create_app
+from shelves.studio.server import (
+    ConnectionManager,
+    _compile_file_and_broadcast,
+    create_app,
+)
 from shelves.studio.watcher import COMPILE_EXTENSIONS, WATCH_EXTENSIONS, should_compile
 
 # ─── Helpers ─────────────────────────────────────────────────────
@@ -183,6 +187,68 @@ class TestWebSocketEndpoint:
                     ws2.close()
 
 
+# ─── Dashboard hot-reload project root resolution ────────────────
+
+
+class TestDashboardHotReloadProjectDir:
+    """
+    Regression: hot-reloading a nested dashboard YAML must resolve chart
+    links relative to the project root, not the dashboard file's parent.
+    """
+
+    _DASHBOARD_YAML = """\
+dashboard: "Nested"
+canvas:
+  width: 1440
+  height: 900
+root:
+  orientation: vertical
+  contains:
+    - sheet: simple.yaml
+      name: only
+      width: "100%"
+"""
+
+    _CHART_YAML = "sheet: S\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n"
+
+    def test_nested_dashboard_resolves_charts_from_project_root(self, tmp_path):
+        """A dashboards/<file>.yaml finds charts/ under the project root."""
+
+        async def _test():
+            (tmp_path / "charts").mkdir()
+            (tmp_path / "charts" / "simple.yaml").write_text(self._CHART_YAML)
+            (tmp_path / "dashboards").mkdir()
+            dash_path = tmp_path / "dashboards" / "sales.yaml"
+            dash_path.write_text(self._DASHBOARD_YAML)
+
+            captured: list[dict] = []
+
+            class _Capture:
+                async def broadcast(self, msg: dict) -> None:
+                    captured.append(msg)
+
+            # project_dir/charts_dir must reach the compile path — if they
+            # didn't, the dashboard pipeline would fall back to
+            # dash_path.parent (= dashboards/) and fail to find simple.yaml.
+            await _compile_file_and_broadcast(
+                dash_path,
+                "dashboards/sales.yaml",
+                _Capture(),  # type: ignore[arg-type]
+                models_dir=tmp_path / "models",
+                theme_path=None,
+                project_dir=tmp_path,
+                charts_dir=tmp_path / "charts",
+            )
+
+            assert captured, "No broadcast emitted"
+            msg = captured[-1]
+            assert msg["type"] == "dashboard_compile_result", msg
+            assert msg["errors"] == [], f"Chart resolution failed: {msg['errors']}"
+            assert msg["html"] is not None
+
+        asyncio.run(_test())
+
+
 # ─── Full integration — real server via subprocess ───────────────
 
 
@@ -195,7 +261,9 @@ class TestWatchIntegration:
     avoiding the cross-event-loop coordination issues of TestClient.
     """
 
-    def _start_server(self, project_dir: Path, port: int) -> subprocess.Popen:
+    def _start_server(
+        self, project_dir: Path, port: int
+    ) -> tuple[subprocess.Popen, SubprocessOutputDrainer]:
         proc = subprocess.Popen(
             [
                 sys.executable,
@@ -210,15 +278,27 @@ class TestWatchIntegration:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        # Drain pipes in background so uvicorn can't block on a full kernel
+        # pipe buffer, while still keeping output for failure diagnostics.
+        drainer = SubprocessOutputDrainer(proc)
         time.sleep(2.0)  # Give uvicorn time to start
-        return proc
+        # Early-fail with captured output if the server crashed during boot.
+        if proc.poll() is not None:
+            drainer.join()
+            raise AssertionError(
+                f"Studio server exited during startup (code={proc.returncode})\n"
+                f"STDOUT:\n{drainer.stdout_text}\n"
+                f"STDERR:\n{drainer.stderr_text}"
+            )
+        return proc, drainer
 
-    def _stop_server(self, proc: subprocess.Popen) -> None:
+    def _stop_server(self, proc: subprocess.Popen, drainer: SubprocessOutputDrainer) -> None:
         proc.send_signal(signal.SIGINT)
         try:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+        drainer.join()
 
     def test_file_write_triggers_ws_messages(self, tmp_path):
         """Writing a YAML file via PUT triggers file_change and compile_result messages."""
@@ -227,7 +307,7 @@ class TestWatchIntegration:
 
         project_dir = _setup_project(tmp_path)
         port = _SERVER_PORT
-        proc = self._start_server(project_dir, port)
+        proc, drainer = self._start_server(project_dir, port)
         try:
             with websockets.sync.client.connect(f"ws://127.0.0.1:{port}/ws") as ws:
                 # Write a valid YAML file via HTTP PUT
@@ -259,7 +339,7 @@ class TestWatchIntegration:
                 assert spec["encoding"]["x"]["field"] == "country"
                 assert spec["encoding"]["y"]["field"] == "revenue"
         finally:
-            self._stop_server(proc)
+            self._stop_server(proc, drainer)
 
     def test_invalid_yaml_triggers_error_compile_result(self, tmp_path):
         """Writing invalid YAML produces a compile_result with errors."""
@@ -268,7 +348,7 @@ class TestWatchIntegration:
 
         project_dir = _setup_project(tmp_path)
         port = _SERVER_PORT + 1
-        proc = self._start_server(project_dir, port)
+        proc, drainer = self._start_server(project_dir, port)
         try:
             with websockets.sync.client.connect(f"ws://127.0.0.1:{port}/ws") as ws:
                 httpx.put(
@@ -289,7 +369,7 @@ class TestWatchIntegration:
                 assert compile_msgs[0]["vega_lite_spec"] is None
                 assert len(compile_msgs[0]["errors"]) > 0
         finally:
-            self._stop_server(proc)
+            self._stop_server(proc, drainer)
 
     def test_multiple_clients_receive_broadcast(self, tmp_path):
         """All connected WebSocket clients receive the broadcast."""
@@ -298,7 +378,7 @@ class TestWatchIntegration:
 
         project_dir = _setup_project(tmp_path)
         port = _SERVER_PORT + 2
-        proc = self._start_server(project_dir, port)
+        proc, drainer = self._start_server(project_dir, port)
         try:
             with (
                 websockets.sync.client.connect(f"ws://127.0.0.1:{port}/ws") as ws1,
@@ -323,7 +403,7 @@ class TestWatchIntegration:
                             break
                     assert received_compile, "WebSocket client did not receive compile_result"
         finally:
-            self._stop_server(proc)
+            self._stop_server(proc, drainer)
 
     def test_json_file_no_compile_result(self, tmp_path):
         """Writing a .json file sends file_change but NOT compile_result."""
@@ -332,7 +412,7 @@ class TestWatchIntegration:
 
         project_dir = _setup_project(tmp_path)
         port = _SERVER_PORT + 3
-        proc = self._start_server(project_dir, port)
+        proc, drainer = self._start_server(project_dir, port)
         try:
             with websockets.sync.client.connect(f"ws://127.0.0.1:{port}/ws") as ws:
                 httpx.put(
@@ -353,4 +433,4 @@ class TestWatchIntegration:
                     f"compile_result should NOT be sent for .json: {messages}"
                 )
         finally:
-            self._stop_server(proc)
+            self._stop_server(proc, drainer)

@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import FIXTURES_DIR
+from tests.conftest import FIXTURES_DIR, SubprocessOutputDrainer
 
 # ─── Imports under test ──────────────────────────────────────────
 # These will fail with ImportError until the module is created (expected red state).
@@ -425,15 +425,27 @@ class TestGracefulShutdown:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        # Give uvicorn time to start
-        time.sleep(2.0)
+        # Drain pipes so uvicorn output can't deadlock a full pipe buffer,
+        # but keep the bytes around so we can surface them on failure.
+        drainer = SubprocessOutputDrainer(proc)
+        time.sleep(2.0)  # Give uvicorn time to start
         proc.send_signal(signal.SIGINT)
         try:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
-            pytest.fail("Server did not exit within 5 seconds after SIGINT")
-        assert proc.returncode == 0, f"Expected exit 0, got {proc.returncode}"
+            drainer.join()
+            pytest.fail(
+                "Server did not exit within 5 seconds after SIGINT\n"
+                f"STDOUT:\n{drainer.stdout_text}\n"
+                f"STDERR:\n{drainer.stderr_text}"
+            )
+        drainer.join()
+        assert proc.returncode == 0, (
+            f"Expected exit 0, got {proc.returncode}\n"
+            f"STDOUT:\n{drainer.stdout_text}\n"
+            f"STDERR:\n{drainer.stderr_text}"
+        )
 
 
 # ─── Compile Dashboard Endpoint ─────────────────────────────────
@@ -573,33 +585,94 @@ root:
 # ─── Terminal Endpoint ──────────────────────────────────────────
 
 
+_LOCAL_ORIGIN_HEADERS = {"origin": "http://localhost"}
+
+
+def _terminal_app_client():
+    """Return (app, TestClient) so tests can read the terminal token."""
+    from starlette.testclient import TestClient
+
+    app = create_app(project_dir=PROJECT_DIR)
+    return app, TestClient(app)
+
+
+def _open_terminal_ws(app, client):
+    """Open an authenticated /ws/terminal connection. Returns the cm."""
+    ws_cm = client.websocket_connect("/ws/terminal", headers=_LOCAL_ORIGIN_HEADERS)
+    return ws_cm
+
+
 class TestTerminalEndpoint:
+    def test_terminal_ws_rejects_cross_origin(self):
+        """Non-loopback Origin handshakes are refused before any shell spawns."""
+        from starlette.testclient import TestClient
+        from starlette.websockets import WebSocketDisconnect
+
+        app = create_app(project_dir=PROJECT_DIR)
+        client = TestClient(app)
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(
+                "/ws/terminal", headers={"origin": "https://evil.example.com"}
+            ) as ws:
+                ws.receive_text()
+
+    def test_terminal_ws_rejects_null_origin(self):
+        """Sandboxed-iframe style 'Origin: null' is rejected."""
+        from starlette.testclient import TestClient
+        from starlette.websockets import WebSocketDisconnect
+
+        app = create_app(project_dir=PROJECT_DIR)
+        client = TestClient(app)
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/ws/terminal", headers={"origin": "null"}) as ws:
+                ws.receive_text()
+
+    def test_terminal_ws_rejects_bad_token(self):
+        """Wrong auth token closes the connection before spawning a PTY."""
+        from starlette.websockets import WebSocketDisconnect
+
+        app, client = _terminal_app_client()
+        with pytest.raises(WebSocketDisconnect):
+            with _open_terminal_ws(app, client) as ws:
+                ws.send_json({"type": "auth", "token": "not-the-right-token"})
+                # Server should close; receive raises WebSocketDisconnect
+                ws.receive_text()
+
+    def test_terminal_ws_rejects_missing_auth(self):
+        """Sending a non-auth message first closes the connection."""
+        from starlette.websockets import WebSocketDisconnect
+
+        app, client = _terminal_app_client()
+        with pytest.raises(WebSocketDisconnect):
+            with _open_terminal_ws(app, client) as ws:
+                ws.send_json({"type": "input", "data": "echo hello\r"})
+                ws.receive_text()
+
     def test_terminal_ws_connects(self):
         """WebSocket connection to /ws/terminal is accepted and can be closed cleanly."""
-        client = _client()
-        with client.websocket_connect("/ws/terminal") as ws:
-            # Connection accepted — no exception raised
+        app, client = _terminal_app_client()
+        with _open_terminal_ws(app, client) as ws:
+            ws.send_json({"type": "auth", "token": app.state.terminal_token})
+            # Authenticated — connection open
             assert ws is not None
-        # Context manager exit closes cleanly
 
     def test_terminal_ws_resize_message(self):
         """Server handles resize message without error; connection stays open."""
-        client = _client()
-        with client.websocket_connect("/ws/terminal") as ws:
+        app, client = _terminal_app_client()
+        with _open_terminal_ws(app, client) as ws:
+            ws.send_json({"type": "auth", "token": app.state.terminal_token})
             ws.send_json({"type": "resize", "rows": 24, "cols": 80})
             # No exception raised — connection remains open
 
     def test_terminal_ws_input_message(self):
         """Server writes input to PTY and returns at least one output message."""
-        client = _client()
-        with client.websocket_connect("/ws/terminal") as ws:
-            # Send input to the shell
+        app, client = _terminal_app_client()
+        with _open_terminal_ws(app, client) as ws:
+            ws.send_json({"type": "auth", "token": app.state.terminal_token})
             ws.send_json({"type": "input", "data": "echo hello\r"})
-            # Receive at least one output message (may be shell prompt or echo output)
             msg = ws.receive_json()
             assert msg["type"] == "output"
             assert "data" in msg
-            # data is base64-encoded — must be a valid string
             import base64
 
             decoded = base64.b64decode(msg["data"])
@@ -607,16 +680,58 @@ class TestTerminalEndpoint:
 
     def test_multiple_terminal_connections(self):
         """Each WebSocket connection gets an independent PTY; both can be closed."""
-        client = _client()
-        with client.websocket_connect("/ws/terminal") as ws1:
-            with client.websocket_connect("/ws/terminal") as ws2:
-                # Both connections accepted
+        app, client = _terminal_app_client()
+        token = app.state.terminal_token
+        with _open_terminal_ws(app, client) as ws1:
+            ws1.send_json({"type": "auth", "token": token})
+            with _open_terminal_ws(app, client) as ws2:
+                ws2.send_json({"type": "auth", "token": token})
                 assert ws1 is not None
                 assert ws2 is not None
-                # Send resize to ws1 only — ws2 remains unaffected
                 ws1.send_json({"type": "resize", "rows": 30, "cols": 120})
-            # ws2 closed cleanly
-        # ws1 closed cleanly
+
+
+# ─── PTY Manager ─────────────────────────────────────────────────
+
+
+class TestPtyManagerCancellation:
+    """
+    Regression: PtyManager.read() must unregister its loop reader when the
+    awaiting task is cancelled, so the fd can close cleanly and no callback
+    fires on a closed fd.
+    """
+
+    def test_read_cancellation_removes_loop_reader(self):
+        import asyncio
+        import os
+        import pty as _pty
+
+        from shelves.studio.terminal import PtyManager
+
+        async def _test():
+            mgr = PtyManager()
+            master, slave = _pty.openpty()
+            # Inject the fd without spawning a shell — we only care about
+            # the add_reader/remove_reader accounting here.
+            mgr._master_fd = master
+            loop = asyncio.get_running_loop()
+            try:
+                task = asyncio.create_task(mgr.read())
+                # Let read() reach `await future` and register the reader.
+                await asyncio.sleep(0)
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                # remove_reader returns False when no reader is registered
+                # for the fd — i.e. read() already cleaned up.
+                assert loop.remove_reader(master) is False
+            finally:
+                os.close(master)
+                os.close(slave)
+
+        asyncio.run(_test())
 
 
 # ─── Edge Cases ──────────────────────────────────────────────────

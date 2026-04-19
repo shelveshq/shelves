@@ -16,10 +16,13 @@ Endpoints:
 from __future__ import annotations
 
 import asyncio
+import html as _html
 import logging
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +35,32 @@ _STATIC_DIR = Path(__file__).parent / "static"
 
 # File extensions shown in the project tree
 _TREE_EXTENSIONS = {".yaml", ".yml", ".json"}
+
+# Loopback hostnames allowed to open Studio WebSockets. Studio binds to
+# 127.0.0.1, so only same-host origins are legitimate; any other Origin is
+# a cross-site request from another page and must be rejected.
+_ALLOWED_WS_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+# How long the terminal WS has to send its auth message before we close it.
+_TERMINAL_AUTH_TIMEOUT_SECONDS = 5.0
+
+
+def _is_allowed_ws_origin(origin: str | None) -> bool:
+    """Return True if a WebSocket Origin header points to a loopback host.
+
+    Browsers always send Origin for WebSocket handshakes from page context,
+    so a missing/empty Origin is treated as untrusted too.
+    """
+    if not origin:
+        return False
+    try:
+        parsed = urlparse(origin)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.hostname or "").lower()
+    return host in _ALLOWED_WS_HOSTS
 
 
 class ConnectionManager:
@@ -74,7 +103,12 @@ class ConnectionManager:
         return len(self._connections)
 
 
-def _make_lifespan(project_dir: Path, theme_path: Path | None, models_dir: Path):
+def _make_lifespan(
+    project_dir: Path,
+    theme_path: Path | None,
+    models_dir: Path,
+    charts_dir: Path,
+):
     """
     Create a FastAPI lifespan context manager that starts/stops the file watcher.
     """
@@ -94,7 +128,15 @@ def _make_lifespan(project_dir: Path, theme_path: Path | None, models_dir: Path)
             await manager.broadcast({"type": "file_change", "event": event, "path": rel})
 
             if should_compile(abs_path) and event != "deleted":
-                await _compile_file_and_broadcast(abs_path, rel, manager, models_dir, theme_path)
+                await _compile_file_and_broadcast(
+                    abs_path,
+                    rel,
+                    manager,
+                    models_dir,
+                    theme_path,
+                    project_dir=project_dir,
+                    charts_dir=charts_dir,
+                )
 
         task = asyncio.create_task(watch_project(project_dir, on_change, stop_event))
         try:
@@ -116,6 +158,8 @@ async def _compile_file_and_broadcast(
     manager: ConnectionManager,
     models_dir: Path,
     theme_path: Path | None,
+    project_dir: Path | None = None,
+    charts_dir: Path | None = None,
 ) -> None:
     """Read a YAML file, compile it, and broadcast the result."""
     import yaml as _yaml
@@ -143,7 +187,13 @@ async def _compile_file_and_broadcast(
         raw = _yaml.safe_load(content)
         if isinstance(raw, dict) and "dashboard" in raw:
             await _compile_dashboard_file_and_broadcast(
-                abs_path, rel, manager, models_dir, theme_path
+                abs_path,
+                rel,
+                manager,
+                models_dir,
+                theme_path,
+                project_dir=project_dir,
+                charts_dir=charts_dir,
             )
             return
 
@@ -192,15 +242,24 @@ async def _compile_dashboard_file_and_broadcast(
     manager: ConnectionManager,
     models_dir: Path,
     theme_path: Path | None,
+    project_dir: Path | None = None,
     charts_dir: Path | None = None,
 ) -> None:
     """Read a dashboard YAML file, compile it, and broadcast the result."""
     try:
         content = abs_path.read_text()
-        project_dir = abs_path.parent
-        resolved_charts = charts_dir or (project_dir / "charts")
+        # Prefer the app-configured project root; fall back to the dashboard's
+        # parent only if we weren't told where the project lives. This is what
+        # lets chart links resolve correctly when dashboards are nested
+        # (e.g. <project>/dashboards/sales.yaml referencing <project>/charts/foo.yaml).
+        effective_project_dir = project_dir or abs_path.parent
+        resolved_charts = charts_dir or (effective_project_dir / "charts")
         result = await _run_dashboard_pipeline(
-            content, project_dir, resolved_charts, theme_path, models_dir=models_dir
+            content,
+            effective_project_dir,
+            resolved_charts,
+            theme_path,
+            models_dir=models_dir,
         )
         await manager.broadcast(
             {
@@ -246,7 +305,7 @@ def create_app(
     resolved_charts = charts_dir or (project_dir / "charts")
     resolved_dashboards = dashboards_dir or (project_dir / "dashboards")
 
-    lifespan = _make_lifespan(project_dir, theme_path, resolved_models)
+    lifespan = _make_lifespan(project_dir, theme_path, resolved_models, resolved_charts)
 
     app = FastAPI(title="Shelves Studio", lifespan=lifespan)
 
@@ -257,6 +316,10 @@ def create_app(
     app.state.charts_dir = resolved_charts
     app.state.dashboards_dir = resolved_dashboards
     app.state.manager = ConnectionManager()
+    # Per-app random token gating the terminal WS. The token is embedded in
+    # the served HTML as a <meta> tag, so same-origin scripts can read it
+    # but cross-origin pages (blocked by CORS) cannot.
+    app.state.terminal_token = secrets.token_urlsafe(32)
 
     # CORS — allow localhost origins for browser access during development
     app.add_middleware(
@@ -276,7 +339,10 @@ def create_app(
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
-        return (_STATIC_DIR / "index.html").read_text()
+        html = (_STATIC_DIR / "index.html").read_text()
+        token = _html.escape(app.state.terminal_token, quote=True)
+        meta = f'<meta name="shelves-terminal-token" content="{token}">'
+        return html.replace("</head>", f"  {meta}\n</head>", 1)
 
     @app.post("/compile")
     async def compile_yaml(request: Request) -> JSONResponse:
@@ -318,6 +384,7 @@ def create_app(
         Terminal WebSocket endpoint.
 
         Protocol (client -> server):
+            {"type": "auth", "token": "<string>"}     — REQUIRED first message
             {"type": "input", "data": "<string>"}     — keystrokes to write to PTY
             {"type": "resize", "rows": N, "cols": N}  — terminal resize event
 
@@ -325,14 +392,46 @@ def create_app(
             {"type": "output", "data": "<base64>"}     — PTY output (base64-encoded)
             {"type": "exit", "code": N}                — shell process exited
 
-        Each connection gets its own PtyManager instance.
+        Security:
+          * The Origin header must be a loopback origin — browsers always
+            send Origin for WS, so cross-site pages are rejected before accept.
+          * The client must send an auth message with the per-app token
+            within _TERMINAL_AUTH_TIMEOUT_SECONDS. This defends against a
+            malicious local process or browser extension that could bypass
+            the Origin check.
+        Each authenticated connection gets its own PtyManager instance.
         On disconnect, the PTY is closed and the subprocess terminated.
         """
         import base64 as _base64
+        import json as _json
 
         from shelves.studio.terminal import PtyManager
 
+        if not _is_allowed_ws_origin(ws.headers.get("origin")):
+            await ws.close(code=1008)
+            return
+
         await ws.accept()
+
+        # Require auth before spawning a shell.
+        expected_token: str = ws.app.state.terminal_token
+        try:
+            raw = await asyncio.wait_for(ws.receive_text(), timeout=_TERMINAL_AUTH_TIMEOUT_SECONDS)
+            auth_msg = _json.loads(raw)
+        except (TimeoutError, WebSocketDisconnect, ValueError):
+            await ws.close(code=1008)
+            return
+
+        token = auth_msg.get("token") if isinstance(auth_msg, dict) else None
+        if (
+            not isinstance(auth_msg, dict)
+            or auth_msg.get("type") != "auth"
+            or not isinstance(token, str)
+            or not secrets.compare_digest(token, expected_token)
+        ):
+            await ws.close(code=1008)
+            return
+
         project_dir = str(ws.app.state.project_dir)
         mgr = PtyManager(cwd=project_dir)
         try:
@@ -369,8 +468,6 @@ def create_app(
                 except WebSocketDisconnect:
                     break
                 try:
-                    import json as _json
-
                     msg = _json.loads(raw)
                 except Exception:
                     # Malformed JSON — close gracefully

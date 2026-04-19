@@ -113,22 +113,42 @@ class PtyManager:
         Raises:
             OSError: If the PTY fd is invalid or closed.
         """
-        if self._master_fd is None:
+        fd = self._master_fd
+        if fd is None:
             return b""
         loop = asyncio.get_running_loop()
         future: asyncio.Future[bytes] = loop.create_future()
 
         def _on_readable() -> None:
-            loop.remove_reader(self._master_fd)  # type: ignore[arg-type]
+            # Remove before reading so we don't re-fire on partial data.
             try:
-                data = os.read(self._master_fd, _READ_CHUNK)  # type: ignore[arg-type]
+                loop.remove_reader(fd)
+            except (ValueError, OSError):
+                pass
+            try:
+                data = os.read(fd, _READ_CHUNK)
             except OSError:
                 data = b""
             if not future.done():
                 future.set_result(data)
 
-        loop.add_reader(self._master_fd, _on_readable)
-        return await future
+        loop.add_reader(fd, _on_readable)
+        try:
+            return await future
+        except asyncio.CancelledError:
+            # Cancelled while awaiting (e.g. client disconnect). Make sure
+            # the future resolves so callers holding references don't leak.
+            if not future.done():
+                future.cancel()
+            raise
+        finally:
+            # Always clear the reader — _on_readable may not have fired if
+            # we were cancelled first, which would leave a dangling callback
+            # on a soon-to-be-closed fd.
+            try:
+                loop.remove_reader(fd)
+            except (ValueError, OSError):
+                pass
 
     def close(self) -> None:
         """

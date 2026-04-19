@@ -61,6 +61,11 @@ include = ["shelves*"]
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
+"shelves.studio" = [
+    "static/*.html",
+    "static/*.css",
+    "static/js/*.js",
+]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["CLAUDE.md"]

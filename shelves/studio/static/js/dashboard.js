@@ -181,10 +181,15 @@ export function initDashboard() {
     }
   });
 
-  // Iframe click-through → open chart file
+  // Iframe click-through → open chart file.
+  // The iframe is sandboxed, so its Origin is "null" — we can't rely on
+  // event.origin alone. Restrict to messages from this specific iframe's
+  // contentWindow so unrelated tabs can't drive openFile().
   window.addEventListener('message', (event) => {
-    if (event.data?.type === 'sheet-click') {
-      window.shelvesStudio.openFile(event.data.link);
-    }
+    if (event.source !== elDashboardIframe.contentWindow) return;
+    if (event.data?.type !== 'sheet-click') return;
+    const link = event.data.link;
+    if (typeof link !== 'string') return;
+    window.shelvesStudio.openFile(link);
   });
 }

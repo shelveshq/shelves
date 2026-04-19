@@ -13,6 +13,13 @@ let _termIdCounter = 0;
 let Terminal = null;
 let FitAddon = null;
 
+// Per-app auth token served by the backend inside index.html. Without this,
+// /ws/terminal closes the connection on the auth step.
+function getTerminalToken() {
+  const meta = document.querySelector('meta[name="shelves-terminal-token"]');
+  return meta?.content || '';
+}
+
 // ─── Create Terminal Tab ─────────────────────────────────
 function createTerminal() {
   const id = ++_termIdCounter;
@@ -42,6 +49,8 @@ function createTerminal() {
   const termWs = new WebSocket(`${proto}://${location.host}/ws/terminal`);
 
   termWs.onopen = () => {
+    // Auth MUST be the first message — the server closes the socket otherwise.
+    termWs.send(JSON.stringify({ type: 'auth', token: getTerminalToken() }));
     term.open(container);
     fitAddon.fit();
     const { rows, cols } = term;
