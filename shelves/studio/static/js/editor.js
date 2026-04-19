@@ -12,6 +12,10 @@ let _compileFn = null;
 // Suppress dirty marking when programmatically setting editor value
 let _suppressDirty = false;
 
+// Self-echo suppression: ignore file-change events that echo our own saves
+let _lastSavePath = null;
+let _lastSaveTs = 0;
+
 export function setCompileFunction(fn) {
   _compileFn = fn;
 }
@@ -75,12 +79,18 @@ export async function initEditor() {
   document.addEventListener('shelves:file-change', (e) => {
     const msg = e.detail;
     if (state.currentFile && state.currentFile.path === msg.path && !state.currentFile.dirty) {
+      if (msg.path === _lastSavePath && (Date.now() - _lastSaveTs) < 2000) return;
       fetch(`/file?path=${encodeURIComponent(msg.path)}`)
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           if (data) {
             _suppressDirty = true;
-            state.editor.setValue(data.content);
+            const model = state.editor.getModel();
+            const selections = state.editor.getSelections();
+            state.editor.executeEdits('shelves-file-reload', [{
+              range: model.getFullModelRange(),
+              text: data.content,
+            }], selections);
             _suppressDirty = false;
             if (_compileFn) _compileFn();
           }
@@ -122,6 +132,7 @@ export async function openFile(path) {
   const existing = state.tabs.find(t => t.path === path);
   if (existing) {
     state.currentFile = existing;
+    document.dispatchEvent(new CustomEvent('shelves:compile-start'));
     const resp = await fetch(`/file?path=${encodeURIComponent(path)}`);
     if (resp.ok) {
       const { content } = await resp.json();
@@ -137,6 +148,7 @@ export async function openFile(path) {
   }
 
   try {
+    document.dispatchEvent(new CustomEvent('shelves:compile-start'));
     const resp = await fetch(`/file?path=${encodeURIComponent(path)}`);
     if (!resp.ok) { console.warn('[shelves] file not found:', path); return; }
     const { content } = await resp.json();
@@ -159,6 +171,7 @@ function switchToTab(path) {
   const tab = state.tabs.find(t => t.path === path);
   if (!tab) return;
   state.currentFile = tab;
+  document.dispatchEvent(new CustomEvent('shelves:compile-start'));
   fetch(`/file?path=${encodeURIComponent(path)}`)
     .then(r => r.ok ? r.json() : null)
     .then(data => {
@@ -235,6 +248,8 @@ async function saveCurrentFile() {
       body: content,
     });
     state.currentFile.dirty = false;
+    _lastSavePath = state.currentFile.path;
+    _lastSaveTs = Date.now();
     renderTabBar();
   } catch (e) {
     console.error('[shelves] save error:', e);

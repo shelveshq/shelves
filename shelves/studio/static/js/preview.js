@@ -53,37 +53,40 @@ export function hideErrorOverlay() {
 // ─── Chart Rendering ───────────────────────────────────────
 async function renderChart(result) {
   elJsonView.style.display = 'none';
-  hideErrorOverlay();
 
   if (!result || result.vega_lite_spec === null) {
     showErrorOverlay(result?.errors ?? ['No spec available.']);
     return;
   }
 
+  hideErrorOverlay();
   elPreview.style.display = '';
 
-  // Finalize previous view to avoid memory leaks
-  if (state.vegaView) {
-    try { state.vegaView.finalize(); } catch (_) {}
-    state.vegaView = null;
-  }
+  const containerSpec = Object.assign({}, result.vega_lite_spec, {
+    width: 'container',
+    height: 'container',
+    autosize: { type: 'fit', contains: 'padding' },
+  });
 
-  // Render into the inner container (zero padding) — the outer
-  // #chart-card provides the visual padding and card styling.
-  elChartContainer.innerHTML = '';
+  const buf = document.createElement('div');
+  buf.style.cssText = 'position:absolute;inset:0;visibility:hidden;';
+  elChartContainer.appendChild(buf);
 
   try {
-    const containerSpec = Object.assign({}, result.vega_lite_spec, {
-      width: 'container',
-      height: 'container',
-      autosize: { type: 'fit', contains: 'padding' },
-    });
-    const { view } = await window.vegaEmbed(elChartContainer, containerSpec, {
+    const { view } = await window.vegaEmbed(buf, containerSpec, {
       actions: false,
       renderer: 'canvas',
     });
+    if (state.vegaView) {
+      try { state.vegaView.finalize(); } catch (_) {}
+    }
+    while (elChartContainer.firstChild !== buf) {
+      elChartContainer.removeChild(elChartContainer.firstChild);
+    }
+    buf.style.cssText = 'width:100%;height:100%;';
     state.vegaView = view;
   } catch (e) {
+    buf.remove();
     showErrorOverlay([String(e)]);
   }
 }
@@ -130,13 +133,23 @@ export function initPreview() {
     }
   });
 
-  // Re-render chart when the preview pane is resized (e.g. drag handle)
+  // Clear stale error overlays when switching files
+  document.addEventListener('shelves:compile-start', () => {
+    hideErrorOverlay();
+    elPreview.style.display = '';
+  });
+
+  // Resize: use view.resize() to avoid full re-embed flicker
   let resizeTimer = null;
   new ResizeObserver(() => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       if (state.lastCompileResult && !state.dashboardMode && state.currentView === 'chart') {
-        renderChart(state.lastCompileResult);
+        if (state.vegaView) {
+          try { state.vegaView.resize().run(); } catch (_) { renderChart(state.lastCompileResult); }
+        } else {
+          renderChart(state.lastCompileResult);
+        }
       }
     }, 200);
   }).observe(elChartContainer);
