@@ -24,6 +24,19 @@ export async function initEditor() {
   const loader = (await import('https://cdn.jsdelivr.net/npm/@monaco-editor/loader@1.5.0/+esm')).default;
   const { configureMonacoYaml } = await import('https://cdn.jsdelivr.net/npm/monaco-yaml@5/+esm');
 
+  window.MonacoEnvironment = {
+    getWorker(_, label) {
+      if (label === 'yaml') {
+        const url = 'https://cdn.jsdelivr.net/npm/monaco-yaml@5/lib/esm/yaml.worker.js';
+        const blob = new Blob([`importScripts("${url}");`], { type: 'text/javascript' });
+        return new Worker(URL.createObjectURL(blob));
+      }
+      const editorUrl = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/base/worker/workerMain.js';
+      const blob = new Blob([`importScripts("${editorUrl}");`], { type: 'text/javascript' });
+      return new Worker(URL.createObjectURL(blob));
+    },
+  };
+
   const settings = loadSettings();
   const monaco = await loader.init();
 

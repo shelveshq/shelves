@@ -151,6 +151,35 @@ class TestServerIndexPage:
         assert "xterm" in response.text
 
 
+# ─── Monaco Worker Configuration ────────────────────────────────
+
+
+class TestMonacoWorkerConfig:
+    """The YAML web worker must be configured or Monaco will fail to load it."""
+
+    def test_editor_js_configures_monaco_environment(self):
+        """editor.js must set window.MonacoEnvironment so Monaco finds the YAML worker."""
+        client = _client()
+        response = client.get("/static/js/editor.js")
+        assert response.status_code == 200
+        assert "MonacoEnvironment" in response.text, (
+            "editor.js must configure window.MonacoEnvironment with a getWorker function "
+            "so Monaco can locate the YAML language worker"
+        )
+
+    def test_editor_js_handles_yaml_worker_label(self):
+        """The MonacoEnvironment getWorker must handle the 'yaml' worker label."""
+        client = _client()
+        response = client.get("/static/js/editor.js")
+        assert response.status_code == 200
+        # The worker config must specifically handle YAML — this is the label
+        # monaco-yaml registers with Monaco's language service
+        assert "yaml.worker" in response.text, (
+            "editor.js must reference yaml.worker in its MonacoEnvironment config "
+            "so the YAML language service worker loads from the correct URL"
+        )
+
+
 # ─── Compile Endpoint ────────────────────────────────────────────
 
 
