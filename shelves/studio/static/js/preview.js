@@ -16,9 +16,9 @@ export function highlightJson(json) {
     .replace(/>/g, '&gt;');
 
   return escaped
-    .replace(/(&quot;(?:\\.|[^&quot;\\])*&quot;)(\s*:)/g,
+    .replace(/("(?:\\.|[^"\\])*")(\s*:)/g,
       '<span class="json-key">$1</span>$2')
-    .replace(/:\s*(&quot;(?:\\.|[^&quot;\\])*&quot;)/g,
+    .replace(/:\s*("(?:\\.|[^"\\])*")/g,
       ': <span class="json-string">$1</span>')
     .replace(/:\s*(-?\d+\.?\d*(?:[eE][+-]?\d+)?)/g,
       ': <span class="json-number">$1</span>')
