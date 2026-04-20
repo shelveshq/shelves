@@ -2,7 +2,7 @@
 // Single connection, dispatches typed DOM events.
 // No monkey-patching — each module subscribes independently.
 
-import { WS_RECONNECT_MS, updateStatusBadge } from './state.js';
+import { WS_RECONNECT_MS, updateStatusBar } from './state.js';
 
 let ws = null;
 
@@ -17,7 +17,7 @@ export function connectWebSocket() {
     switch (msg.type) {
       case 'compile_result':
         document.dispatchEvent(new CustomEvent('shelves:compile-result', { detail: msg }));
-        updateStatusBadge(msg.errors ?? [], msg.warnings ?? []);
+        updateStatusBar(msg.errors ?? [], msg.warnings ?? []);
         break;
 
       case 'file_change':
@@ -26,7 +26,7 @@ export function connectWebSocket() {
 
       case 'dashboard_compile_result':
         document.dispatchEvent(new CustomEvent('shelves:dashboard-result', { detail: msg }));
-        updateStatusBadge(msg.errors ?? [], msg.warnings ?? []);
+        updateStatusBar(msg.errors ?? [], msg.warnings ?? []);
         break;
     }
   };

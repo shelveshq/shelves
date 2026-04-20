@@ -108,7 +108,7 @@ class TestServerIndexPage:
         client = _client()
         response = client.get("/")
         assert response.status_code == 200
-        assert 'id="toolbar"' in response.text
+        assert 'id="header"' in response.text
         assert 'id="editor-pane"' in response.text
         assert 'id="preview-pane"' in response.text
 
@@ -138,8 +138,8 @@ class TestServerIndexPage:
         response = client.get("/")
         assert response.status_code == 200
         assert 'id="dashboard-preview"' in response.text
-        assert 'id="component-tree-strip"' in response.text
-        assert 'data-view="dashboard"' in response.text
+        assert 'id="statusbar"' in response.text
+        assert 'data-view="chart"' in response.text
 
     def test_workspace_includes_terminal_panel(self):
         """GET / returns HTML with terminal panel DOM elements and xterm.js CDN."""

@@ -15,33 +15,27 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
   <!-- Styles -->
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
 
-  <!-- Top toolbar -->
-  <div id="toolbar">
-    <div class="brand">
-      <div class="brand-mark">
+  <!-- Header -->
+  <div id="header">
+    <div class="sh-header-left">
+      <div class="sh-logo">
         <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round">
           <path d="M3 3v18h18"/><path d="m7 12 4-4 4 4 4-6"/>
         </svg>
       </div>
-      <span class="brand-name">Studio</span>
+      <span class="sh-brand">Shelves Studio</span>
+      <span class="sh-crumb-sep">/</span>
+      <span class="sh-crumb"><span class="sh-crumb-none">no file open</span></span>
     </div>
-    <button id="sidebar-toggle" title="Toggle sidebar">&#9776;</button>
-    <div id="tab-bar"></div>
-    <div id="toolbar-right">
-      <span id="status-badge">Ready</span>
-      <div id="view-toggles">
-        <button class="view-btn active" data-view="chart">Chart</button>
-        <button class="view-btn" data-view="json">JSON</button>
-        <button class="view-btn" data-view="dashboard">Dashboard</button>
-      </div>
-      <button id="terminal-toolbar-btn" title="Toggle terminal (Ctrl+`)">&#9638; Terminal</button>
+    <div class="sh-header-right">
+      <button class="sh-btn sh-btn-primary">Publish</button>
     </div>
   </div>
 
@@ -49,7 +43,7 @@
   <div id="workspace">
     <div id="sidebar">
       <div id="sidebar-header">
-        <span>Explorer</span>
+        <span>Project</span>
         <button id="sidebar-toggle-inner" title="Collapse sidebar">&#9664;</button>
       </div>
       <div id="file-tree"></div>
@@ -59,6 +53,18 @@
     </div>
     <div id="resize-handle"></div>
     <div id="preview-pane">
+      <div id="preview-header">
+        <div style="display:flex;align-items:center">
+          <span class="sh-preview-label">Preview</span>
+          <span class="sh-preview-ambient"></span>
+        </div>
+        <div class="sh-preview-right">
+          <div id="view-toggles" class="sh-seg">
+            <button class="sh-seg-btn is-active" data-view="chart">Chart</button>
+            <button class="sh-seg-btn" data-view="json">JSON</button>
+          </div>
+        </div>
+      </div>
       <div id="preview">
         <div id="chart-card">
           <div id="chart-container">
@@ -73,7 +79,6 @@
       <div id="error-overlay"></div>
     </div>
   </div>
-  <div id="component-tree-strip"></div>
 
   <!-- Terminal Panel -->
   <div id="terminal-panel" class="collapsed">
@@ -87,6 +92,28 @@
     </div>
     <div id="terminal-container"></div>
   </div>
+
+  <!-- Status Bar -->
+  <div id="statusbar">
+    <div class="sh-status-left">
+      <span class="sh-status-dot"></span>
+      <span class="sh-status-msg">No file open</span>
+    </div>
+    <div class="sh-status-right">
+      <button class="sh-status-term" title="Toggle terminal (Ctrl+`)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>
+        </svg>
+        Terminal
+      </button>
+      <span class="sh-status-sep"></span>
+      <span class="sh-status-item">YAML</span>
+      <span class="sh-status-item">UTF-8</span>
+    </div>
+  </div>
+
+  <!-- Command Palette (placeholder) -->
+  <div id="command-palette"></div>
 
   <!-- Application modules -->
   <script type="module" src="/static/js/main.js"></script>

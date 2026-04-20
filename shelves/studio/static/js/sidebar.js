@@ -42,7 +42,7 @@ function renderTreeLevel(entries, depth) {
   const container = document.createElement('div');
   for (const entry of entries) {
     const row = document.createElement('div');
-    row.style.paddingLeft = (depth * 16) + 'px';
+    row.style.paddingLeft = (14 + depth * 18) + 'px';
 
     if (entry.type === 'dir') {
       row.className = 'tree-dir';
@@ -50,18 +50,16 @@ function renderTreeLevel(entries, depth) {
 
       const chevron = document.createElement('span');
       chevron.className = 'tree-chevron';
-      chevron.textContent = collapsedDirs.has(entry.path) ? '\u25b6' : '\u25bc';
-
-      const icon = document.createElement('span');
-      icon.className = 'tree-icon';
-      icon.textContent = '\ud83d\udcc1';
+      const collapsed = collapsedDirs.has(entry.path);
+      chevron.innerHTML = collapsed
+        ? '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5L7 5L3 8.5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        : '<svg width="10" height="10" viewBox="0 0 10 10"><path d="M1.5 3L5 7L8.5 3" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
       const name = document.createElement('span');
       name.className = 'tree-name';
       name.textContent = entry.name;
 
       row.appendChild(chevron);
-      row.appendChild(icon);
       row.appendChild(name);
       row.addEventListener('click', () => toggleDir(entry.path));
       container.appendChild(row);
@@ -73,15 +71,10 @@ function renderTreeLevel(entries, depth) {
       row.className = 'tree-file';
       row.dataset.path = entry.path;
 
-      const icon = document.createElement('span');
-      icon.className = 'tree-icon';
-      icon.textContent = entry.name.endsWith('.json') ? '\ud83d\udcc4' : '\ud83d\udcca';
-
       const name = document.createElement('span');
       name.className = 'tree-name';
       name.textContent = entry.name;
 
-      row.appendChild(icon);
       row.appendChild(name);
       row.addEventListener('click', () => window.shelvesStudio.openFile(entry.path));
       container.appendChild(row);
@@ -111,49 +104,36 @@ function toggleDir(path) {
 }
 
 // ─── Sidebar Toggle ────────────────────────────────────────
-function toggleSidebar() {
+export function toggleSidebar() {
   sidebarVisible = !sidebarVisible;
   const sidebar = document.getElementById('sidebar');
-  const workspace = document.getElementById('workspace');
-  const toggleBtn = document.getElementById('sidebar-toggle');
   if (sidebarVisible) {
     sidebar.classList.remove('collapsed');
-    workspace.style.gridTemplateColumns = '';
-    toggleBtn.textContent = '\u2630';
+    document.documentElement.style.setProperty('--sidebar-width', '200px');
   } else {
     sidebar.classList.add('collapsed');
-    workspace.style.gridTemplateColumns = '0px var(--editor-width, 1fr) 6px 1fr';
-    toggleBtn.textContent = '\u25b6';
+    document.documentElement.style.setProperty('--sidebar-width', '0px');
   }
   localStorage.setItem(STORAGE_KEY_SIDEBAR_VIS, String(sidebarVisible));
 }
 
 // ─── Init ──────────────────────────────────────────────────
 export function initSidebar() {
-  // Apply initial sidebar visibility
   if (!sidebarVisible) {
     const sidebar = document.getElementById('sidebar');
-    const workspace = document.getElementById('workspace');
-    const toggleBtn = document.getElementById('sidebar-toggle');
     sidebar.classList.add('collapsed');
-    workspace.style.gridTemplateColumns = '0px var(--editor-width, 1fr) 6px 1fr';
-    toggleBtn.textContent = '\u25b6';
+    document.documentElement.style.setProperty('--sidebar-width', '0px');
   }
 
-  // Toggle buttons
-  document.getElementById('sidebar-toggle').addEventListener('click', toggleSidebar);
   document.getElementById('sidebar-toggle-inner').addEventListener('click', toggleSidebar);
 
-  // Refresh tree on file changes (debounced)
   let treeRefreshTimer = null;
   document.addEventListener('shelves:file-change', () => {
     clearTimeout(treeRefreshTimer);
     treeRefreshTimer = setTimeout(fetchTree, 500);
   });
 
-  // Re-highlight when active file changes
   document.addEventListener('shelves:active-file-changed', () => highlightActiveFile());
 
-  // Initial tree load
   fetchTree();
 }

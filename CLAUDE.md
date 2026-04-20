@@ -6,6 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Charter is a declarative visual analytics platform that translates a Tableau-inspired YAML DSL into Vega-Lite JSON specifications. The pipeline: YAML → Pydantic validation → Vega-Lite translation → Theme merge → Data binding → HTML rendering.
 
+## Git Workflow
+
+- Always pull/rebase latest main before starting new work or making changes on existing branches
+- Check for CHANGELOG.md or other merge-in-progress files before committing
+
 ## Environment
 
 **Always use the project venv.** System Python will not work (wrong version, missing deps).
@@ -58,6 +63,23 @@ See each module's `CLAUDE.md` for detailed design decisions, file descriptions, 
 ## Branching Convention
 
 Branch names follow: `KAN-{ticket}/description-in-kebab-case` (e.g. `KAN-100/semantic-layer-integration`).
+
+## Planning Workflow
+
+- When using charter-planner, check for existing plan files FIRST and ask whether to update vs. recreate before reading context repeatedly
+- For Jira tickets, use the Atlassian MCP with cloud ID already configured; if MCP unavailable, ask the user to paste ticket details upfront
+
+## Testing & Type Checking
+
+- Run full test suite AND pyright after any multi-file refactor before declaring done
+- When adding tests, verify assertions match actual output format (e.g., vegaEmbed, StyleProperties) before committing
+- Prefer `isinstance` narrowing over `getattr` or `cast()`; prefer `Literal` annotations over `cast()`
+
+## Layout/Styles Conventions
+
+- Padding is defined via shared style rules, not directly on sheets
+- When switching to solver-based fixed sizing, remove display:flex from containers (border-box model)
+- fit modes must be applied to rendered sheets, not just schema
 
 ## Project Status
 
