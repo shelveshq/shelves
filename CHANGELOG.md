@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-04-20
+
+### Studio
+
+- **UI polish pass** — restructured layout with proper grid-based panels, improved responsive behavior
+- **State management overhaul** — centralized reactive state with proper change propagation
+- **Preview rendering** — robust iframe lifecycle, forced re-render on compile, stale result discarding
+- **Error recovery** — graceful handling of failed dashboard compiles with clear error display
+- **Monaco editor fixes** — resolved cursor jump on save, configured worker URLs for YAML language service
+- **Visual improvements** — eliminated resize flicker and white flash, fixed stale error overlays
+
 ## [0.1.0] - 2026-04-07
 
 Initial public release as `shelves-bi` on [PyPI](https://pypi.org/project/shelves-bi/).
