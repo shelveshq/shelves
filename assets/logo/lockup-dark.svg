@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 175 40" width="350" height="80">
+  <rect x="14" y="3" width="29" height="7" rx="3.5" fill="#D4D4D4"/>
+  <rect x="10" y="16" width="19" height="7" rx="3.5" fill="#D85A30"/>
+  <rect x="2" y="29" width="29" height="7" rx="3.5" fill="#D4D4D4"/>
+  <text x="53" y="29" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="26" font-weight="700" letter-spacing="1.5" fill="#D4D4D4">shelves</text>
+</svg>
