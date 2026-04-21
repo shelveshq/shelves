@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-04-21
+
+### Packaging
+
+- Moved studio dependencies (`fastapi`, `uvicorn`, `watchfiles`, `websockets`, `watchdog`) into core dependencies so `pip install shelves-bi` works without extras
+
 ## [0.2.0] - 2026-04-20
 
 ### Studio
