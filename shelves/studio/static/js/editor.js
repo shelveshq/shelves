@@ -10,6 +10,7 @@ let _compileFn = null;
 let _suppressDirty = false;
 let _lastSavePath = null;
 let _lastSaveTs = 0;
+let compileSeq = 0;
 
 export function setCompileFunction(fn) {
   _compileFn = fn;
@@ -110,6 +111,7 @@ export async function initEditor() {
 
 // ─── Compile ───────────────────────────────────────────────
 export async function compileCurrentContent() {
+  const seq = ++compileSeq;
   const content = state.editor.getValue();
   if (!content.trim()) {
     state.compiling = false;
@@ -122,7 +124,9 @@ export async function compileCurrentContent() {
   try {
     const t0 = performance.now();
     const resp = await fetch('/compile', { method: 'POST', body: content });
+    if (seq !== compileSeq) return;
     const result = await resp.json();
+    if (seq !== compileSeq) return;
     state.lastCompileTimeMs = Math.round(performance.now() - t0);
     state.compiling = false;
     document.dispatchEvent(new CustomEvent('shelves:compile-result', {
@@ -130,6 +134,7 @@ export async function compileCurrentContent() {
     }));
     updateStatusBar(result.errors ?? [], result.warnings ?? []);
   } catch (e) {
+    if (seq !== compileSeq) return;
     state.compiling = false;
     console.error('[shelves] compile error:', e);
   }
@@ -142,7 +147,12 @@ export async function openFile(path) {
     updateStatusBar();
     document.dispatchEvent(new CustomEvent('shelves:compile-start'));
     const resp = await fetch(`/file?path=${encodeURIComponent(path)}`);
-    if (!resp.ok) { console.warn('[shelves] file not found:', path); return; }
+    if (!resp.ok) {
+      console.warn('[shelves] file not found:', path);
+      state.compiling = false;
+      updateStatusBar();
+      return;
+    }
     const { content } = await resp.json();
     state.currentFile = { path, dirty: false };
     _suppressDirty = true;
