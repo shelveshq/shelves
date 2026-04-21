@@ -1,8 +1,8 @@
 // ─── Dashboard Module ──────────────────────────────────────
-// Dashboard detection, compile, preview, component tree strip.
+// Dashboard detection, compile, preview, zoom control.
 
-import { state, updateStatusBadge } from './state.js';
-import { highlightJson, showErrorOverlay, hideErrorOverlay } from './preview.js';
+import { state, updateStatusBar } from './state.js';
+import { highlightJson, showErrorOverlay, hideErrorOverlay, renderPreviewHeader } from './preview.js';
 
 const CANVAS_WIDTH = 1440;
 const CANVAS_HEIGHT = 900;
@@ -11,9 +11,10 @@ const elPreview          = document.getElementById('preview');
 const elJsonView         = document.getElementById('json-view');
 const elDashboardPreview = document.getElementById('dashboard-preview');
 const elDashboardIframe  = document.getElementById('dashboard-iframe');
-const elTreeStrip        = document.getElementById('component-tree-strip');
 
 let lastDashboardResult = null;
+let dashboardZoom = 'fit';
+let compileSeq = 0;
 
 // ─── Dashboard Detection ──────────────────────────────────
 export function isDashboardYaml(content) {
@@ -23,20 +24,32 @@ export function isDashboardYaml(content) {
 
 // ─── Dashboard Compile ────────────────────────────────────
 export async function compileDashboardContent() {
+  const seq = ++compileSeq;
   const content = state.editor.getValue();
   if (!content.trim()) {
+    state.compiling = false;
     document.dispatchEvent(new CustomEvent('shelves:dashboard-result', {
       detail: { html: null, errors: [], warnings: [], component_tree: [] },
     }));
+    updateStatusBar([], []);
     return;
   }
   try {
+    const t0 = performance.now();
     const resp = await fetch('/compile-dashboard', { method: 'POST', body: content });
+    if (seq !== compileSeq) return;
     const result = await resp.json();
+    state.lastCompileTimeMs = Math.round(performance.now() - t0);
+    state.compiling = false;
     document.dispatchEvent(new CustomEvent('shelves:dashboard-result', { detail: result }));
-    updateStatusBadge(result.errors ?? [], result.warnings ?? []);
+    updateStatusBar(result.errors ?? [], result.warnings ?? []);
   } catch (e) {
-    console.error('[shelves] dashboard compile error:', e);
+    if (seq !== compileSeq) return;
+    state.compiling = false;
+    document.dispatchEvent(new CustomEvent('shelves:dashboard-result', {
+      detail: { html: null, errors: [String(e)], warnings: [], component_tree: [] },
+    }));
+    updateStatusBar([String(e)]);
   }
 }
 
@@ -53,100 +66,48 @@ function renderDashboardPreview(result) {
 
   hideErrorOverlay();
   elDashboardPreview.style.display = 'flex';
-
-  const clickScript = `
-    <script>
-      document.addEventListener('click', function(e) {
-        var el = e.target.closest('[data-chart-link]');
-        if (el) {
-          window.parent.postMessage({ type: 'sheet-click', link: el.dataset.chartLink }, '*');
-        }
-      });
-    <\/script>
-  `;
-  elDashboardIframe.srcdoc = result.html + clickScript;
-
+  elDashboardIframe.removeAttribute('srcdoc');
+  void elDashboardIframe.offsetHeight;
+  elDashboardIframe.srcdoc = result.html;
   scaleDashboardIframe();
-  renderComponentTreeStrip(result.component_tree ?? []);
 }
 
 function scaleDashboardIframe() {
   const paneRect = elDashboardPreview.getBoundingClientRect();
-  const availW = paneRect.width  - 32;
-  const availH = paneRect.height - 32;
+  const availW = paneRect.width  - 48;
+  const availH = paneRect.height - 48;
   if (availW <= 0 || availH <= 0) return;
-  const scale = Math.min(availW / CANVAS_WIDTH, availH / CANVAS_HEIGHT);
+
+  let scale;
+  if (dashboardZoom === '100') {
+    scale = 1;
+  } else if (dashboardZoom === '50') {
+    scale = 0.5;
+  } else {
+    scale = Math.min(availW / CANVAS_WIDTH, availH / CANVAS_HEIGHT);
+  }
   elDashboardIframe.style.transform = `scale(${scale})`;
 }
 
-// ─── Component Tree Strip ─────────────────────────────────
-function renderComponentTreeStrip(tree) {
-  elTreeStrip.innerHTML = '';
-  if (!tree || tree.length === 0) {
-    elTreeStrip.style.display = 'none';
-    return;
-  }
-  elTreeStrip.style.display = 'flex';
-
-  let prevDepth = null;
-  for (let i = 0; i < tree.length; i++) {
-    const node = tree[i];
-
-    if (prevDepth !== null) {
-      const sep = document.createElement('span');
-      if (node.depth > prevDepth) {
-        sep.className = 'tree-arrow';
-        sep.textContent = '\u2192';
-      } else {
-        sep.className = 'tree-separator';
-        sep.textContent = '\u00b7';
-      }
-      elTreeStrip.appendChild(sep);
-    }
-
-    const span = document.createElement('span');
-    const label = node.type === 'sheet'
-      ? (node.name || node.type)
-      : node.type === 'vertical' ? 'container (v)'
-      : node.type === 'horizontal' ? 'container (h)'
-      : node.type;
-
-    if (node.type === 'sheet') {
-      span.className = 'tree-node tree-sheet';
-      span.title = node.link || '';
-      span.addEventListener('click', () => {
-        if (node.link) window.shelvesStudio.openFile(node.link);
-      });
-    } else if (node.type === 'vertical' || node.type === 'horizontal') {
-      span.className = 'tree-node tree-container';
-    } else {
-      span.className = 'tree-node tree-leaf';
-    }
-
-    span.textContent = label;
-    elTreeStrip.appendChild(span);
-    prevDepth = node.depth;
-  }
+export function setDashboardZoom(zoom) {
+  dashboardZoom = zoom;
+  scaleDashboardIframe();
 }
 
 // ─── Layout Switching ─────────────────────────────────────
 export function applyDashboardLayout() {
   state.dashboardMode = true;
-  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
-  const dashBtn = document.querySelector('.view-btn[data-view="dashboard"]');
-  if (dashBtn) dashBtn.classList.add('active');
   state.currentView = 'dashboard';
-  elTreeStrip.style.display = 'flex';
+  document.getElementById('preview-pane').classList.add('is-dashboard');
+  renderPreviewHeader('dashboard');
 }
 
 export function restoreChartLayout() {
   state.dashboardMode = false;
-  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
-  const chartBtn = document.querySelector('.view-btn[data-view="chart"]');
-  if (chartBtn) chartBtn.classList.add('active');
   state.currentView = 'chart';
-  elTreeStrip.style.display = 'none';
+  document.getElementById('preview-pane').classList.remove('is-dashboard');
   elDashboardPreview.style.display = 'none';
+  renderPreviewHeader('chart');
 }
 
 // ─── Dashboard View Rendering ─────────────────────────────
@@ -164,16 +125,20 @@ function renderDashboardView(result) {
 
 // ─── Init ──────────────────────────────────────────────────
 export function initDashboard() {
-  // Rescale iframe on resize
   new ResizeObserver(scaleDashboardIframe).observe(elDashboardPreview);
 
-  // Dashboard result → render
+  document.addEventListener('shelves:compile-start', () => {
+    if (state.dashboardMode) {
+      elDashboardPreview.style.display = 'none';
+      hideErrorOverlay();
+    }
+  });
+
   document.addEventListener('shelves:dashboard-result', (e) => {
     lastDashboardResult = e.detail;
     renderDashboardView(lastDashboardResult);
   });
 
-  // View toggle → re-render (only in dashboard mode)
   document.addEventListener('shelves:view-change', () => {
     if (!state.dashboardMode) return;
     if (lastDashboardResult) {
@@ -181,15 +146,7 @@ export function initDashboard() {
     }
   });
 
-  // Iframe click-through → open chart file.
-  // The iframe is sandboxed, so its Origin is "null" — we can't rely on
-  // event.origin alone. Restrict to messages from this specific iframe's
-  // contentWindow so unrelated tabs can't drive openFile().
-  window.addEventListener('message', (event) => {
-    if (event.source !== elDashboardIframe.contentWindow) return;
-    if (event.data?.type !== 'sheet-click') return;
-    const link = event.data.link;
-    if (typeof link !== 'string') return;
-    window.shelvesStudio.openFile(link);
+  document.addEventListener('shelves:dashboard-zoom', (e) => {
+    setDashboardZoom(e.detail.zoom);
   });
 }

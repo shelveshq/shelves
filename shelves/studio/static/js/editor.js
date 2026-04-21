@@ -1,16 +1,16 @@
 // ─── Editor Module ─────────────────────────────────────────
-// Monaco editor setup, compile, tab management, save, resize.
+// Monaco editor setup, compile, save, resize.
 
 import {
   state, COMPILE_DEBOUNCE_MS, STORAGE_KEY_SETTINGS, STORAGE_KEY_PANE_WIDTH,
-  updateStatusBadge,
+  updateStatusBar, updateBreadcrumb,
 } from './state.js';
 
-// Late-bound compile function — set by main.js after all modules init
 let _compileFn = null;
-
-// Suppress dirty marking when programmatically setting editor value
 let _suppressDirty = false;
+let _lastSavePath = null;
+let _lastSaveTs = 0;
+let compileSeq = 0;
 
 export function setCompileFunction(fn) {
   _compileFn = fn;
@@ -20,10 +20,22 @@ export async function initEditor() {
   const loader = (await import('https://cdn.jsdelivr.net/npm/@monaco-editor/loader@1.5.0/+esm')).default;
   const { configureMonacoYaml } = await import('https://cdn.jsdelivr.net/npm/monaco-yaml@5/+esm');
 
+  window.MonacoEnvironment = {
+    getWorker(_, label) {
+      if (label === 'yaml') {
+        const url = 'https://cdn.jsdelivr.net/npm/monaco-yaml@5/lib/esm/yaml.worker.js';
+        const blob = new Blob([`importScripts("${url}");`], { type: 'text/javascript' });
+        return new Worker(URL.createObjectURL(blob));
+      }
+      const editorUrl = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/base/worker/workerMain.js';
+      const blob = new Blob([`importScripts("${editorUrl}");`], { type: 'text/javascript' });
+      return new Worker(URL.createObjectURL(blob));
+    },
+  };
+
   const settings = loadSettings();
   const monaco = await loader.init();
 
-  // Fetch ChartSpec JSON Schema for YAML autocomplete + validation
   let schema = null;
   try {
     schema = await fetch('/schema').then(r => r.json());
@@ -43,7 +55,7 @@ export async function initEditor() {
   state.editor = monaco.editor.create(document.getElementById('editor'), {
     value: '',
     language: 'yaml',
-    theme: 'vs-dark',
+    theme: 'vs',
     minimap: { enabled: settings.minimap ?? true },
     wordWrap: (settings.wordWrap ?? true) ? 'on' : 'off',
     fontSize: settings.fontSize ?? 13,
@@ -53,34 +65,37 @@ export async function initEditor() {
     tabSize: 2,
   });
 
-  // Debounced compile on every keystroke
   state.editor.onDidChangeModelContent(() => {
     if (state.currentFile && !_suppressDirty) {
       state.currentFile.dirty = true;
     }
-    renderTabBar();
+    updateBreadcrumb(state.currentFile?.path ?? null, state.currentFile?.dirty ?? false);
     clearTimeout(state.compileTimer);
     if (_compileFn) {
       state.compileTimer = setTimeout(_compileFn, COMPILE_DEBOUNCE_MS);
     }
   });
 
-  // Cmd+S / Ctrl+S
   state.editor.addCommand(
     monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
     () => saveCurrentFile(),
   );
 
-  // Reload editor content when file changes externally (not dirty)
   document.addEventListener('shelves:file-change', (e) => {
     const msg = e.detail;
     if (state.currentFile && state.currentFile.path === msg.path && !state.currentFile.dirty) {
+      if (msg.path === _lastSavePath && (Date.now() - _lastSaveTs) < 2000) return;
       fetch(`/file?path=${encodeURIComponent(msg.path)}`)
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           if (data) {
             _suppressDirty = true;
-            state.editor.setValue(data.content);
+            const model = state.editor.getModel();
+            const selections = state.editor.getSelections();
+            state.editor.executeEdits('shelves-file-reload', [{
+              range: model.getFullModelRange(),
+              text: data.content,
+            }], selections);
             _suppressDirty = false;
             if (_compileFn) _compileFn();
           }
@@ -91,136 +106,68 @@ export async function initEditor() {
 
   initResizeHandle();
 
-  // Expose public API for sidebar and dashboard iframe
   window.shelvesStudio = { openFile };
 }
 
 // ─── Compile ───────────────────────────────────────────────
 export async function compileCurrentContent() {
+  const seq = ++compileSeq;
   const content = state.editor.getValue();
   if (!content.trim()) {
+    state.compiling = false;
     document.dispatchEvent(new CustomEvent('shelves:compile-result', {
       detail: { vega_lite_spec: null, errors: [], warnings: [], path: state.currentFile?.path ?? null },
     }));
-    updateStatusBadge([]);
+    updateStatusBar([]);
     return;
   }
   try {
+    const t0 = performance.now();
     const resp = await fetch('/compile', { method: 'POST', body: content });
+    if (seq !== compileSeq) return;
     const result = await resp.json();
+    if (seq !== compileSeq) return;
+    state.lastCompileTimeMs = Math.round(performance.now() - t0);
+    state.compiling = false;
     document.dispatchEvent(new CustomEvent('shelves:compile-result', {
       detail: { ...result, path: state.currentFile?.path ?? null },
     }));
-    updateStatusBadge(result.errors ?? [], result.warnings ?? []);
+    updateStatusBar(result.errors ?? [], result.warnings ?? []);
   } catch (e) {
+    if (seq !== compileSeq) return;
+    state.compiling = false;
     console.error('[shelves] compile error:', e);
   }
 }
 
-// ─── Tab Management ────────────────────────────────────────
+// ─── Open File ────────────────────────────────────────────
 export async function openFile(path) {
-  const existing = state.tabs.find(t => t.path === path);
-  if (existing) {
-    state.currentFile = existing;
-    const resp = await fetch(`/file?path=${encodeURIComponent(path)}`);
-    if (resp.ok) {
-      const { content } = await resp.json();
-      _suppressDirty = true;
-      state.editor.setValue(content);
-      _suppressDirty = false;
-    }
-    renderTabBar();
-    notifyActiveFileChanged();
-    clearTimeout(state.compileTimer);
-    if (_compileFn) _compileFn();
-    return;
-  }
-
   try {
+    state.compiling = true;
+    updateStatusBar();
+    document.dispatchEvent(new CustomEvent('shelves:compile-start'));
     const resp = await fetch(`/file?path=${encodeURIComponent(path)}`);
-    if (!resp.ok) { console.warn('[shelves] file not found:', path); return; }
+    if (!resp.ok) {
+      console.warn('[shelves] file not found:', path);
+      state.compiling = false;
+      updateStatusBar();
+      return;
+    }
     const { content } = await resp.json();
-    const tab = { path, dirty: false };
-    state.tabs.push(tab);
-    state.currentFile = tab;
+    state.currentFile = { path, dirty: false };
     _suppressDirty = true;
     state.editor.setValue(content);
     _suppressDirty = false;
-    renderTabBar();
+    updateBreadcrumb(path, false);
     notifyActiveFileChanged();
     clearTimeout(state.compileTimer);
     if (_compileFn) _compileFn();
   } catch (e) {
+    state.compiling = false;
     console.error('[shelves] openFile error:', e);
   }
 }
 
-function switchToTab(path) {
-  const tab = state.tabs.find(t => t.path === path);
-  if (!tab) return;
-  state.currentFile = tab;
-  fetch(`/file?path=${encodeURIComponent(path)}`)
-    .then(r => r.ok ? r.json() : null)
-    .then(data => {
-      if (data) {
-        _suppressDirty = true;
-        state.editor.setValue(data.content);
-        _suppressDirty = false;
-      }
-    })
-    .catch(console.error);
-  renderTabBar();
-  notifyActiveFileChanged();
-}
-
-function closeTab(path) {
-  const idx = state.tabs.findIndex(t => t.path === path);
-  if (idx === -1) return;
-  state.tabs.splice(idx, 1);
-  if (state.currentFile?.path === path) {
-    if (state.tabs.length > 0) {
-      switchToTab(state.tabs[Math.max(0, idx - 1)].path);
-    } else {
-      state.currentFile = null;
-      _suppressDirty = true;
-      state.editor.setValue('');
-      _suppressDirty = false;
-      updateStatusBadge([]);
-      document.getElementById('status-badge').textContent = 'Ready';
-      document.getElementById('status-badge').className = '';
-      notifyActiveFileChanged();
-    }
-  }
-  renderTabBar();
-}
-
-export function renderTabBar() {
-  const bar = document.getElementById('tab-bar');
-  bar.innerHTML = '';
-  for (const tab of state.tabs) {
-    const el = document.createElement('div');
-    el.className = 'tab' +
-      (tab === state.currentFile ? ' active' : '') +
-      (tab.dirty ? ' dirty' : '');
-    el.title = tab.path;
-
-    const name = document.createElement('span');
-    name.textContent = tab.path.split('/').pop();
-    el.appendChild(name);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'tab-close';
-    closeBtn.textContent = '\u00d7';
-    closeBtn.title = 'Close';
-    closeBtn.onclick = (e) => { e.stopPropagation(); closeTab(tab.path); };
-    el.appendChild(closeBtn);
-
-    el.onclick = () => switchToTab(tab.path);
-    bar.appendChild(el);
-  }
-}
-
-// ─── Active File Notification ──────────────────────────────
 function notifyActiveFileChanged() {
   document.dispatchEvent(new CustomEvent('shelves:active-file-changed'));
 }
@@ -235,7 +182,9 @@ async function saveCurrentFile() {
       body: content,
     });
     state.currentFile.dirty = false;
-    renderTabBar();
+    _lastSavePath = state.currentFile.path;
+    _lastSaveTs = Date.now();
+    updateBreadcrumb(state.currentFile.path, false);
   } catch (e) {
     console.error('[shelves] save error:', e);
   }

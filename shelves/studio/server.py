@@ -707,7 +707,6 @@ async def _run_dashboard_pipeline(
             warnings.append(f"Chart '{name}' ({link}): {e}")
 
     html = translate_dashboard(spec, theme, chart_specs)
-    html = _inject_click_targets(html, sheets)
 
     return {"html": html, "errors": [], "warnings": warnings, "component_tree": component_tree}
 
@@ -747,24 +746,6 @@ def _build_component_tree(flat_root: Any) -> list[dict]:
 
     _walk(flat_root, 0)
     return result
-
-
-def _inject_click_targets(html: str, sheets: dict[str, str]) -> str:
-    """Add data-chart-link attributes and dashed borders to sheet divs in dashboard HTML.
-
-    Merges click-target styles into the existing style attribute rather than
-    adding a duplicate (browsers ignore the second style= attribute).
-    """
-    import re
-
-    for name, link in sheets.items():
-        pattern = rf'(<div id="sheet-{re.escape(name)}")\s+(style=")'
-        replacement = (
-            rf'\1 data-chart-link="{link}"'
-            r" \2border: 2px dashed rgba(108,140,255,0.4); cursor: pointer; "
-        )
-        html = re.sub(pattern, replacement, html, count=1)
-    return html
 
 
 # ─── Helpers ─────────────────────────────────────────────────────

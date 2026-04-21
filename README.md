@@ -1,6 +1,11 @@
-# Shelves
+<p align="center">
+  <img src="assets/logo/lockup-light.svg" alt="shelves" width="280">
+</p>
 
-Declarative visual analytics for semantic models. Write charts and dashboards in YAML, render to Vega-Lite.
+<p align="center">
+  Declarative visual analytics for semantic models.<br>
+  Write charts and dashboards in YAML, render to Vega-Lite.
+</p>
 
 Shelves connects to your [Cube.dev](https://cube.dev) semantic layer, so your charts inherit consistent definitions for measures, dimensions, formats, and aggregations — no copy-pasting field logic across dashboards.
 

@@ -3,18 +3,15 @@
 
 const STORAGE_KEY_TERM_HEIGHT = 'shelves-studio-terminal-height';
 
-let terminals = [];       // [{ id, term, fitAddon, ws, name, container, ro }]
+let terminals = [];
 let activeTerminalId = null;
 let terminalPanelHeight = parseInt(localStorage.getItem(STORAGE_KEY_TERM_HEIGHT) || '250');
 let terminalPanelVisible = false;
 let _termIdCounter = 0;
 
-// Loaded lazily in initTerminal
 let Terminal = null;
 let FitAddon = null;
 
-// Per-app auth token served by the backend inside index.html. Without this,
-// /ws/terminal closes the connection on the auth step.
 function getTerminalToken() {
   const meta = document.querySelector('meta[name="shelves-terminal-token"]');
   return meta?.content || '';
@@ -29,10 +26,10 @@ function createTerminal() {
     fontFamily: 'JetBrains Mono, monospace',
     fontSize: 13,
     theme: {
-      background: '#141417',
-      foreground: '#e8e6e3',
-      cursor: '#6c8cff',
-      selectionBackground: '#6c8cff33',
+      background: '#1F1E1B',
+      foreground: '#E5E3DB',
+      cursor: '#D85A30',
+      selectionBackground: '#D85A3033',
     },
     cursorBlink: true,
     scrollback: 5000,
@@ -49,7 +46,6 @@ function createTerminal() {
   const termWs = new WebSocket(`${proto}://${location.host}/ws/terminal`);
 
   termWs.onopen = () => {
-    // Auth MUST be the first message — the server closes the socket otherwise.
     termWs.send(JSON.stringify({ type: 'auth', token: getTerminalToken() }));
     term.open(container);
     fitAddon.fit();
@@ -98,7 +94,6 @@ function createTerminal() {
   const entry = { id, term, fitAddon, ws: termWs, name, container, ro };
   terminals.push(entry);
 
-  // Tab UI
   const tabEl = document.createElement('div');
   tabEl.className = 'terminal-tab';
   tabEl.dataset.termId = id;
@@ -148,13 +143,15 @@ function closeTerminal(id) {
 }
 
 // ─── Toggle Terminal Panel ────────────────────────────────
-function toggleTerminalPanel() {
+export function toggleTerminalPanel() {
   terminalPanelVisible = !terminalPanelVisible;
   const panel = document.getElementById('terminal-panel');
+  const termBtn = document.querySelector('#statusbar .sh-status-term');
   if (terminalPanelVisible) {
     if (terminals.length === 0) createTerminal();
     panel.classList.remove('collapsed');
     panel.style.height = terminalPanelHeight + 'px';
+    if (termBtn) termBtn.classList.add('is-active');
     if (activeTerminalId !== null) {
       const entry = terminals.find(t => t.id === activeTerminalId);
       if (entry) entry.fitAddon.fit();
@@ -162,6 +159,7 @@ function toggleTerminalPanel() {
   } else {
     panel.classList.add('collapsed');
     panel.style.height = '';
+    if (termBtn) termBtn.classList.remove('is-active');
   }
 }
 
@@ -201,13 +199,11 @@ function initTerminalResizeHandle() {
 
 // ─── Init ──────────────────────────────────────────────────
 export async function initTerminal() {
-  // Lazy-load xterm.js from CDN
   const xtermModule = await import('https://cdn.jsdelivr.net/npm/@xterm/xterm@5/+esm');
   const fitModule = await import('https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0/+esm');
   Terminal = xtermModule.Terminal;
   FitAddon = fitModule.FitAddon;
 
-  // Keyboard shortcut: Ctrl+` toggles panel
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.key === '`') {
       e.preventDefault();
@@ -215,11 +211,8 @@ export async function initTerminal() {
     }
   });
 
-  // Toolbar buttons
-  document.getElementById('terminal-toolbar-btn').addEventListener('click', toggleTerminalPanel);
   document.getElementById('terminal-new').addEventListener('click', createTerminal);
   document.getElementById('terminal-toggle').addEventListener('click', toggleTerminalPanel);
 
-  // Resize handle
   initTerminalResizeHandle();
 }
