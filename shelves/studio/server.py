@@ -204,9 +204,8 @@ async def _compile_file_and_broadcast(
         spec = parse_chart(content)
         vl_spec = translate_chart(spec, models_dir=models_dir if models_dir.exists() else None)
 
-        if theme_path is not None:
-            theme = load_theme(theme_path)
-            vl_spec = merge_theme(vl_spec, theme)
+        theme = load_theme(theme_path) if theme_path is not None else load_theme()
+        vl_spec = merge_theme(vl_spec, theme)
 
         # Resolve data from models (Cube sources)
         warnings: list[str] = []
@@ -535,12 +534,11 @@ async def _compile_yaml(request: Request) -> JSONResponse:
         return JSONResponse({"vega_lite_spec": None, "errors": [str(e)], "warnings": []})
 
     theme_path: Path | None = request.app.state.theme_path
-    if theme_path is not None:
-        try:
-            theme = load_theme(theme_path)
-            vl_spec = merge_theme(vl_spec, theme)
-        except Exception as e:
-            return JSONResponse({"vega_lite_spec": None, "errors": [str(e)], "warnings": []})
+    try:
+        theme = load_theme(theme_path) if theme_path is not None else load_theme()
+        vl_spec = merge_theme(vl_spec, theme)
+    except Exception as e:
+        return JSONResponse({"vega_lite_spec": None, "errors": [str(e)], "warnings": []})
 
     # Resolve data from models (Cube sources)
     warnings: list[str] = []

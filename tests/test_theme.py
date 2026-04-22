@@ -346,3 +346,39 @@ class TestLayoutTokens:
         # Bar corner radius
         assert chart["bar"]["cornerRadius"] == 2
         assert chart["rect"]["cornerRadius"] == 2
+
+    def test_chart_title_has_subtitle_tokens(self):
+        """chart.title must carry subtitle styling tokens."""
+        theme = load_theme()
+        title = theme.chart.model_dump()["title"]
+        assert title["subtitleFontSize"] == 13
+        assert title["subtitleColor"] == "#666666"
+        assert title["subtitleFontWeight"] == 400
+
+    def test_chart_title_has_offset_and_anchor(self):
+        """chart.title must have breathing-room offset and left anchor."""
+        theme = load_theme()
+        title = theme.chart.model_dump()["title"]
+        assert title["offset"] == 24
+        assert title["anchor"] == "start"
+
+    def test_subtitle_tokens_flow_through_merge(self):
+        """New title tokens must reach spec.config.title after merge_theme."""
+        theme = load_theme()
+        result = merge_theme({"mark": "bar"}, theme)
+        title_config = result["config"]["title"]
+        assert title_config["subtitleFontSize"] == 13
+        assert title_config["subtitleColor"] == "#666666"
+        assert title_config["subtitleFontWeight"] == 400
+        assert title_config["offset"] == 24
+        assert title_config["anchor"] == "start"
+
+    def test_custom_theme_inherits_subtitle_tokens(self):
+        """Custom theme that doesn't touch title still inherits subtitle defaults."""
+        custom_path = Path(__file__).parent / "fixtures" / "themes" / "custom_brand.yaml"
+        theme = load_theme(custom_path)
+        title = theme.chart.model_dump()["title"]
+        assert title["subtitleFontSize"] == 13
+        assert title["subtitleColor"] == "#666666"
+        assert title["offset"] == 24
+        assert title["anchor"] == "start"

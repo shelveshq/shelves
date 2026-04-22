@@ -12,6 +12,11 @@ chart:
     fontSize: 16
     fontWeight: 600
     color: "#1a1a1a"
+    subtitleFontSize: 13
+    subtitleColor: "#666666"
+    subtitleFontWeight: 400
+    offset: 24
+    anchor: "start"
   axis:
     labelFont: "Inter, system-ui, sans-serif"
     labelFontSize: 11

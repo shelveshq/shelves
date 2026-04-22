@@ -187,6 +187,67 @@ class TestWebSocketEndpoint:
                     ws2.close()
 
 
+# ─── Default theme applied without --theme ───────────────────────
+
+
+class TestDefaultThemeInCompile:
+    """/compile and file watcher must apply the default theme even when
+    no --theme path is passed to shelves-studio."""
+
+    _CHART_YAML = "sheet: S\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n"
+
+    def test_compile_endpoint_applies_default_theme(self, tmp_path):
+        """POST /compile with no theme_path returns a spec with config.title tokens."""
+        from starlette.testclient import TestClient
+
+        app = create_app(project_dir=tmp_path, theme_path=None, models_dir=MODELS_DIR)
+        with TestClient(app) as client:
+            resp = client.post("/compile", content=self._CHART_YAML)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["errors"] == [], body["errors"]
+        spec = body["vega_lite_spec"]
+        assert spec is not None
+        assert "config" in spec, "Default theme not applied — config missing"
+        assert "title" in spec["config"], "config.title missing from default theme"
+        title_cfg = spec["config"]["title"]
+        assert "subtitleFontSize" in title_cfg
+        assert "anchor" in title_cfg
+        assert "offset" in title_cfg
+
+    def test_watcher_broadcast_applies_default_theme(self, tmp_path):
+        """_compile_file_and_broadcast with theme_path=None includes config."""
+
+        async def _test():
+            chart_path = tmp_path / "chart.yaml"
+            chart_path.write_text(self._CHART_YAML)
+
+            captured: list[dict] = []
+
+            class _Capture:
+                async def broadcast(self, msg: dict) -> None:
+                    captured.append(msg)
+
+            await _compile_file_and_broadcast(
+                chart_path,
+                "chart.yaml",
+                _Capture(),  # type: ignore[arg-type]
+                models_dir=MODELS_DIR,
+                theme_path=None,
+            )
+
+            assert captured, "No broadcast emitted"
+            msg = captured[-1]
+            assert msg["errors"] == [], msg
+            spec = msg["vega_lite_spec"]
+            assert spec is not None
+            assert "config" in spec, "Default theme not applied in watcher broadcast"
+            assert "title" in spec["config"]
+            assert "subtitleFontSize" in spec["config"]["title"]
+
+        asyncio.run(_test())
+
+
 # ─── Dashboard hot-reload project root resolution ────────────────
 
 
