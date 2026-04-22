@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo/lockup-light.svg" alt="shelves" width="280">
+  <img src="https://raw.githubusercontent.com/shelveshq/shelves/main/assets/logo/lockup-light.svg" alt="shelves" width="280">
 </p>
 
 <p align="center">
@@ -146,9 +146,9 @@ Each step is independent and composable.
 
 ## Documentation
 
-- [Getting Started](docs/guide/getting-started.md) — setup, first chart, first dashboard
-- [DSL Reference](docs/guide/dsl-reference.md) — complete field and property reference
-- [Dashboards](docs/guide/dashboards.md) — layout DSL, components, and styling
+- [Getting Started](https://github.com/shelveshq/shelves/blob/main/docs/guide/getting-started.md) — setup, first chart, first dashboard
+- [DSL Reference](https://github.com/shelveshq/shelves/blob/main/docs/guide/dsl-reference.md) — complete field and property reference
+- [Dashboards](https://github.com/shelveshq/shelves/blob/main/docs/guide/dashboards.md) — layout DSL, components, and styling
 
 ## Development
 

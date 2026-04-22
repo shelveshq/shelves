@@ -1,0 +1,9 @@
+sheet: "Revenue by Country"
+description: "Weekly aggregate revenue across all product lines"
+data: orders
+
+cols: country
+rows: revenue
+marks: bar
+color: country
+tooltip: [country, revenue]

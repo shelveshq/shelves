@@ -10,8 +10,8 @@ Every chart YAML file is a single document with this top-level shape:
 
 ```yaml
 version: "0.1.0"          # optional — DSL version this spec targets
-sheet: "My Chart Title"    # required — chart name
-description: "..."         # optional
+sheet: "My Chart Title"    # required — chart name, rendered as the Vega-Lite title
+description: "..."         # optional — rendered as the Vega-Lite subtitle
 
 data: orders                 # model name — references a DataModel manifest in models/
 
@@ -366,6 +366,34 @@ marks: bar
 color: country
 tooltip: [country, revenue]
 ```
+
+---
+
+## Title and subtitle
+
+Every chart automatically renders its `sheet` name as the Vega-Lite title. The optional `description` field renders as the subtitle:
+
+```yaml
+sheet: "Revenue by Country"
+description: "Weekly aggregate revenue across all product lines"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+```
+
+The title appears above the chart in Vega-Lite's default title position. Both single-measure and multi-measure charts support titles.
+
+### Suppressing titles in dashboards
+
+In dashboards, set `show_title: false` on a sheet component to hide the chart title (useful when the dashboard provides its own section headings):
+
+```yaml
+- sheet: revenue.yaml
+  show_title: false
+```
+
+When `show_title` is `true` (the default), the chart title renders normally.
 
 ---
 

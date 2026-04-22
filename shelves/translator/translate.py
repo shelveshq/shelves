@@ -66,4 +66,10 @@ def translate_chart(
     top_level = apply_facet(inner, spec.facet)
     top_level["$schema"] = VEGA_LITE_SCHEMA
 
+    # Inject title from spec.sheet; subtitle from spec.description when present
+    if spec.description:
+        top_level["title"] = {"text": spec.sheet, "subtitle": spec.description}
+    else:
+        top_level["title"] = spec.sheet
+
     return top_level
