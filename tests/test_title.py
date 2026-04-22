@@ -115,7 +115,7 @@ root:
       show_title: false
 """
         html = self._compose(yaml_str)
-        assert '"title": null' in html
+        assert '"title": null' in html or '"title":null' in html
 
     def test_subtitle_in_dashboard(self):
         yaml_str = """\
@@ -142,4 +142,4 @@ root:
       show_title: false
 """
         html = self._compose(yaml_str)
-        assert '"title": null' in html
+        assert '"title": null' in html or '"title":null' in html
