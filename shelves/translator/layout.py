@@ -312,12 +312,14 @@ def wrap_html_page(
                 if uses_container:
                     modified_spec["autosize"] = {"type": "fit"}
 
-            # Zero out Vega's intrinsic padding — the CSS outer wrapper handles spacing
+            # Zero out Vega's intrinsic padding and background — the CSS outer
+            # wrapper handles spacing and background colour instead.
             cfg = modified_spec.get("config")
             if cfg is None:
                 cfg = {}
                 modified_spec["config"] = cfg
             cfg["padding"] = 0
+            cfg["background"] = "transparent"
 
             # show_title: false → null out the title
             if show_titles.get(sheet_name) is False:

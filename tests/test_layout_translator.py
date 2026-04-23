@@ -766,6 +766,67 @@ root:
         spec = specs["sheet-fixed"]
         assert spec.get("config", {}).get("padding") == 0
 
+    def test_vega_background_zeroed_to_transparent(self):
+        """Layout-embedded sheets have config.background forced to transparent.
+
+        The CSS background on the outer wrapper div must show through — Vega's
+        default white canvas (config.background="#ffffff" from ChartTheme) would
+        otherwise cover it.  Analogous to config.padding being zeroed out.
+        Other config properties must be preserved.
+        """
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: colored
+      background: "#FF0000"
+""",
+            chart_specs={
+                "colored": {
+                    "mark": "bar",
+                    "config": {"background": "#ffffff", "mark": {"color": "blue"}},
+                }
+            },
+        )
+
+        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m.group(1))
+        spec = specs["sheet-colored"]
+        # Vega background zeroed to transparent — CSS wrapper background shows through
+        assert spec.get("config", {}).get("background") == "transparent"
+        # Other config properties preserved
+        assert spec["config"]["mark"]["color"] == "blue"
+
+    def test_vega_background_set_when_no_existing_config(self):
+        """config.background is set transparent even when the spec has no config block."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/bar.yaml
+      name: plain
+""",
+            chart_specs={"plain": {"mark": "bar"}},
+        )
+
+        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m.group(1))
+        spec = specs["sheet-plain"]
+        assert spec.get("config", {}).get("background") == "transparent"
+
     def test_faceted_chart_fits_cell_width_to_container(self):
         """A faceted chart with fit: fill should get per-cell pixel width on
         the inner spec, calculated from the container width and column count.
