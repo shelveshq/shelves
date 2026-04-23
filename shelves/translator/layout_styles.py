@@ -55,7 +55,6 @@ class RenderContext:
     sheet_fit_modes: dict[str, str] = field(default_factory=dict)
     sheet_show_titles: dict[str, bool] = field(default_factory=dict)
     sheet_content_dims: dict[str, tuple[int, int]] = field(default_factory=dict)
-    sheet_padding: dict[str, int | dict[str, int]] = field(default_factory=dict)
 
     def next_auto_id(self) -> str:
         """Generate next auto-ID for anonymous sheets."""
@@ -119,11 +118,20 @@ def resolve_styles(
     parent_orientation: Literal["horizontal", "vertical"] | None,
     resolved_width: int | None = None,
     resolved_height: int | None = None,
+    has_wrapper: bool = False,
 ) -> str:
     """Resolve component styles to a CSS inline style string.
 
     Assumes the component has already been through flatten_dashboard, so all
     style-derived properties are pre-merged onto the component.
+
+    When has_wrapper=True (div-in-div outer div):
+      - Includes padding, overflow:hidden, box-sizing:border-box
+      - Includes visual styles, margin, html escape hatch
+      - For sheets: fit-specific overflow replaces default overflow:hidden
+
+    When has_wrapper=False (single div, legacy path):
+      - Same as original behavior
 
     Resolution order:
     1. Structural CSS (overflow, display for horizontal children)
@@ -155,18 +163,20 @@ def resolve_styles(
 
     # Step 3: Theme defaults (font-family for text-bearing components)
     if isinstance(component, (TextComponent, ButtonComponent, LinkComponent)):
-        css["font-family"] = ctx.theme.layout.font.family.body
+        if not has_wrapper:
+            css["font-family"] = ctx.theme.layout.font.family.body
 
     # Step 4: Type defaults
-    if isinstance(component, ButtonComponent):
-        for k, v in BUTTON_DEFAULTS.items():
-            css[k] = v
-    elif isinstance(component, LinkComponent):
-        for k, v in LINK_DEFAULTS.items():
-            css[k] = v
+    if not has_wrapper:
+        if isinstance(component, ButtonComponent):
+            for k, v in BUTTON_DEFAULTS.items():
+                css[k] = v
+        elif isinstance(component, LinkComponent):
+            for k, v in LINK_DEFAULTS.items():
+                css[k] = v
 
     # Step 5: Text preset
-    if isinstance(component, TextComponent) and component.preset:
+    if not has_wrapper and isinstance(component, TextComponent) and component.preset:
         preset_name = component.preset
         if preset_name in ctx.theme.layout.presets:
             preset = ctx.theme.layout.presets[preset_name]
@@ -177,6 +187,8 @@ def resolve_styles(
                 css["text-align"] = preset.text_align
 
     # Step 6: Inline extras from __pydantic_extra__ (includes style-merged visual props)
+    # Visual extras (background, border, shadow, etc.) go on the outer div in both paths.
+    # Font/text extras (font_size, color) also go here — they cascade to inner content.
     extras = component.__pydantic_extra__ or {}
     for key, val in extras.items():
         if key in _STYLE_EXTRA_KEYS and val is not None:
@@ -196,31 +208,42 @@ def resolve_styles(
     if margin_css:
         css["margin"] = margin_css
 
-    # Step 8: Sheet fit CSS
     fit = component.fit if isinstance(component, SheetComponent) else None
 
-    # For fitted sheets, skip CSS padding — Vega-Lite will handle it via
-    # its own padding + autosize:{contains:"padding"}.  CSS padding would
-    # shift the SVG inside the div without Vega knowing about it.
-    if not (isinstance(component, SheetComponent) and fit is not None):
+    if has_wrapper:
+        # Outer div: always include padding, overflow, box-sizing
         padding_css = _format_spacing(component.padding)
         if padding_css:
             css["padding"] = padding_css
+        # Fit-specific overflow on the outer div
+        if fit == "width":
+            css["overflow-y"] = "auto"
+        elif fit == "height":
+            css["overflow-x"] = "auto"
+        else:
+            css["overflow"] = "hidden"
+        css["box-sizing"] = "border-box"
+    else:
+        # Step 8: Single-div path — include padding (but NOT for fitted sheets)
+        if not (isinstance(component, SheetComponent) and fit is not None):
+            padding_css = _format_spacing(component.padding)
+            if padding_css:
+                css["padding"] = padding_css
 
-    if fit == "width":
-        css["overflow-y"] = "auto"
-    elif fit == "height":
-        css["overflow-x"] = "auto"
-    elif fit == "fill":
-        css["overflow"] = "hidden"
+        if fit == "width":
+            css["overflow-y"] = "auto"
+        elif fit == "height":
+            css["overflow-x"] = "auto"
+        elif fit == "fill":
+            css["overflow"] = "hidden"
 
     # Step 9: Serialize CSS dict
-    html_escape = component.html
+    html_escape = component.html if not has_wrapper else component.html
 
     parts = [f"{k}: {v}" for k, v in css.items()]
     result = "; ".join(parts)
 
-    # Step 11: Append html escape hatch
+    # Append html escape hatch
     if html_escape:
         if result and not result.endswith(";"):
             result += "; "
@@ -229,3 +252,26 @@ def resolve_styles(
         result += html_escape
 
     return result
+
+
+def resolve_inner_styles(
+    component: Component | RootComponent,
+    ctx: RenderContext,
+) -> str:
+    """Resolve CSS for the inner content div in a div-in-div structure.
+
+    Always: width:100%; height:100%
+    Sheets: + position:relative
+    Text: + overflow:hidden
+    """
+    css: dict[str, str] = {
+        "width": "100%",
+        "height": "100%",
+    }
+    if isinstance(component, SheetComponent):
+        css["position"] = "relative"
+    elif isinstance(component, TextComponent):
+        css["overflow"] = "hidden"
+
+    parts = [f"{k}: {v}" for k, v in css.items()]
+    return "; ".join(parts)
