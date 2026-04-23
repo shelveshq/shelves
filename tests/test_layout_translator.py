@@ -315,6 +315,30 @@ root:
         assert "background: #FF0000" in html
         assert "color: #000000" in html
 
+    def test_button_html_hatch_overrides_anchor_background(self):
+        """html escape hatch must apply to the inner <a>, not just the outer wrapper div."""
+        result = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "Nav"
+      href: "/nav"
+      color: "#94A3B8"
+      html: "display:block; background:none; border:none;"
+""")
+        # The <a> element should carry background:none from the html hatch,
+        # overriding the #4A90D9 default from BUTTON_DEFAULTS.
+        import re
+
+        a_tag_match = re.search(r'<a [^>]*style="([^"]*)"', result)
+        assert a_tag_match, "No <a> tag with style found"
+        a_style = a_tag_match.group(1)
+        assert "background:none" in a_style or "background: none" in a_style, (
+            f"Expected background:none in <a> style, got: {a_style}"
+        )
+
     def test_link_target_blank(self):
         html = _translate("""\
 dashboard: "Test"

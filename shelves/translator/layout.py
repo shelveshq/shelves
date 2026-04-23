@@ -190,6 +190,10 @@ def render_node(
         escaped_text = html.escape(defn.text)
         escaped_href = html.escape(defn.href, quote=True)
         a_css = _build_button_link_inner_css(defn)
+        if defn.html:
+            if a_css and not a_css.endswith(";"):
+                a_css += "; "
+            a_css += defn.html
         safe_a_css = html.escape(a_css, quote=True)
         return (
             f'<div style="{safe_outer}">'
