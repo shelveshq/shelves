@@ -204,10 +204,16 @@ def render_node(
     elif isinstance(defn, ImageComponent):
         escaped_src = html.escape(defn.src, quote=True)
         escaped_alt = html.escape(defn.alt, quote=True)
+        img_css = "width: 100%; height: 100%; object-fit: contain"
+        if inner_css:
+            img_css += "; " + inner_css
+        if defn.html:
+            img_css += "; " + defn.html
+        safe_img_css = html.escape(img_css, quote=True)
         return (
             f'<div style="{safe_outer}">'
             f'<img src="{escaped_src}" alt="{escaped_alt}"'
-            f' style="width: 100%; height: 100%; object-fit: contain">'
+            f' style="{safe_img_css}">'
             f"</div>"
         )
 
@@ -314,10 +320,9 @@ def wrap_html_page(
 
             # Zero out Vega's intrinsic padding and background — the CSS outer
             # wrapper handles spacing and background colour instead.
-            cfg = modified_spec.get("config")
-            if cfg is None:
-                cfg = {}
-                modified_spec["config"] = cfg
+            existing_cfg = modified_spec.get("config")
+            cfg = dict(existing_cfg) if existing_cfg is not None else {}
+            modified_spec["config"] = cfg
             cfg["padding"] = 0
             cfg["background"] = "transparent"
 

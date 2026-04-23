@@ -1466,3 +1466,76 @@ root:
 """)
         assert "border: 1px solid red;" in html
         assert "padding: 16px" in html
+
+
+# ─── Bug Fixes (PR #20 Copilot Review) ─────────────────────────────
+
+
+class TestConfigShallowCopyBug:
+    """Bug #1: wrap_html_page mutates the caller's chart_specs config dict."""
+
+    def test_chart_specs_config_not_mutated(self):
+        """Original chart_specs config dict must not be modified after rendering."""
+        original_config = {"axis": {"labelFontSize": 12}, "padding": 10, "background": "#fff"}
+        chart_specs = {"mychart": {"mark": "bar", "encoding": {}, "config": original_config}}
+
+        _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: mychart
+      fit: fill
+""",
+            chart_specs=chart_specs,
+        )
+
+        assert original_config["padding"] == 10, "config.padding was mutated"
+        assert original_config["background"] == "#fff", "config.background was mutated"
+        assert original_config["axis"] == {"labelFontSize": 12}, "config.axis was mutated"
+
+
+class TestImageHtmlEscapeHatch:
+    """Bug #2: Image component ignores html escape hatch and style extras."""
+
+    def test_image_html_escape_hatch_on_img_tag(self):
+        """html escape hatch on image must appear on the <img> tag, not just outer div."""
+        import re
+
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: photo.jpg
+      alt: Photo
+      height: 200
+      html: "object-fit: cover"
+""")
+        m = re.search(r'<img[^>]+style="([^"]+)"', html)
+        assert m is not None, "<img> tag not found"
+        img_style = m.group(1)
+        assert "object-fit: cover" in img_style
+
+
+class TestTextPresetIntegration:
+    """Bug #4: Text presets (font-size/weight/color) must appear in rendered HTML."""
+
+    def test_text_preset_title_in_rendered_html(self):
+        """A text component with preset:title must have font-size/weight in the HTML."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Big Title"
+      preset: title
+""")
+        assert "font-size: 24px" in html
+        assert "font-weight: bold" in html
+        assert "Big Title" in html

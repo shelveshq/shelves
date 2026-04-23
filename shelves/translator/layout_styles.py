@@ -175,8 +175,8 @@ def resolve_styles(
             for k, v in LINK_DEFAULTS.items():
                 css[k] = v
 
-    # Step 5: Text preset
-    if not has_wrapper and isinstance(component, TextComponent) and component.preset:
+    # Step 5: Text preset — applied regardless of wrapper (font props cascade to inner div)
+    if isinstance(component, TextComponent) and component.preset:
         preset_name = component.preset
         if preset_name in ctx.theme.layout.presets:
             preset = ctx.theme.layout.presets[preset_name]
