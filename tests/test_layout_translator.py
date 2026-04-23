@@ -315,6 +315,30 @@ root:
         assert "background: #FF0000" in html
         assert "color: #000000" in html
 
+    def test_button_html_hatch_overrides_anchor_background(self):
+        """html escape hatch must apply to the inner <a>, not just the outer wrapper div."""
+        result = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "Nav"
+      href: "/nav"
+      color: "#94A3B8"
+      html: "display:block; background:none; border:none;"
+""")
+        # The <a> element should carry background:none from the html hatch,
+        # overriding the #4A90D9 default from BUTTON_DEFAULTS.
+        import re
+
+        a_tag_match = re.search(r'<a [^>]*style="([^"]*)"', result)
+        assert a_tag_match, "No <a> tag with style found"
+        a_style = a_tag_match.group(1)
+        assert "background:none" in a_style or "background: none" in a_style, (
+            f"Expected background:none in <a> style, got: {a_style}"
+        )
+
     def test_link_target_blank(self):
         html = _translate("""\
 dashboard: "Test"
@@ -611,12 +635,11 @@ root:
         assert '"width": 400' in html
 
     def test_fit_sheet_padding_transferred_to_vega(self):
-        """A fitted sheet's padding should become Vega's padding, not CSS padding.
+        """A fitted sheet's padding is CSS on the outer wrapper, not transferred to Vega.
 
-        CSS padding shifts the SVG inside the div without Vega knowing, causing
-        the chart to appear offset.  Instead, the padding is transferred to
-        Vega's spec-level padding and autosize:{contains:"padding"} absorbs it
-        within the container dimensions.
+        With div-in-div, CSS padding lives on the outer wrapper div.  The inner
+        div (id="sheet-*") has no padding.  The Vega spec has no spec-level
+        padding and config.padding is zeroed out so the chart fills the inner div.
         """
         import json
         import re
@@ -638,23 +661,27 @@ root:
             },
         )
 
-        # The sheet div should NOT have CSS padding
+        # Outer wrapper div has CSS padding
+        assert "padding: 12px" in html
+        assert "box-sizing: border-box" in html
+
+        # The inner sheet div should NOT have padding in its style
         m_div = re.search(r'id="sheet-padded" style="([^"]+)"', html)
+        assert m_div is not None
         assert "padding" not in m_div.group(1)
 
-        # The Vega spec should carry the sheet's padding value
+        # The Vega spec should NOT carry spec-level padding
         m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
         specs = json.loads(m.group(1))
         spec = specs["sheet-padded"]
-        assert spec["padding"] == 12
-        # Theme's config.padding should be stripped so it doesn't conflict
-        assert "padding" not in spec.get("config", {})
+        assert "padding" not in spec
+        # config.padding zeroed out — CSS outer div handles spacing
+        assert spec.get("config", {}).get("padding") == 0
         # Other config properties preserved
         assert spec["config"]["mark"]["color"] == "red"
 
     def test_fit_sheet_string_padding_transferred_to_vega(self):
-        """A fitted sheet with string padding shorthand should transfer per-side
-        padding to the Vega spec as a {top, right, bottom, left} object."""
+        """A fitted sheet with string padding shorthand emits CSS shorthand on the wrapper."""
         import json
         import re
 
@@ -673,14 +700,18 @@ root:
             chart_specs={"asym": {"mark": "bar"}},
         )
 
+        # Outer wrapper has CSS shorthand padding
+        assert "padding: 8px 16px" in html
+        assert "box-sizing: border-box" in html
+
+        # Vega spec has no padding
         m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
         specs = json.loads(m.group(1))
         spec = specs["sheet-asym"]
-        # String "8 16" → {top:8, right:16, bottom:8, left:16}
-        assert spec["padding"] == {"top": 8, "right": 16, "bottom": 8, "left": 16}
+        assert "padding" not in spec
 
     def test_fit_sheet_four_value_padding_transferred_to_vega(self):
-        """A fitted sheet with 4-value padding shorthand should transfer correctly."""
+        """A fitted sheet with 4-value padding shorthand emits CSS shorthand on the wrapper."""
         import json
         import re
 
@@ -699,13 +730,21 @@ root:
             chart_specs={"fourpad": {"mark": "bar"}},
         )
 
+        # Outer wrapper has CSS 4-value padding
+        assert "padding: 10px 20px 30px 40px" in html
+        assert "box-sizing: border-box" in html
+
+        # Vega spec has no padding
         m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
         specs = json.loads(m.group(1))
         spec = specs["sheet-fourpad"]
-        assert spec["padding"] == {"top": 10, "right": 20, "bottom": 30, "left": 40}
+        assert "padding" not in spec
 
-    def test_no_fit_keeps_css_padding_and_vega_padding(self):
-        """Without fit mode, both CSS padding and Vega config.padding stay as-is."""
+    def test_no_fit_keeps_css_padding_and_zeros_vega_padding(self):
+        """Without fit mode, CSS padding on wrapper; Vega config.padding zeroed."""
+        import json
+        import re
+
         html = _translate(
             """\
 dashboard: "Test"
@@ -721,8 +760,72 @@ root:
         )
         # CSS padding should still be on the div
         assert "padding: 8px" in html
-        # Vega config.padding left as-is
-        assert '"padding": 16' in html
+        # Vega config.padding zeroed out
+        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m.group(1))
+        spec = specs["sheet-fixed"]
+        assert spec.get("config", {}).get("padding") == 0
+
+    def test_vega_background_zeroed_to_transparent(self):
+        """Layout-embedded sheets have config.background forced to transparent.
+
+        The CSS background on the outer wrapper div must show through — Vega's
+        default white canvas (config.background="#ffffff" from ChartTheme) would
+        otherwise cover it.  Analogous to config.padding being zeroed out.
+        Other config properties must be preserved.
+        """
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: colored
+      background: "#FF0000"
+""",
+            chart_specs={
+                "colored": {
+                    "mark": "bar",
+                    "config": {"background": "#ffffff", "mark": {"color": "blue"}},
+                }
+            },
+        )
+
+        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m.group(1))
+        spec = specs["sheet-colored"]
+        # Vega background zeroed to transparent — CSS wrapper background shows through
+        assert spec.get("config", {}).get("background") == "transparent"
+        # Other config properties preserved
+        assert spec["config"]["mark"]["color"] == "blue"
+
+    def test_vega_background_set_when_no_existing_config(self):
+        """config.background is set transparent even when the spec has no config block."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/bar.yaml
+      name: plain
+""",
+            chart_specs={"plain": {"mark": "bar"}},
+        )
+
+        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m.group(1))
+        spec = specs["sheet-plain"]
+        assert spec.get("config", {}).get("background") == "transparent"
 
     def test_faceted_chart_fits_cell_width_to_container(self):
         """A faceted chart with fit: fill should get per-cell pixel width on
@@ -767,11 +870,13 @@ root:
         assert "width" not in spec, "top-level width should not be set for faceted specs"
         inner = spec["spec"]
         assert isinstance(inner["width"], int)
-        # container=800, padding=10 → outer=800, available=800-20=780
+        # content_dims=(780,580) [solver subtracts padding=10 from 800x600]
         # cell = (780 - 20) / 2 = 380  (20 = default facet spacing)
         assert inner["width"] == 380
-        # Padding transferred from sheet to Vega
-        assert spec["padding"] == 10
+        # No padding transferred to Vega spec — padding is CSS on outer wrapper
+        assert "padding" not in spec
+        # config.padding zeroed out
+        assert spec.get("config", {}).get("padding") == 0
 
     def test_no_fit_chart_keeps_original_dimensions(self):
         """A chart without fit should keep its authored width/height untouched."""
@@ -1013,3 +1118,424 @@ root:
 """)
         assert "Just text" in html
         assert "vegaEmbed" not in html or "const specs = {};" in html
+
+
+# ─── Div-in-Div Rendering ───────────────────────────────────────────
+
+
+class TestDivInDiv:
+    """Tests for the div-in-div pattern for padded elements (KAN-221)."""
+
+    def test_sheet_emits_wrapper_and_inner_div(self):
+        """Fitted sheet with padding emits outer wrapper + inner div with id."""
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: padded_chart
+      fit: fill
+      padding: 16
+""",
+            chart_specs={"padded_chart": {"mark": "bar", "encoding": {}}},
+        )
+        # Outer div: dimensions, padding, overflow, box-sizing
+        assert "padding: 16px" in html
+        assert "overflow: hidden" in html
+        assert "box-sizing: border-box" in html
+        # Inner div has the sheet id
+        assert 'id="sheet-padded_chart"' in html
+        # Inner div style: width:100%, height:100%, position:relative
+        m = re.search(r'id="sheet-padded_chart" style="([^"]+)"', html)
+        assert m is not None, "sheet-padded_chart div not found"
+        inner_css = m.group(1)
+        assert "width: 100%" in inner_css
+        assert "height: 100%" in inner_css
+        assert "position: relative" in inner_css
+        # Vega spec: no padding key, autosize without contains:padding
+        import json
+
+        m2 = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m2.group(1))
+        spec = specs["sheet-padded_chart"]
+        assert "padding" not in spec
+        assert spec.get("autosize") == {"type": "fit"}
+
+    def test_text_emits_wrapper_with_overflow_hidden(self):
+        """Text element with padding gets outer wrapper + inner div with overflow:hidden."""
+        import re
+
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "A very long string that might overflow"
+      padding: 12
+      height: 40
+""")
+        # Outer div has padding and overflow:hidden
+        assert "padding: 12px" in html
+        assert "overflow: hidden" in html
+        assert "box-sizing: border-box" in html
+        # Inner div contains the text content
+        assert "A very long string that might overflow" in html
+        # Text is inside an inner div with overflow:hidden
+        m = re.search(
+            r'<div style="([^"]*overflow: hidden[^"]*)">'
+            r"A very long string that might overflow</div>",
+            html,
+        )
+        assert m is not None, "inner text div with overflow:hidden not found"
+
+    def test_no_padding_emits_wrapper(self):
+        """Element without padding always emits div-in-div — outer and inner divs."""
+        import re
+
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "No padding here"
+""")
+        assert "No padding here" in html
+        # Outer div has overflow:hidden and box-sizing:border-box even without padding
+        inline_styles = re.findall(r'style="([^"]+)"', html)
+        assert any("box-sizing: border-box" in s for s in inline_styles)
+        # Inner div contains the text
+        m = re.search(
+            r'<div style="[^"]*box-sizing: border-box[^"]*">'
+            r'<div style="[^"]*">No padding here</div></div>',
+            html,
+        )
+        assert m is not None, "Expected outer+inner div structure around text"
+
+    def test_no_fit_sheet_padding_stays_css(self):
+        """Non-fitted sheet with padding uses div-in-div; Vega config.padding zeroed."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: fixed
+      padding: 8
+""",
+            chart_specs={"fixed": {"mark": "bar", "config": {"padding": 16}}},
+        )
+        # Outer wrapper has CSS padding
+        assert "padding: 8px" in html
+        assert "box-sizing: border-box" in html
+        # Inner div has sheet id
+        m = re.search(r'id="sheet-fixed" style="([^"]+)"', html)
+        assert m is not None
+        # Vega config.padding zeroed out — CSS outer div handles spacing
+        m2 = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m2.group(1))
+        spec = specs["sheet-fixed"]
+        assert "padding" not in spec
+        assert spec.get("config", {}).get("padding") == 0
+
+    def test_fit_width_scroll_on_outer(self):
+        """fit:width puts overflow-y:auto on the outer wrapper."""
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: wide
+      fit: width
+      padding: 10
+""",
+            chart_specs={"wide": {"mark": "bar", "height": 300}},
+        )
+        assert "overflow-y: auto" in html
+        assert "box-sizing: border-box" in html
+        # Sheet id on inner div
+        assert 'id="sheet-wide"' in html
+        m = re.search(r'id="sheet-wide" style="([^"]+)"', html)
+        assert m is not None
+        inner_css = m.group(1)
+        assert "width: 100%" in inner_css
+        assert "height: 100%" in inner_css
+
+    def test_fit_height_scroll_on_outer(self):
+        """fit:height puts overflow-x:auto on the outer wrapper."""
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: tall
+      fit: height
+      padding: 10
+""",
+            chart_specs={"tall": {"mark": "line", "width": 400}},
+        )
+        assert "overflow-x: auto" in html
+        assert "box-sizing: border-box" in html
+        assert 'id="sheet-tall"' in html
+
+    def test_container_padding_wrapper(self):
+        """Container with padding uses div-in-div; children inside inner div."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        padding: 20
+        contains:
+          - text: "Child"
+""")
+        assert "padding: 20px" in html
+        assert "overflow: hidden" in html
+        assert "box-sizing: border-box" in html
+        assert "Child" in html
+
+    def test_faceted_chart_cell_width_uses_content_dims(self):
+        """Faceted chart with fit:fill uses content_dims (already padding-subtracted)."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: faceted
+      fit: fill
+      padding: 10
+""",
+            chart_specs={
+                "faceted": {
+                    "facet": {"field": "region", "type": "nominal"},
+                    "columns": 2,
+                    "spec": {"mark": "bar", "encoding": {}},
+                }
+            },
+        )
+        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m.group(1))
+        spec = specs["sheet-faceted"]
+        assert "padding" not in spec
+        inner = spec["spec"]
+        assert isinstance(inner["width"], int)
+        # content_dims is (780, 580) [800-2*10, 600-2*10]
+        # cell = (780 - 20) / 2 = 380
+        assert inner["width"] == 380
+
+    def test_asymmetric_padding_on_wrapper(self):
+        """Asymmetric padding renders as CSS shorthand on the wrapper; no Vega padding."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: asym
+      fit: fill
+      padding: "8 16"
+""",
+            chart_specs={"asym": {"mark": "bar"}},
+        )
+        assert "padding: 8px 16px" in html
+        assert "box-sizing: border-box" in html
+        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m.group(1))
+        spec = specs["sheet-asym"]
+        assert "padding" not in spec
+        assert spec.get("autosize") == {"type": "fit"}
+
+    def test_blank_and_image_with_padding(self):
+        """Blank and image elements with padding use div-in-div."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - blank:
+      height: 40
+      padding: 8
+    - image: logo.png
+      alt: Logo
+      height: 60
+      padding: 4
+""")
+        assert "padding: 8px" in html
+        assert "padding: 4px" in html
+        assert "box-sizing: border-box" in html
+        assert "<img" in html
+
+    def test_button_link_padding_wrapper(self):
+        """Button and link with padding use div-in-div outer wrapper."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "Click"
+      href: "/x"
+      padding: 12
+    - link: "More"
+      href: "/y"
+      padding: 8
+""")
+        assert "padding: 12px" in html
+        assert "padding: 8px" in html
+        assert "box-sizing: border-box" in html
+        assert '<a href="/x"' in html
+        assert '<a href="/y"' in html
+
+    def test_zero_padding_still_emits_wrapper(self):
+        """padding: 0 still emits div-in-div — wrapper is always present."""
+        import re
+
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Zero pad"
+      padding: 0
+""")
+        assert "Zero pad" in html
+        inline_styles = re.findall(r'style="([^"]+)"', html)
+        assert any("box-sizing: border-box" in s for s in inline_styles)
+
+    def test_margin_coexists_with_padding_wrapper(self):
+        """Margin goes on outer div alongside padding."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Margined"
+      margin: 8
+      padding: 16
+""")
+        assert "padding: 16px" in html
+        assert "margin: 8px" in html
+        assert "box-sizing: border-box" in html
+
+    def test_html_escape_hatch_on_outer_div(self):
+        """html escape hatch is appended to the outer div's style."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Custom"
+      padding: 16
+      html: "border: 1px solid red;"
+""")
+        assert "border: 1px solid red;" in html
+        assert "padding: 16px" in html
+
+
+# ─── Bug Fixes (PR #20 Copilot Review) ─────────────────────────────
+
+
+class TestConfigShallowCopyBug:
+    """Bug #1: wrap_html_page mutates the caller's chart_specs config dict."""
+
+    def test_chart_specs_config_not_mutated(self):
+        """Original chart_specs config dict must not be modified after rendering."""
+        original_config = {"axis": {"labelFontSize": 12}, "padding": 10, "background": "#fff"}
+        chart_specs = {"mychart": {"mark": "bar", "encoding": {}, "config": original_config}}
+
+        _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: mychart
+      fit: fill
+""",
+            chart_specs=chart_specs,
+        )
+
+        assert original_config["padding"] == 10, "config.padding was mutated"
+        assert original_config["background"] == "#fff", "config.background was mutated"
+        assert original_config["axis"] == {"labelFontSize": 12}, "config.axis was mutated"
+
+
+class TestImageHtmlEscapeHatch:
+    """Bug #2: Image component ignores html escape hatch and style extras."""
+
+    def test_image_html_escape_hatch_on_img_tag(self):
+        """html escape hatch on image must appear on the <img> tag, not just outer div."""
+        import re
+
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: photo.jpg
+      alt: Photo
+      height: 200
+      html: "object-fit: cover"
+""")
+        m = re.search(r'<img[^>]+style="([^"]+)"', html)
+        assert m is not None, "<img> tag not found"
+        img_style = m.group(1)
+        assert "object-fit: cover" in img_style
+
+
+class TestTextPresetIntegration:
+    """Bug #4: Text presets (font-size/weight/color) must appear in rendered HTML."""
+
+    def test_text_preset_title_in_rendered_html(self):
+        """A text component with preset:title must have font-size/weight in the HTML."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Big Title"
+      preset: title
+""")
+        assert "font-size: 24px" in html
+        assert "font-weight: bold" in html
+        assert "Big Title" in html
