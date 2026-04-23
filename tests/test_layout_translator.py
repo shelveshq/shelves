@@ -675,8 +675,8 @@ root:
         specs = json.loads(m.group(1))
         spec = specs["sheet-padded"]
         assert "padding" not in spec
-        # config.padding is left untouched (not stripped)
-        assert spec.get("config", {}).get("padding") == 16
+        # config.padding zeroed out — CSS outer div handles spacing
+        assert spec.get("config", {}).get("padding") == 0
         # Other config properties preserved
         assert spec["config"]["mark"]["color"] == "red"
 
@@ -740,8 +740,11 @@ root:
         spec = specs["sheet-fourpad"]
         assert "padding" not in spec
 
-    def test_no_fit_keeps_css_padding_and_vega_padding(self):
-        """Without fit mode, both CSS padding and Vega config.padding stay as-is."""
+    def test_no_fit_keeps_css_padding_and_zeros_vega_padding(self):
+        """Without fit mode, CSS padding on wrapper; Vega config.padding zeroed."""
+        import json
+        import re
+
         html = _translate(
             """\
 dashboard: "Test"
@@ -757,8 +760,11 @@ root:
         )
         # CSS padding should still be on the div
         assert "padding: 8px" in html
-        # Vega config.padding left as-is
-        assert '"padding": 16' in html
+        # Vega config.padding zeroed out
+        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        specs = json.loads(m.group(1))
+        spec = specs["sheet-fixed"]
+        assert spec.get("config", {}).get("padding") == 0
 
     def test_faceted_chart_fits_cell_width_to_container(self):
         """A faceted chart with fit: fill should get per-cell pixel width on
@@ -808,6 +814,8 @@ root:
         assert inner["width"] == 380
         # No padding transferred to Vega spec — padding is CSS on outer wrapper
         assert "padding" not in spec
+        # config.padding zeroed out
+        assert spec.get("config", {}).get("padding") == 0
 
     def test_no_fit_chart_keeps_original_dimensions(self):
         """A chart without fit should keep its authored width/height untouched."""
@@ -1150,7 +1158,7 @@ root:
         assert m is not None, "Expected outer+inner div structure around text"
 
     def test_no_fit_sheet_padding_stays_css(self):
-        """Non-fitted sheet with padding uses div-in-div; Vega config.padding untouched."""
+        """Non-fitted sheet with padding uses div-in-div; Vega config.padding zeroed."""
         import json
         import re
 
@@ -1173,12 +1181,12 @@ root:
         # Inner div has sheet id
         m = re.search(r'id="sheet-fixed" style="([^"]+)"', html)
         assert m is not None
-        # Vega config.padding left as-is
+        # Vega config.padding zeroed out — CSS outer div handles spacing
         m2 = re.search(r"const specs = ({.*?});", html, re.DOTALL)
         specs = json.loads(m2.group(1))
         spec = specs["sheet-fixed"]
         assert "padding" not in spec
-        assert spec.get("config", {}).get("padding") == 16
+        assert spec.get("config", {}).get("padding") == 0
 
     def test_fit_width_scroll_on_outer(self):
         """fit:width puts overflow-y:auto on the outer wrapper."""
