@@ -1,0 +1,9 @@
+sheet: "Discount Amount and Percent by Sub Category"
+data: orders
+rows: country
+cols:
+  - measure: revenue
+    mark: bar
+  - measure: order_count
+    mark: bar
+tooltip: [country, revenue, order_count]

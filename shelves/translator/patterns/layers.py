@@ -84,6 +84,7 @@ from __future__ import annotations
 from typing import Any
 
 from shelves.schema.chart_schema import ChartSpec, ColorSpec, LayerEntry, MarkSpec, MeasureEntry
+from shelves.translator.patterns.stacked import _resolve_shared_axis, _suppress_shared_axis
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.translator.encodings import (
     _auto_inject_from_model,
@@ -147,34 +148,41 @@ def compile_stacked_with_layers(
     # Transforms go per-panel (vconcat/hconcat children are independent unit specs).
     # compile_layer_entry already adds transforms at the layer-group level;
     # _build_simple_panel adds them to its own output.
+    is_hconcat = concat_key == "hconcat"
     panels: list[dict[str, Any]] = []
-    for entry in entries:
+    for i, entry in enumerate(entries):
         if entry.layer:
-            panels.append(
-                compile_layer_entry(
-                    entry=entry,
-                    shared_enc=shared_enc,
-                    shared_field=shared_field,
-                    shared_axis=shared_axis,
-                    measure_axis=measure_axis,
-                    spec=spec,
-                    resolver=resolver,
-                )
+            panel = compile_layer_entry(
+                entry=entry,
+                shared_enc=shared_enc,
+                shared_field=shared_field,
+                shared_axis=shared_axis,
+                measure_axis=measure_axis,
+                spec=spec,
+                resolver=resolver,
             )
         else:
-            panels.append(
-                _build_simple_panel(
-                    entry=entry,
-                    shared_enc=shared_enc,
-                    shared_field=shared_field,
-                    shared_axis=shared_axis,
-                    measure_axis=measure_axis,
-                    spec=spec,
-                    resolver=resolver,
-                )
+            panel = _build_simple_panel(
+                entry=entry,
+                shared_enc=shared_enc,
+                shared_field=shared_field,
+                shared_axis=shared_axis,
+                measure_axis=measure_axis,
+                spec=spec,
+                resolver=resolver,
             )
 
-    return {concat_key: panels}
+        # KAN-232: suppress shared axis on non-edge panels
+        if not _resolve_shared_axis(entries, i, is_hconcat):
+            if "layer" in panel:
+                for layer_spec in panel["layer"]:
+                    _suppress_shared_axis(layer_spec["encoding"], shared_axis)
+            else:
+                _suppress_shared_axis(panel["encoding"], shared_axis)
+
+        panels.append(panel)
+
+    return {concat_key: panels, "spacing": 10}
 
 
 def compile_layer_entry(

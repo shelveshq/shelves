@@ -1,0 +1,12 @@
+sheet: "Key Metrics (All Axes)"
+data: orders
+cols: week
+marks: line
+rows:
+  - measure: revenue
+    shared_axis: true
+  - measure: order_count
+    shared_axis: true
+  - measure: arpu
+    shared_axis: true
+tooltip: [week]

@@ -231,6 +231,12 @@ class TestStackedLayers:
         assert "tooltip" in panel_0["layer"][0]["encoding"]
         assert "tooltip" not in panel_0["layer"][1]["encoding"]
 
+        # KAN-232: top panel (non-edge) — all layers have x.axis suppressed
+        assert panel_0["layer"][0]["encoding"]["x"]["axis"] is None
+        assert "title" not in panel_0["layer"][0]["encoding"]["x"]
+        assert panel_0["layer"][1]["encoding"]["x"]["axis"] is None
+        assert "title" not in panel_0["layer"][1]["encoding"]["x"]
+
         # Second panel: simple (order_count line)
         panel_1 = vl["vconcat"][1]
         assert "layer" not in panel_1
@@ -239,6 +245,13 @@ class TestStackedLayers:
         assert panel_1["encoding"]["y"]["title"] == "Orders"
         # Tooltip on simple panel
         assert "tooltip" in panel_1["encoding"]
+
+        # KAN-232: bottom panel shows shared x-axis
+        assert panel_1["encoding"]["x"]["title"] == "Week"
+        assert panel_1["encoding"]["x"]["axis"]["format"] == "%b %d"
+
+        # KAN-232: spacing between panels
+        assert vl["spacing"] == 10
 
         # No top-level transform (no filters)
         assert "transform" not in vl
@@ -263,6 +276,15 @@ class TestStackedLayers:
         assert vl["vconcat"][1]["layer"][1]["encoding"]["y"]["field"] == "cost"
         assert vl["vconcat"][1]["layer"][1]["encoding"]["color"] == {"value": "#999999"}
 
+        # KAN-232: top panel hides shared x-axis on ALL layer children
+        assert vl["vconcat"][0]["layer"][0]["encoding"]["x"]["axis"] is None
+        assert vl["vconcat"][0]["layer"][1]["encoding"]["x"]["axis"] is None
+        # Bottom panel shows shared x-axis
+        assert vl["vconcat"][1]["layer"][0]["encoding"]["x"]["title"] == "Week"
+        assert vl["vconcat"][1]["layer"][1]["encoding"]["x"]["title"] == "Week"
+
+        assert vl["spacing"] == 10
+
     def test_stacked_layers_filter_per_panel(self):
         vl = compile_fixture("stacked_layers_with_filter.yaml")
         assert "vconcat" in vl
@@ -276,6 +298,14 @@ class TestStackedLayers:
             if "layer" in panel:
                 for layer in panel["layer"]:
                     assert "transform" not in layer
+
+        # KAN-232: top layered panel hides shared x; bottom simple panel shows it
+        top = vl["vconcat"][0]
+        bottom = vl["vconcat"][1]
+        assert top["layer"][0]["encoding"]["x"]["axis"] is None
+        assert top["layer"][1]["encoding"]["x"]["axis"] is None
+        assert bottom["encoding"]["x"]["title"] == "Week"
+        assert vl["spacing"] == 10
 
     def test_stacked_layers_shared_axis_entry(self):
         vl = compile_fixture("stacked_layers_shared_axis.yaml")
@@ -293,6 +323,34 @@ class TestStackedLayers:
         assert panel_1["mark"] == "line"
         assert panel_1["encoding"]["y"]["field"] == "arpu"
         assert panel_1["encoding"]["color"] == {"value": "#E5A84B"}
+
+        # KAN-232: top layered panel hides shared x; bottom shows it
+        assert panel_0["layer"][0]["encoding"]["x"]["axis"] is None
+        assert panel_0["layer"][1]["encoding"]["x"]["axis"] is None
+        assert panel_1["encoding"]["x"]["title"] == "Week"
+        assert vl["spacing"] == 10
+
+    def test_stacked_layers_hides_shared_axis(self):
+        """KAN-232: stacked layer panels suppress shared axis on non-edge panels."""
+        vl = compile_fixture("stacked_layers.yaml")
+        assert "vconcat" in vl
+        panels = vl["vconcat"]
+
+        # Top panel (layered): ALL layer children have x.axis = null
+        top = panels[0]
+        assert "layer" in top
+        for layer_spec in top["layer"]:
+            assert layer_spec["encoding"]["x"]["axis"] is None
+            assert "title" not in layer_spec["encoding"]["x"]
+
+        # Bottom panel (simple): shared x-axis shown normally
+        bottom = panels[1]
+        assert "layer" not in bottom
+        assert bottom["encoding"]["x"]["title"] == "Week"
+        assert bottom["encoding"]["x"]["axis"]["format"] == "%b %d"
+
+        # Spacing
+        assert vl["spacing"] == 10
 
 
 class TestLayerStackingDeferred:

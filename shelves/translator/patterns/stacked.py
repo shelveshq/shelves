@@ -30,6 +30,42 @@ from shelves.translator.sort import apply_sort
 VegaLiteSpec = dict[str, Any]
 
 
+def _resolve_shared_axis(
+    entries: list[MeasureEntry],
+    index: int,
+    is_hconcat: bool,
+) -> bool:
+    """
+    Determine whether a panel at `index` should show its shared axis.
+
+    1. entry.shared_axis is True → show.
+    2. entry.shared_axis is False → hide.
+    3. entry.shared_axis is None (default):
+       - vconcat (is_hconcat=False): show only on the LAST panel (bottom).
+       - hconcat (is_hconcat=True): show only on the FIRST panel (left).
+    """
+    entry = entries[index]
+    if entry.shared_axis is True:
+        return True
+    if entry.shared_axis is False:
+        return False
+    if is_hconcat:
+        return index == 0
+    return index == len(entries) - 1
+
+
+def _suppress_shared_axis(encoding: dict[str, Any], shared_axis: str) -> None:
+    """
+    Set axis:null on the shared channel encoding and remove its title.
+
+    The field/type are preserved so data mapping is unaffected.
+    Mutates encoding in place.
+    """
+    if shared_axis in encoding:
+        encoding[shared_axis]["axis"] = None
+        encoding[shared_axis].pop("title", None)
+
+
 def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpec:
     """Compile a multi-measure stacked spec."""
 
@@ -111,6 +147,26 @@ def _compile_repeat(
 ) -> VegaLiteSpec:
     """Compile to Vega-Lite repeat spec (all panels share the same mark)."""
 
+    # Degrade to vconcat/hconcat if any panel needs axis hiding (requires per-panel control)
+    is_hconcat = measure_axis == "x"
+    needs_hiding = any(
+        not _resolve_shared_axis(entries, i, is_hconcat) for i in range(len(entries))
+    )
+    if needs_hiding:
+        concat_key = "hconcat" if is_hconcat else "vconcat"
+        return _compile_concat(
+            entries,
+            [mark] * len(entries),
+            shared_enc,
+            shared_field,
+            shared_axis,
+            measure_axis,
+            concat_key,
+            spec,
+            resolver,
+            transforms,
+        )
+
     measures = [e.measure for e in entries]
     repeat_channel = "row" if measure_axis == "y" else "column"
 
@@ -162,8 +218,9 @@ def _compile_concat(
 ) -> VegaLiteSpec:
     """Compile to Vega-Lite vconcat/hconcat (panels may differ in mark/color)."""
 
+    is_hconcat = concat_key == "hconcat"
     panels = []
-    for entry, mark in zip(entries, effective_marks):
+    for i, (entry, mark) in enumerate(zip(entries, effective_marks)):
         # Build shared axis encoding with auto-injected title, format, and grid
         shared_enc_copy: dict[str, Any] = {**shared_enc}
         _auto_inject_from_model(shared_enc_copy, shared_field, resolver, None, channel=shared_axis)
@@ -202,6 +259,10 @@ def _compile_concat(
         if spec.tooltip:
             panel_encoding["tooltip"] = build_tooltip(spec.tooltip, resolver)
 
+        # KAN-232: suppress shared axis on non-edge panels
+        if not _resolve_shared_axis(entries, i, is_hconcat):
+            _suppress_shared_axis(panel_encoding, shared_axis)
+
         panel: VegaLiteSpec = {
             "mark": build_mark(mark),
             "encoding": panel_encoding,
@@ -213,4 +274,4 @@ def _compile_concat(
         apply_sort(panel_encoding, spec.sort, resolver)
         panels.append(panel)
 
-    return {concat_key: panels}
+    return {concat_key: panels, "spacing": 10}

@@ -1,6 +1,6 @@
 # Shelves DSL Reference
 
-**DSL Version: 0.5.1**
+**DSL Version: 0.5.2**
 
 This document is the authoritative reference for the Shelves YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -65,6 +65,21 @@ rows:
 ```
 
 One shelf is a list of measure entries, the other remains a string. Each entry can override `mark`, `color`, `detail`, `size`, and `opacity`:
+
+**Shared axis visibility:** By default, stacked panels hide the shared axis on all but the edge panel (bottom for rows, left for cols) to reduce visual clutter. Override per-entry with `shared_axis`:
+
+```yaml
+rows:
+  - measure: revenue
+    mark: bar
+    shared_axis: true      # force-show shared axis on this panel
+  - measure: order_count
+    mark: line
+```
+
+`shared_axis: true` — always show the shared axis. `shared_axis: false` — always hide. Default (omitted) — show on the edge panel only.
+
+> **Note:** When all entries use the same mark and all have `shared_axis: true`, the compiler uses Vega-Lite's `repeat` operator for a more compact spec. Default axis hiding (or any `shared_axis: false`) requires per-panel control, which uses `vconcat`/`hconcat` instead.
 
 ```yaml
 rows:
@@ -762,7 +777,8 @@ kpi:
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.5.1** | Current | Stacked layers: multi-entry shelves with mixed layered and standalone entries compile to `vconcat`/`hconcat`. |
+| **0.5.2** | Current | Shared axis hiding: stacked panels hide repeating shared axes by default. New `shared_axis` property on measure entries. |
+| **0.5.1** | Previous | Stacked layers: multi-entry shelves with mixed layered and standalone entries compile to `vconcat`/`hconcat`. |
 | **0.5.0** | Previous | Layer compilation (dual/triple axis): single-entry `layer` specs compile to Vega-Lite `layer` arrays with encoding inheritance, opacity merging, and axis scale resolution. Multi-entry layered shelves remain deferred. |
 | **0.4.0** | Previous | Unified `theme.yaml` with `chart` + `layout` sections, `--theme` CLI flag, partial theme overrides. |
 | **0.3.0** | Previous | **Breaking:** removed legacy `DataSource` inline declaration. `data` is now always a model name string. |
