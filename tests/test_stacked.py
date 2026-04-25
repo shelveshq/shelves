@@ -96,8 +96,8 @@ cols:
   - measure: c
 """)
 
-    def test_parses_layer_entry_but_compilation_deferred(self):
-        """Schema accepts layers, but translator raises NotImplementedError."""
+    def test_parses_layer_entry_and_compiles(self):
+        """Schema accepts layers; single-entry layer specs compile (KAN-111)."""
         spec = parse_chart("""
 sheet: "With Layers"
 data: orders
@@ -116,5 +116,8 @@ rows:
         assert spec.rows[0].layer[0].measure == "arpu"
         assert spec.rows[0].axis == "independent"
 
-        with pytest.raises(NotImplementedError):
-            translate_chart(spec, models_dir=MODELS_DIR)
+        # Now compiles successfully through translate_chart
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+        assert "layer" in vl
+        assert len(vl["layer"]) == 2
+        assert vl["resolve"] == {"scale": {"y": "independent"}}

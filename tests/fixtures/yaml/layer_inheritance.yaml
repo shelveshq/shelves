@@ -1,0 +1,13 @@
+# Phase 1a fixture — full inheritance: layer and entry both inherit from top-level
+sheet: "Inherited Marks and Color"
+data: orders
+
+cols: week
+marks: line
+color: country
+
+rows:
+  - measure: revenue
+    layer:
+      - measure: arpu
+tooltip: [week, revenue, arpu]

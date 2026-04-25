@@ -1,0 +1,16 @@
+# Phase 1a fixture — shared y-axis (revenue + cost both in dollars)
+sheet: "Revenue vs Cost"
+data: orders
+
+cols: week
+rows:
+  - measure: revenue
+    mark: line
+    color: "#4A90D9"
+    layer:
+      - measure: cost
+        mark:
+          type: line
+          style: dashed
+        color: "#cccccc"
+tooltip: [week, revenue, cost]

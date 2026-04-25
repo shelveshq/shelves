@@ -1,0 +1,20 @@
+# Phase 1a fixture — explicit detail: null on layer (escape-hatch from inheritance).
+# Demonstrates the canonical "bars by country + average rule" pattern.
+sheet: "Revenue by Country + Average"
+data: orders
+
+cols: country
+rows:
+  - measure: revenue
+    mark: bar
+    color: country
+    detail: country
+    layer:
+      - measure: cost
+        mark: rule
+        color: "#666666"
+        detail: null
+sort:
+  field: revenue
+  order: descending
+tooltip: [country, revenue, cost]

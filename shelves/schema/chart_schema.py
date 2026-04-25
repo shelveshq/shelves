@@ -25,7 +25,9 @@ from pydantic import BaseModel, Field, model_validator
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = "0.4.0"  # additive: unified theme.yaml with chart + layout sections, --theme CLI flag
+DSL_VERSION = (
+    "0.5.0"  # additive: layer compilation (dual/triple axis) with inheritance and axis resolution
+)
 
 # ─── Primitives ────────────────────────────────────────────────────
 
