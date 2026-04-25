@@ -1,0 +1,23 @@
+# Phase 1a fixture — multiple entries, each with layers
+sheet: "Revenue+ARPU and Orders+Cost"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+        color: "#666666"
+    axis: independent
+  - measure: order_count
+    mark: bar
+    color: "#5BBD72"
+    layer:
+      - measure: cost
+        mark: line
+        color: "#999999"
+    axis: independent
+tooltip: [week, revenue, arpu, order_count, cost]

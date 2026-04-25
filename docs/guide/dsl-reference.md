@@ -1,6 +1,6 @@
 # Shelves DSL Reference
 
-**DSL Version: 0.5.0**
+**DSL Version: 0.5.1**
 
 This document is the authoritative reference for the Shelves YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -128,7 +128,7 @@ rows:
 
 **`tooltip`, `filters`, and `sort`** are top-level properties: tooltip applies to the primary layer only, filters apply once at the layer-group level, and sort applies to the primary layer's shared axis.
 
-**Note (Phase 1a):** Multi-entry shelves where some entries have layers (e.g. one panel with layers + another standalone panel) raise `NotImplementedError`. Single-entry shelves with layers compile fully.
+**Stacked + layered:** Multi-entry shelves can mix layered and standalone entries. Each layered entry compiles to its own layer-group panel; standalone entries compile as simple panels. The result is a `vconcat` (rows) or `hconcat` (cols) of mixed panels.
 
 ---
 
@@ -676,6 +676,29 @@ tooltip: [week, revenue, cost]
 
 Two measures on a shared y-axis — no `axis: independent` needed since both are dollar values.
 
+### Stacked panels with layers (mixed)
+
+```yaml
+sheet: "Revenue+ARPU Panel, Orders Panel"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+        color: "#666666"
+    axis: independent
+  - measure: order_count
+    mark: line
+tooltip: [week, revenue, arpu, order_count]
+```
+
+First panel overlays revenue bars and an ARPU dashed line on independent y-axes. Second panel shows order count as a standalone line chart. Both panels share the x-axis (week).
+
 ### Model-based chart with dot notation
 
 ```yaml
@@ -739,7 +762,8 @@ kpi:
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.5.0** | Current | Layer compilation (dual/triple axis): single-entry `layer` specs compile to Vega-Lite `layer` arrays with encoding inheritance, opacity merging, and axis scale resolution. Multi-entry layered shelves remain deferred. |
+| **0.5.1** | Current | Stacked layers: multi-entry shelves with mixed layered and standalone entries compile to `vconcat`/`hconcat`. |
+| **0.5.0** | Previous | Layer compilation (dual/triple axis): single-entry `layer` specs compile to Vega-Lite `layer` arrays with encoding inheritance, opacity merging, and axis scale resolution. Multi-entry layered shelves remain deferred. |
 | **0.4.0** | Previous | Unified `theme.yaml` with `chart` + `layout` sections, `--theme` CLI flag, partial theme overrides. |
 | **0.3.0** | Previous | **Breaking:** removed legacy `DataSource` inline declaration. `data` is now always a model name string. |
 | **0.2.0** | Previous | Data model shorthand (`data: orders`), temporal dot notation (`cols: order_date.month`), auto-injected axis formats from model. |

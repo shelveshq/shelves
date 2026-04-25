@@ -1,0 +1,21 @@
+# Phase 1a fixture — stacked layers with a filter
+sheet: "Revenue+ARPU Panel, Orders Panel (US/UK)"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+        color: "#666666"
+    axis: independent
+  - measure: order_count
+    mark: line
+filters:
+  - field: country
+    operator: in
+    values: ["US", "UK"]
+tooltip: [week, revenue, arpu, order_count]

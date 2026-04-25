@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, model_validator
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
 DSL_VERSION = (
-    "0.5.0"  # additive: layer compilation (dual/triple axis) with inheritance and axis resolution
+    "0.5.1"  # patch: stacked layers — multi-entry shelves with mixed layered/standalone entries
 )
 
 # ─── Primitives ────────────────────────────────────────────────────

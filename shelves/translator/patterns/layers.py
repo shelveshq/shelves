@@ -20,7 +20,7 @@ specs to it without inspecting them further.
                                  compile_layer_entry (if entry.layer) or
                                  _build_simple_panel (if no layer); wrap the
                                  results in vconcat/hconcat.
-                                 [KAN-112 — currently raises NotImplementedError]
+                                 [KAN-112 — implemented]
 
 `compile_layer_entry` is reusable as the unit of work — KAN-112's multi-entry
 loop calls it for any entry that has layers. KAN-112 only adds the iteration
@@ -144,23 +144,37 @@ def compile_stacked_with_layers(
         )
 
     # Multi-entry branch (KAN-112): vconcat/hconcat of layer + simple panels.
-    # TODO(KAN-112): Implement the iteration. Sketch:
-    #   panels = []
-    #   for entry in entries:
-    #       if entry.layer:
-    #           panels.append(compile_layer_entry(entry, shared_enc, shared_field,
-    #                                             shared_axis, measure_axis, spec, resolver))
-    #       else:
-    #           panels.append(_build_simple_panel(entry, shared_enc, shared_field,
-    #                                             shared_axis, measure_axis, spec, resolver))
-    #   result = {concat_key: panels}
-    #   transforms = build_transforms(spec.filters, resolver)
-    #   if transforms: result["transform"] = transforms
-    #   return result
-    raise NotImplementedError(
-        "Multi-entry stacked specs with layers are KAN-112. "
-        "For single-entry layered specs (no stacking), KAN-111 handles them above."
-    )
+    # Transforms go per-panel (vconcat/hconcat children are independent unit specs).
+    # compile_layer_entry already adds transforms at the layer-group level;
+    # _build_simple_panel adds them to its own output.
+    panels: list[dict[str, Any]] = []
+    for entry in entries:
+        if entry.layer:
+            panels.append(
+                compile_layer_entry(
+                    entry=entry,
+                    shared_enc=shared_enc,
+                    shared_field=shared_field,
+                    shared_axis=shared_axis,
+                    measure_axis=measure_axis,
+                    spec=spec,
+                    resolver=resolver,
+                )
+            )
+        else:
+            panels.append(
+                _build_simple_panel(
+                    entry=entry,
+                    shared_enc=shared_enc,
+                    shared_field=shared_field,
+                    shared_axis=shared_axis,
+                    measure_axis=measure_axis,
+                    spec=spec,
+                    resolver=resolver,
+                )
+            )
+
+    return {concat_key: panels}
 
 
 def compile_layer_entry(
@@ -274,6 +288,79 @@ def compile_layer_entry(
         result["transform"] = transforms
 
     return result
+
+
+def _build_simple_panel(
+    entry: MeasureEntry,
+    shared_enc: dict[str, Any],
+    shared_field: str,
+    shared_axis: str,
+    measure_axis: str,
+    spec: ChartSpec,
+    resolver: FieldTypeResolver,
+) -> dict[str, Any]:
+    """
+    Build a single non-layered panel for use inside a multi-entry stacked layout
+    where at least one sibling entry has layers.
+
+    Mirrors the per-panel logic of stacked.py:_compile_concat but builds ONE
+    panel at a time so it can be interleaved with compile_layer_entry panels.
+    Does NOT add transforms — the caller hoists transforms to the concat level.
+    """
+    # Step 1: Resolve mark.
+    mark = _resolve_mark(
+        layer_mark=None,
+        entry_mark=entry.mark,
+        top_level_mark=spec.marks,
+        measure_name=entry.measure,
+    )
+
+    # Step 2: Build encoding.
+    encoding: dict[str, Any] = {}
+
+    # 2a: Shared axis — copy and inject title/format/grid.
+    shared_axis_enc = {**shared_enc}
+    _auto_inject_from_model(shared_axis_enc, shared_field, resolver, None, channel=shared_axis)
+    encoding[shared_axis] = shared_axis_enc
+
+    # 2b: Measure axis.
+    measure_enc = build_field_encoding(entry.measure, resolver)
+    _auto_inject_from_model(measure_enc, entry.measure, resolver, None, channel=measure_axis)
+    encoding[measure_axis] = measure_enc
+
+    # Step 3: Color — entry overrides top-level.
+    color = entry.color if entry.color is not None else spec.color
+    if color is not None:
+        encoding["color"] = build_color(color, resolver)
+
+    # Step 4: Detail — entry overrides top-level.
+    detail = entry.detail if entry.detail is not None else spec.detail
+    if detail is not None:
+        encoding["detail"] = build_detail(detail, resolver)
+
+    # Step 5: Size — entry overrides top-level.
+    size = entry.size if entry.size is not None else spec.size
+    if size is not None:
+        encoding["size"] = build_size(size, resolver)
+
+    # Step 6: Tooltip.
+    if spec.tooltip:
+        encoding["tooltip"] = build_tooltip(spec.tooltip, resolver)
+
+    # Step 7: Sort.
+    apply_sort(encoding, spec.sort, resolver)
+
+    # Step 8: Build mark (merge entry opacity if set).
+    vl_mark = _apply_opacity_to_mark(build_mark(mark), entry.opacity)
+
+    panel: dict[str, Any] = {"mark": vl_mark, "encoding": encoding}
+
+    # Step 9: Transforms per-panel (matching stacked.py:_compile_concat behavior).
+    transforms = build_transforms(spec.filters, resolver)
+    if transforms:
+        panel["transform"] = transforms
+
+    return panel
 
 
 def _build_layer_spec(

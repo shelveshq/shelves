@@ -207,12 +207,97 @@ class TestLayerCompilation:
             translate_chart(spec, models_dir=MODELS_DIR)
 
 
+class TestStackedLayers:
+    """Positive compilation tests for multi-entry stacked layered specs (KAN-112)."""
+
+    def test_stacked_layers_compiles(self):
+        vl = compile_fixture("stacked_layers.yaml")
+        assert vl["$schema"] == "https://vega.github.io/schema/vega-lite/v6.json"
+        assert vl["title"] == "Revenue+ARPU Panel, Orders Panel"
+        assert "vconcat" in vl
+        assert len(vl["vconcat"]) == 2
+
+        # First panel: layered (revenue bars + ARPU dashed line)
+        panel_0 = vl["vconcat"][0]
+        assert "layer" in panel_0
+        assert len(panel_0["layer"]) == 2
+        assert panel_0["layer"][0]["mark"] == "bar"
+        assert panel_0["layer"][0]["encoding"]["y"]["field"] == "revenue"
+        assert panel_0["layer"][1]["mark"] == {"type": "line", "strokeDash": [6, 4]}
+        assert panel_0["layer"][1]["encoding"]["y"]["field"] == "arpu"
+        assert panel_0["layer"][1]["encoding"]["color"] == {"value": "#666666"}
+        assert panel_0["resolve"] == {"scale": {"y": "independent"}}
+        # Tooltip on primary layer only
+        assert "tooltip" in panel_0["layer"][0]["encoding"]
+        assert "tooltip" not in panel_0["layer"][1]["encoding"]
+
+        # Second panel: simple (order_count line)
+        panel_1 = vl["vconcat"][1]
+        assert "layer" not in panel_1
+        assert panel_1["mark"] == "line"
+        assert panel_1["encoding"]["y"]["field"] == "order_count"
+        assert panel_1["encoding"]["y"]["title"] == "Orders"
+        # Tooltip on simple panel
+        assert "tooltip" in panel_1["encoding"]
+
+        # No top-level transform (no filters)
+        assert "transform" not in vl
+
+    def test_stacked_layers_all_layered(self):
+        vl = compile_fixture("stacked_layers_all_layered.yaml")
+        assert "vconcat" in vl
+        assert len(vl["vconcat"]) == 2
+
+        # Both panels are layer groups
+        for panel in vl["vconcat"]:
+            assert "layer" in panel
+            assert panel["resolve"] == {"scale": {"y": "independent"}}
+
+        # First panel: revenue + arpu
+        assert vl["vconcat"][0]["layer"][0]["encoding"]["y"]["field"] == "revenue"
+        assert vl["vconcat"][0]["layer"][1]["encoding"]["y"]["field"] == "arpu"
+
+        # Second panel: order_count + cost
+        assert vl["vconcat"][1]["layer"][0]["encoding"]["y"]["field"] == "order_count"
+        assert vl["vconcat"][1]["layer"][0]["encoding"]["color"] == {"value": "#5BBD72"}
+        assert vl["vconcat"][1]["layer"][1]["encoding"]["y"]["field"] == "cost"
+        assert vl["vconcat"][1]["layer"][1]["encoding"]["color"] == {"value": "#999999"}
+
+    def test_stacked_layers_filter_per_panel(self):
+        vl = compile_fixture("stacked_layers_with_filter.yaml")
+        assert "vconcat" in vl
+        expected_transform = [{"filter": {"field": "country", "oneOf": ["US", "UK"]}}]
+        # No top-level transform — vconcat children are independent unit specs
+        assert "transform" not in vl
+        # Transform on each panel: layer-group level for layered, panel level for simple
+        for panel in vl["vconcat"]:
+            assert panel["transform"] == expected_transform
+            # Not duplicated into individual layers
+            if "layer" in panel:
+                for layer in panel["layer"]:
+                    assert "transform" not in layer
+
+    def test_stacked_layers_shared_axis_entry(self):
+        vl = compile_fixture("stacked_layers_shared_axis.yaml")
+        assert "vconcat" in vl
+        assert len(vl["vconcat"]) == 2
+
+        # First panel: layer group with shared axis (no resolve)
+        panel_0 = vl["vconcat"][0]
+        assert "layer" in panel_0
+        assert len(panel_0["layer"]) == 2
+        assert "resolve" not in panel_0
+
+        # Second panel: simple line
+        panel_1 = vl["vconcat"][1]
+        assert panel_1["mark"] == "line"
+        assert panel_1["encoding"]["y"]["field"] == "arpu"
+        assert panel_1["encoding"]["color"] == {"value": "#E5A84B"}
+
+
 class TestLayerStackingDeferred:
     """
     Deferred compilation tests for layered specs with additional complexity.
-
-    - test_stacked_layers_raises: multi-entry shelves where some entries have
-      layers are KAN-112. Raises NotImplementedError until then.
 
     - test_layers_faceted_compiles_basic: layers + facet compiles via KAN-111
       (facet.py wraps the layer spec unchanged). This test asserts only the
@@ -220,11 +305,6 @@ class TestLayerStackingDeferred:
       field encoding, resolve propagation through the facet wrapper, and
       per-facet tooltip behaviour.
     """
-
-    def test_stacked_layers_raises(self):
-        spec = parse_chart(load_yaml("stacked_layers.yaml"))
-        with pytest.raises(NotImplementedError):
-            translate_chart(spec, models_dir=MODELS_DIR)
 
     def test_layers_faceted_compiles_basic(self):
         """
