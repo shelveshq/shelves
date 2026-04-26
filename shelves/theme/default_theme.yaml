@@ -4,7 +4,7 @@
 chart:
   background: "#ffffff"
   view:
-    fill: "#ffffff"
+    fill: "#f8f9fa"
   mark:
     color: "#4A90D9"
   title:
@@ -26,7 +26,7 @@ chart:
     titleFontSize: 12
     titleFontWeight: 500
     titleColor: "#666666"
-    gridColor:
+    gridColor: "#f0f0f0"
     domainColor: "#9ca3af"
     tickColor: "#9ca3af"
   legend:
