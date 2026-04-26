@@ -160,16 +160,16 @@ class TestAutoInject:
         panels = vl["vconcat"]
         assert len(panels) == 2
 
-        # Revenue panel (bar)
+        # Revenue panel (bar) — top panel: shared x-axis is suppressed (KAN-232)
         revenue_panel = panels[0]
         x = revenue_panel["encoding"]["x"]
-        assert x["title"] == "Week"
-        assert x["axis"]["format"] == "%b %Y"
+        assert x["axis"] is None
+        assert "title" not in x
         y = revenue_panel["encoding"]["y"]
         assert y["title"] == "Revenue"
         assert y["axis"]["format"] == "$,.0f"
 
-        # Orders panel (line)
+        # Orders panel (line) — bottom panel: shared x-axis shown
         orders_panel = panels[1]
         x = orders_panel["encoding"]["x"]
         assert x["title"] == "Week"
@@ -178,12 +178,18 @@ class TestAutoInject:
         assert y["title"] == "Orders"
         assert y["axis"]["format"] == ",.0f"
 
-    def test_stacked_repeat_shared_axis_title(self):
-        """Repeat path auto-injects title and format on the shared axis."""
+    def test_stacked_vconcat_shared_axis_title(self):
+        """Bottom stacked panel shows shared axis title; non-edge panels suppress it (KAN-232)."""
         yaml_str = load_yaml("model_stacked.yaml")
         spec = parse_chart(yaml_str)
         vl = translate_chart(spec, models_dir=MODELS_DIR)
 
-        x_enc = vl["spec"]["encoding"]["x"]
+        # Default axis hiding degrades repeat to vconcat
+        assert "vconcat" in vl
+        panels = vl["vconcat"]
+        # Top panel: x axis suppressed
+        assert panels[0]["encoding"]["x"]["axis"] is None
+        # Bottom panel: x axis shown with title and format
+        x_enc = panels[1]["encoding"]["x"]
         assert x_enc["title"] == "Week"
         assert x_enc["axis"]["format"] == "%b %Y"

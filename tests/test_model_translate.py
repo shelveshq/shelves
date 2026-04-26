@@ -40,7 +40,7 @@ class TestModelParse:
         assert isinstance(spec.data, str)
 
     def test_dsl_version(self):
-        assert DSL_VERSION == "0.4.0"
+        assert DSL_VERSION == "0.5.2"
 
 
 class TestModelTranslate:
@@ -99,22 +99,30 @@ class TestModelTranslate:
         vl = translate_chart(spec, models_dir=MODELS_DIR)
 
         assert vl["$schema"] == "https://vega.github.io/schema/vega-lite/v6.json"
-        assert vl["repeat"]["row"] == ["revenue", "order_count"]
+        # KAN-232: default axis hiding degrades repeat to vconcat
+        assert "vconcat" in vl
+        panels = vl["vconcat"]
+        assert len(panels) == 2
 
-        inner = vl["spec"]
-        assert inner["mark"] == "line"
+        # Both panels use line mark
+        for p in panels:
+            assert p["mark"] == "line"
 
-        x_enc = inner["encoding"]["x"]
-        assert x_enc["field"] == "week"
-        assert x_enc["type"] == "temporal"
-        assert x_enc["timeUnit"] == "yearmonth"
-        # NEW
-        assert x_enc["title"] == "Week"
-        assert x_enc["axis"]["format"] == "%b %Y"
+        # Measure axes
+        assert panels[0]["encoding"]["y"]["field"] == "revenue"
+        assert panels[1]["encoding"]["y"]["field"] == "order_count"
 
-        y_enc = inner["encoding"]["y"]
-        assert y_enc["field"] == {"repeat": "row"}
-        assert y_enc["type"] == "quantitative"
+        # Top panel: shared x suppressed
+        x_top = panels[0]["encoding"]["x"]
+        assert x_top["field"] == "week"
+        assert x_top["type"] == "temporal"
+        assert x_top["timeUnit"] == "yearmonth"
+        assert x_top["axis"] is None
+
+        # Bottom panel: shared x shown with title and format
+        x_bot = panels[1]["encoding"]["x"]
+        assert x_bot["title"] == "Week"
+        assert x_bot["axis"]["format"] == "%b %Y"
 
     def test_nonexistent_model_raises(self):
         spec = parse_chart('sheet: "Bad"\ndata: nonexistent\ncols: x\nrows: y\nmarks: bar\n')

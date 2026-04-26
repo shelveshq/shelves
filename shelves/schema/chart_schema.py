@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field, model_validator
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = "0.4.0"  # additive: unified theme.yaml with chart + layout sections, --theme CLI flag
+DSL_VERSION = "0.5.2"  # minor: shared_axis on MeasureEntry (KAN-232) — hide repeating shared axes in stacked panels
 
 # ─── Primitives ────────────────────────────────────────────────────
 
@@ -282,6 +282,12 @@ class MeasureEntry(BaseModel):
     # "independent" = each measure gets its own axis scale
     # "shared" = all measures share one axis scale (default)
     axis: ScaleResolve | None = None
+
+    # KAN-232: shared axis visibility in stacked layouts
+    # None = use default (show on edge panel only)
+    # True = always show the shared axis on this panel
+    # False = always hide the shared axis on this panel
+    shared_axis: bool | None = None
 
 
 # A shelf is either a single field name or a list of measure entries

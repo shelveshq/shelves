@@ -1,6 +1,6 @@
 # Shelves DSL Reference
 
-**DSL Version: 0.4.0**
+**DSL Version: 0.5.2**
 
 This document is the authoritative reference for the Shelves YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -66,6 +66,21 @@ rows:
 
 One shelf is a list of measure entries, the other remains a string. Each entry can override `mark`, `color`, `detail`, `size`, and `opacity`:
 
+**Shared axis visibility:** By default, stacked panels hide the shared axis on all but the edge panel (bottom for rows, left for cols) to reduce visual clutter. Override per-entry with `shared_axis`:
+
+```yaml
+rows:
+  - measure: revenue
+    mark: bar
+    shared_axis: true      # force-show shared axis on this panel
+  - measure: order_count
+    mark: line
+```
+
+`shared_axis: true` — always show the shared axis. `shared_axis: false` — always hide. Default (omitted) — show on the edge panel only.
+
+> **Note:** When all entries use the same mark and all have `shared_axis: true`, the compiler uses Vega-Lite's `repeat` operator for a more compact spec. Default axis hiding (or any `shared_axis: false`) requires per-panel control, which uses `vconcat`/`hconcat` instead.
+
 ```yaml
 rows:
   - measure: revenue
@@ -82,6 +97,53 @@ rows:
 
 - **Same mark across all entries** (or mark inherited from top-level) — compiled as a Vega-Lite `repeat` spec (shared axis, stacked panels).
 - **Different marks across entries** — compiled as `vconcat` (rows list) or `hconcat` (cols list).
+
+### Layers (dual/multi-axis)
+
+A measure entry can include a `layer` list to overlay additional measures in the same chart panel:
+
+```yaml
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    color: country
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+        color: "#666666"
+    axis: independent
+```
+
+Each layer entry supports: `measure` (required), `mark`, `color`, `detail`, `size`, `opacity`.
+
+**Encoding inheritance:** Properties cascade top-level → entry → layer. A layer entry with no `mark` inherits from the parent entry, which in turn inherits from top-level `marks`. The same cascade applies to `color`, `detail`, and `size`.
+
+**`detail: null` (explicit)** suppresses inherited detail — useful for reference lines that should aggregate across a grouping dimension:
+
+```yaml
+rows:
+  - measure: revenue
+    mark: bar
+    color: country
+    detail: country         # bars are per-country
+    layer:
+      - measure: avg_revenue
+        mark: rule
+        detail: null          # rule aggregates across countries
+```
+
+**`opacity` does NOT cascade** — it's a mark property, applied to whichever level sets it.
+
+**`axis`** controls scale resolution for the measure axis:
+- `independent` — each measure gets its own axis scale (different units, e.g. revenue in $ vs ARPU in $/user)
+- `shared` (default) — all measures share one axis scale (same units, e.g. revenue vs target both in $)
+
+**`tooltip`, `filters`, and `sort`** are top-level properties: tooltip applies to the primary layer only, filters apply once at the layer-group level, and sort applies to the primary layer's shared axis.
+
+**Stacked + layered:** Multi-entry shelves can mix layered and standalone entries. Each layered entry compiles to its own layer-group panel; standalone entries compile as simple panels. The result is a `vconcat` (rows) or `hconcat` (cols) of mixed panels.
 
 ---
 
@@ -585,6 +647,73 @@ rows:
 tooltip: [week, country]
 ```
 
+### Dual axis (layers with independent scales)
+
+```yaml
+sheet: "Revenue & ARPU by Week"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    color: country
+    detail: country
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+        color: "#666666"
+    axis: independent
+tooltip: [week, country, revenue, arpu]
+```
+
+Revenue bars colored by country, with an ARPU dashed line overlaid on independent y-axes.
+
+### Layered chart with shared axis
+
+```yaml
+sheet: "Revenue vs Cost"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: line
+    color: "#4A90D9"
+    layer:
+      - measure: cost
+        mark:
+          type: line
+          style: dashed
+        color: "#cccccc"
+tooltip: [week, revenue, cost]
+```
+
+Two measures on a shared y-axis — no `axis: independent` needed since both are dollar values.
+
+### Stacked panels with layers (mixed)
+
+```yaml
+sheet: "Revenue+ARPU Panel, Orders Panel"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+        color: "#666666"
+    axis: independent
+  - measure: order_count
+    mark: line
+tooltip: [week, revenue, arpu, order_count]
+```
+
+First panel overlays revenue bars and an ARPU dashed line on independent y-axes. Second panel shows order count as a standalone line chart. Both panels share the x-axis (week).
+
 ### Model-based chart with dot notation
 
 ```yaml
@@ -628,26 +757,6 @@ See the **[Dashboards guide](./dashboards.md)** for the complete Layout DSL refe
 
 The following features are parsed and validated by the schema but **will raise `NotImplementedError` at compilation time**. They are planned for upcoming releases.
 
-### Layers (dual/multi-axis)
-
-Layers overlay multiple measures in the same chart panel with independent or shared axis scales:
-
-```yaml
-rows:
-  - measure: revenue
-    mark: bar
-    color: country
-    layer:
-      - measure: arpu
-        mark:
-          type: line
-          style: dashed
-        color: "#666666"
-    axis: independent
-```
-
-**Status:** Schema validates. Translator raises `NotImplementedError`.
-
 ### KPI cards
 
 ```yaml
@@ -668,7 +777,10 @@ kpi:
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.4.0** | Current | Unified `theme.yaml` with `chart` + `layout` sections, `--theme` CLI flag, partial theme overrides. |
+| **0.5.2** | Current | Shared axis hiding: stacked panels hide repeating shared axes by default. New `shared_axis` property on measure entries. |
+| **0.5.1** | Previous | Stacked layers: multi-entry shelves with mixed layered and standalone entries compile to `vconcat`/`hconcat`. |
+| **0.5.0** | Previous | Layer compilation (dual/triple axis): single-entry `layer` specs compile to Vega-Lite `layer` arrays with encoding inheritance, opacity merging, and axis scale resolution. Multi-entry layered shelves remain deferred. |
+| **0.4.0** | Previous | Unified `theme.yaml` with `chart` + `layout` sections, `--theme` CLI flag, partial theme overrides. |
 | **0.3.0** | Previous | **Breaking:** removed legacy `DataSource` inline declaration. `data` is now always a model name string. |
 | **0.2.0** | Previous | Data model shorthand (`data: orders`), temporal dot notation (`cols: order_date.month`), auto-injected axis formats from model. |
 | **0.1.0** | — | Single-measure charts, multi-measure stacked panels (repeat/concat), filters, sort, facet, themes, data binding, HTML rendering. Layers and KPI parsed but not compiled. |

@@ -1,0 +1,18 @@
+# Phase 1a fixture — stacked layers where first entry has shared axis (no axis: independent)
+sheet: "Revenue+Cost Panel, ARPU Panel"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: line
+    color: "#4A90D9"
+    layer:
+      - measure: cost
+        mark:
+          type: line
+          style: dashed
+        color: "#cccccc"
+  - measure: arpu
+    mark: line
+    color: "#E5A84B"
+tooltip: [week, revenue, cost, arpu]

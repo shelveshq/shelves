@@ -1,0 +1,23 @@
+# Phase 1a fixture — filter is applied once at the layer-group level
+sheet: "Revenue & ARPU, US/UK only"
+data: orders
+
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    color: country
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+        color: "#666666"
+    axis: independent
+
+filters:
+  - field: country
+    operator: in
+    values: ["US", "UK"]
+
+tooltip: [week, country, revenue, arpu]

@@ -1,0 +1,12 @@
+sheet: "Revenue, Orders, ARPU"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+  - measure: order_count
+    mark: line
+    shared_axis: true
+  - measure: arpu
+    mark: line
+tooltip: [week]

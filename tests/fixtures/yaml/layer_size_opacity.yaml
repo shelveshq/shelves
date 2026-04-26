@@ -1,0 +1,15 @@
+# Phase 1a fixture — exercises size (encoding) and opacity (mark) on layer
+sheet: "Revenue + Cost (sized + translucent)"
+data: orders
+
+cols: week
+rows:
+  - measure: revenue
+    mark: line
+    color: "#4A90D9"
+    layer:
+      - measure: cost
+        mark: circle
+        color: "#999999"
+        size: 200
+        opacity: 0.5
