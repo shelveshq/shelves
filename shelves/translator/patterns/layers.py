@@ -313,7 +313,8 @@ def _build_simple_panel(
 
     Mirrors the per-panel logic of stacked.py:_compile_concat but builds ONE
     panel at a time so it can be interleaved with compile_layer_entry panels.
-    Does NOT add transforms — the caller hoists transforms to the concat level.
+    Adds per-panel transforms from spec.filters, matching
+    stacked.py:_compile_concat behavior.
     """
     # Step 1: Resolve mark.
     mark = _resolve_mark(

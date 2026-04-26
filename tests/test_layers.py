@@ -3,7 +3,8 @@ Layer Tests (Phase 1a)
 
 Schema parsing (TestLayerSchemaParsing) passes throughout.
 Compilation tests (TestLayerCompilation) pass after KAN-111 is implemented.
-Deferred tests (TestLayerStackingDeferred) remain NotImplementedError until KAN-112.
+Stacked-layer compilation tests (TestStackedLayers) cover KAN-112.
+Deferred tests (TestLayerStackingDeferred) are for additional assertions under KAN-113.
 """
 
 import textwrap

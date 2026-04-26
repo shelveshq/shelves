@@ -25,9 +25,7 @@ from pydantic import BaseModel, Field, model_validator
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = (
-    "0.5.2"  # minor: show_axis on MeasureEntry — hide repeating shared axes in stacked panels
-)
+DSL_VERSION = "0.5.2"  # minor: shared_axis on MeasureEntry (KAN-232) — hide repeating shared axes in stacked panels
 
 # ─── Primitives ────────────────────────────────────────────────────
 
