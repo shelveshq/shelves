@@ -291,8 +291,8 @@ def _compile_concat(
             detail_enc = panel_encoding.get("detail")
             label_layer = build_label_layer(
                 measure_field=entry.measure,
-                base_x_enc=panel_encoding[shared_axis],
-                base_y_enc=panel_encoding[measure_axis],
+                base_x_enc=panel_encoding["x"],
+                base_y_enc=panel_encoding["y"],
                 label_config=label_config,
                 mark_type=get_mark_type(mark),
                 orientation="vertical" if measure_axis == "y" else "horizontal",

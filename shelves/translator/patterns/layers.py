@@ -303,8 +303,8 @@ def compile_layer_entry(
             primary_color_enc = None
         primary_label_layer = build_label_layer(
             measure_field=entry.measure,
-            base_x_enc=primary["encoding"][shared_axis],
-            base_y_enc=primary["encoding"][measure_axis],
+            base_x_enc=primary["encoding"]["x"],
+            base_y_enc=primary["encoding"]["y"],
             label_config=primary_label_config,
             mark_type=get_mark_type(primary_mark),
             orientation=orientation,
@@ -312,6 +312,8 @@ def compile_layer_entry(
             color_enc=primary_color_enc,
             detail_enc=primary["encoding"].get("detail"),
         )
+        if entry.axis == "independent":
+            primary_label_layer["encoding"][measure_axis]["axis"] = None
         all_layers.append(primary_label_layer)
 
     # Secondaries: each mark then its optional label
@@ -332,8 +334,8 @@ def compile_layer_entry(
                 sec_color_enc = None
             sec_label_layer = build_label_layer(
                 measure_field=layer.measure,
-                base_x_enc=secondary["encoding"][shared_axis],
-                base_y_enc=secondary["encoding"][measure_axis],
+                base_x_enc=secondary["encoding"]["x"],
+                base_y_enc=secondary["encoding"]["y"],
                 label_config=layer_label_config,
                 mark_type=get_mark_type(layer_mark),
                 orientation=orientation,
@@ -341,6 +343,8 @@ def compile_layer_entry(
                 color_enc=sec_color_enc,
                 detail_enc=secondary["encoding"].get("detail"),
             )
+            if entry.axis == "independent":
+                sec_label_layer["encoding"][measure_axis]["axis"] = None
             all_layers.append(sec_label_layer)
 
     # Step 5: Assemble.
