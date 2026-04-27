@@ -1,0 +1,13 @@
+sheet: "Revenue & ARPU (Both Labeled)"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    label: true
+    layer:
+      - measure: arpu
+        mark: line
+        color: "#666666"
+        label: true
+    axis: independent

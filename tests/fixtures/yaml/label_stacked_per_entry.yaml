@@ -1,0 +1,10 @@
+sheet: "Mixed Labels"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    label: true
+  - measure: order_count
+    mark: line
+    label: false

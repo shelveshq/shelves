@@ -26,6 +26,13 @@ from shelves.translator.encodings import (
 )
 from shelves.translator.filters import build_transforms
 from shelves.translator.sort import apply_sort
+from shelves.translator.labels import (
+    build_label_layer,
+    get_mark_type,
+    resolve_label_cascade,
+    resolve_label_spec,
+    wrap_spec_with_label,
+)
 
 VegaLiteSpec = dict[str, Any]
 
@@ -96,7 +103,12 @@ def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpe
     effective_marks: list[MarkSpec] = [_resolve_mark(e, spec.marks) for e in entries]
     all_same_mark = len(set(str(m) for m in effective_marks)) == 1
 
-    if all_same_mark and not any(e.color or e.detail or e.size for e in entries):
+    # Labels require per-panel control — degrade repeat to concat
+    has_labels = (spec.label is not None and spec.label is not False) or any(
+        e.label is not None and e.label is not False for e in entries
+    )
+
+    if all_same_mark and not any(e.color or e.detail or e.size for e in entries) and not has_labels:
         # Clean repeat: all panels identical except the measure field
         return _compile_repeat(
             entries,
@@ -259,10 +271,6 @@ def _compile_concat(
         if spec.tooltip:
             panel_encoding["tooltip"] = build_tooltip(spec.tooltip, resolver)
 
-        # KAN-232: suppress shared axis on non-edge panels
-        if not _resolve_shared_axis(entries, i, is_hconcat):
-            _suppress_shared_axis(panel_encoding, shared_axis)
-
         panel: VegaLiteSpec = {
             "mark": build_mark(mark),
             "encoding": panel_encoding,
@@ -272,6 +280,37 @@ def _compile_concat(
             panel["transform"] = transforms
 
         apply_sort(panel_encoding, spec.sort, resolver)
+
+        # Label wrapping: resolve label for this entry
+        resolved_label = resolve_label_cascade(None, entry.label, spec.label)
+        label_config = resolve_label_spec(resolved_label)
+        if label_config is not None and get_mark_type(mark) != "text":
+            color_enc = panel_encoding.get("color")
+            if color_enc and "field" not in color_enc:
+                color_enc = None
+            detail_enc = panel_encoding.get("detail")
+            label_layer = build_label_layer(
+                measure_field=entry.measure,
+                base_x_enc=panel_encoding[shared_axis],
+                base_y_enc=panel_encoding[measure_axis],
+                label_config=label_config,
+                mark_type=get_mark_type(mark),
+                orientation="vertical" if measure_axis == "y" else "horizontal",
+                resolver=resolver,
+                color_enc=color_enc,
+                detail_enc=detail_enc,
+            )
+            panel = wrap_spec_with_label(panel, label_layer)
+
+        # KAN-232: suppress shared axis on non-edge panels
+        # Panel may now be a layer spec after label wrapping
+        if not _resolve_shared_axis(entries, i, is_hconcat):
+            if "layer" in panel:
+                for layer_spec in panel["layer"]:
+                    _suppress_shared_axis(layer_spec["encoding"], shared_axis)
+            else:
+                _suppress_shared_axis(panel["encoding"], shared_axis)
+
         panels.append(panel)
 
     return {concat_key: panels, "spacing": 10}

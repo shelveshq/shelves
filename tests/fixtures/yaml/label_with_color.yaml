@@ -1,0 +1,7 @@
+sheet: "Revenue by Country (Colored + Labeled)"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+color: country
+label: true

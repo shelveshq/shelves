@@ -1,0 +1,10 @@
+sheet: "US Revenue by Country"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+label: true
+filters:
+  - field: country
+    operator: in
+    values: ["US", "UK"]

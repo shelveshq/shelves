@@ -40,7 +40,7 @@ class TestModelParse:
         assert isinstance(spec.data, str)
 
     def test_dsl_version(self):
-        assert DSL_VERSION == "0.5.2"
+        assert DSL_VERSION == "0.6.0"
 
 
 class TestModelTranslate:

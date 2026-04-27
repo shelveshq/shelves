@@ -1,0 +1,7 @@
+sheet: "Revenue by Country (Labeled by Country)"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+label:
+  field: country
