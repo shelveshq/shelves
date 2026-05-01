@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/shelveshq/shelves/main/assets/logo/lockup-light.svg" alt="shelves" width="280">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/shelveshq/shelves/main/assets/logo/lockup-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/shelveshq/shelves/main/assets/logo/lockup-light.svg">
+    <img src="https://raw.githubusercontent.com/shelveshq/shelves/main/assets/logo/lockup-light.svg" alt="shelves" width="280">
+  </picture>
 </p>
 
 <p align="center">
