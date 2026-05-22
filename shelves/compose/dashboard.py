@@ -13,17 +13,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from shelves.schema.chart_schema import parse_chart
 from shelves.schema.layout_schema import (
     DashboardSpec,
     SheetComponent,
     load_dashboard,
 )
-from shelves.theme.merge import load_theme, merge_theme
+from shelves.theme.merge import load_theme
 from shelves.theme.theme_schema import ThemeSpec
 from shelves.translator.layout import translate_dashboard
 from shelves.translator.layout_flatten import FlatNode, flatten_dashboard
-from shelves.translator.translate import translate_chart
 
 
 def compose_dashboard(
@@ -131,34 +129,18 @@ def _compile_chart(
     Data binding is model-driven: loads the chart's model, then routes
     by source type — inline reads from data_dir, cube fetches from API.
     """
+    from shelves.pipeline import compile_chart, resolve_model_data
+
     yaml_string = chart_path.read_text()
-    spec = parse_chart(yaml_string)
+    vl, spec = compile_chart(
+        yaml_string,
+        theme=theme,
+        no_theme=no_theme,
+        models_dir=models_dir,
+    )
 
-    vl = translate_chart(spec, models_dir=models_dir)
-
-    if not no_theme:
-        vl = merge_theme(vl, theme)
-
-    # Data binding: load model and route by source type
     try:
-        from shelves.models.loader import load_model
-
-        model = load_model(spec.data, models_dir=models_dir)
-        if model.source and model.source.type == "inline":
-            import json
-
-            data_path = Path(model.source.path)
-            if not data_path.is_absolute():
-                data_path = data_dir / data_path
-            if data_path.exists():
-                rows = json.loads(data_path.read_text())
-                from shelves.data.bind import resolve_data
-
-                vl = resolve_data(vl, spec, rows=rows)
-        elif model.source and model.source.type == "cube":
-            from shelves.data.bind import resolve_data
-
-            vl = resolve_data(vl, spec, models_dir=models_dir)
+        vl = resolve_model_data(vl, spec, models_dir=models_dir, data_base_dir=data_dir)
     except Exception:
         pass  # Data binding is best-effort at compose time
 

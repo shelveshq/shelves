@@ -29,11 +29,9 @@ import yaml as yaml_lib
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-from shelves.schema.chart_schema import parse_chart
-from shelves.translator.translate import translate_chart
-from shelves.theme.merge import merge_theme, load_theme
 from shelves.data.bind import resolve_data
 from shelves.render.to_html import render_html
+from shelves.theme.merge import load_theme
 
 from dotenv import load_dotenv
 
@@ -109,30 +107,19 @@ def _build_chart(
     yaml_string: str, data_path: Path | None, no_theme: bool, theme_path: Path | None
 ) -> str:
     """Build a single chart and return HTML."""
-    spec = parse_chart(yaml_string)
-    vl_spec = translate_chart(spec)
+    from shelves.pipeline import compile_chart, resolve_model_data
 
-    if not no_theme:
-        theme = load_theme(theme_path)
-        vl_spec = merge_theme(vl_spec, theme)
+    vl_spec, spec = compile_chart(
+        yaml_string,
+        theme_path=theme_path,
+        no_theme=no_theme,
+    )
 
-    # Data: inline JSON if --data provided, otherwise try model source or Cube
     if data_path:
         rows = json.loads(data_path.read_text())
         vl_spec = resolve_data(vl_spec, spec, rows=rows)
     else:
-        from shelves.models.loader import load_model
-
-        model = load_model(spec.data)
-        if model.source and model.source.type == "inline":
-            model_data_path = Path(model.source.path)
-            if model_data_path.exists():
-                rows = json.loads(model_data_path.read_text())
-                vl_spec = resolve_data(vl_spec, spec, rows=rows)
-            else:
-                print(f"Warning: model source path {model_data_path} not found")
-        else:
-            vl_spec = resolve_data(vl_spec, spec)
+        vl_spec = resolve_model_data(vl_spec, spec)
 
     # Dev preview: large chart for easy visual inspection
     vl_spec.setdefault("width", 1400)

@@ -23,11 +23,9 @@ from pathlib import Path
 import yaml as yaml_lib
 from dotenv import load_dotenv
 
-from shelves.schema.chart_schema import parse_chart
-from shelves.translator.translate import translate_chart
-from shelves.theme.merge import merge_theme, load_theme
 from shelves.data.bind import resolve_data
 from shelves.render.to_html import render_html
+from shelves.theme.merge import load_theme
 
 
 def main():
@@ -88,45 +86,29 @@ def _render_dashboard(args, raw):
 
 
 def _render_chart(args, yaml_string):
-    """Render a chart YAML file (existing pipeline)."""
-    spec = parse_chart(yaml_string)
+    """Render a chart YAML file."""
+    from shelves.pipeline import compile_chart, resolve_model_data
+
     models_dir = Path(args.models_dir) if args.models_dir else None
+    theme_path = Path(args.theme) if args.theme else None
 
-    # Translate
-    vl_spec = translate_chart(spec, models_dir=models_dir)
+    vl_spec, spec = compile_chart(
+        yaml_string,
+        theme_path=theme_path,
+        no_theme=args.no_theme,
+        models_dir=models_dir,
+    )
 
-    # Theme
-    if not args.no_theme:
-        theme_path = Path(args.theme) if args.theme else None
-        theme = load_theme(theme_path)
-        vl_spec = merge_theme(vl_spec, theme)
-
-    # Data
     if args.no_data:
-        pass  # render spec structure only
+        pass
     elif args.data:
         rows = json.loads(Path(args.data).read_text())
         vl_spec = resolve_data(vl_spec, spec, rows=rows)
     else:
-        # Try to auto-load from model's configured source
-        from shelves.models.loader import load_model
+        vl_spec = resolve_model_data(vl_spec, spec, models_dir=models_dir)
 
-        model = load_model(spec.data, models_dir=models_dir)
-        if model.source and model.source.type == "inline":
-            data_path = Path(model.source.path)
-            if data_path.exists():
-                rows = json.loads(data_path.read_text())
-                vl_spec = resolve_data(vl_spec, spec, rows=rows)
-            else:
-                print(f"Warning: model source path {data_path} not found")
-        else:
-            # Cube source or no source — try Cube.dev
-            vl_spec = resolve_data(vl_spec, spec, models_dir=models_dir)
-
-    # Render
     html = render_html(vl_spec, title=spec.sheet)
 
-    # Write output
     slug = spec.sheet.lower().replace(" ", "-")
     out_path = Path(args.out) if args.out else Path("output") / f"{slug}.html"
     out_path.parent.mkdir(parents=True, exist_ok=True)
