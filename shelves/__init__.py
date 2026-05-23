@@ -25,6 +25,7 @@ from shelves.theme.merge import merge_theme, load_theme
 from shelves.data.bind import bind_data, resolve_data
 from shelves.render.to_html import render_html
 from shelves.compose.dashboard import compose_dashboard
+from shelves.pipeline import compile_chart, resolve_model_data
 
 __all__ = [
     "parse_chart",
@@ -40,4 +41,6 @@ __all__ = [
     "DashboardSpec",
     "DSL_VERSION",
     "compose_dashboard",
+    "compile_chart",
+    "resolve_model_data",
 ]

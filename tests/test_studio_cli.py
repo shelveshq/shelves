@@ -192,6 +192,16 @@ rows: revenue
 marks: bar
 """
 
+    # Chart against a Cube-source model. Used by tests that mock resolve_data
+    # and need the cube branch of resolve_model_data to invoke it.
+    _CUBE_YAML = """\
+sheet: "Cube Test"
+data: cube_orders
+cols: category
+rows: net_sales
+marks: bar
+"""
+
     def test_compile_valid_yaml_returns_spec(self):
         """POST /compile with valid YAML returns vega_lite_spec and empty errors."""
         client = _client()
@@ -237,7 +247,7 @@ marks: bar
         assert body["errors"] == []
 
     def test_compile_calls_resolve_data(self):
-        """POST /compile calls resolve_data to bind data from models (e.g. Cube)."""
+        """POST /compile calls resolve_data to bind data from Cube-source models."""
         from unittest.mock import patch
 
         from starlette.testclient import TestClient
@@ -245,7 +255,7 @@ marks: bar
         app = create_app(project_dir=PROJECT_DIR)
         client = TestClient(app)
 
-        fake_rows = [{"country": "US", "revenue": 100}]
+        fake_rows = [{"category": "Tech", "net_sales": 100}]
 
         def mock_resolve(spec, chart_spec, models_dir=None):
             import copy
@@ -255,7 +265,7 @@ marks: bar
             return result
 
         with patch("shelves.data.bind.resolve_data", side_effect=mock_resolve) as mock_rd:
-            response = client.post("/compile", content=self._VALID_YAML)
+            response = client.post("/compile", content=self._CUBE_YAML)
 
         assert mock_rd.called, "Expected resolve_data to be called during compile"
         body = response.json()
@@ -278,7 +288,7 @@ marks: bar
             "shelves.data.bind.resolve_data",
             side_effect=ValueError("No Cube source configured"),
         ):
-            response = client.post("/compile", content=self._VALID_YAML)
+            response = client.post("/compile", content=self._CUBE_YAML)
 
         body = response.json()
         # Spec should still be returned (not null) — data resolution failure is non-fatal
@@ -286,6 +296,48 @@ marks: bar
         assert body["errors"] == []
         assert len(body["warnings"]) > 0
         assert "data" in body["warnings"][0].lower() or "cube" in body["warnings"][0].lower()
+
+    def test_compile_inline_model_binds_data(self):
+        """Inline model with on-disk data binds rows via data_base_dir=project_dir."""
+        client = _client()
+        response = client.post("/compile", content=self._VALID_YAML)
+
+        body = response.json()
+        assert body["vega_lite_spec"] is not None
+        assert body["errors"] == []
+        assert body["warnings"] == [], (
+            f"Expected no warnings for inline model with valid data; got {body['warnings']}"
+        )
+        assert "data" in body["vega_lite_spec"], (
+            "Expected inline model data to be bound onto the spec"
+        )
+        assert isinstance(body["vega_lite_spec"]["data"]["values"], list)
+        assert len(body["vega_lite_spec"]["data"]["values"]) > 0
+
+    def test_compile_inline_model_missing_path_no_warning(self):
+        """Inline model whose data file doesn't exist: silent skip, no warning."""
+        from starlette.testclient import TestClient
+
+        # Point project_dir at a temp dir so data/orders.json won't be found
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # Copy the models dir so the model itself loads
+            import shutil
+
+            shutil.copytree(PROJECT_DIR / "models", tmp_path / "models")
+            app = create_app(project_dir=tmp_path)
+            client = TestClient(app)
+            response = client.post("/compile", content=self._VALID_YAML)
+
+        body = response.json()
+        assert body["vega_lite_spec"] is not None
+        assert body["errors"] == []
+        assert body["warnings"] == [], (
+            f"Expected no warning for missing inline data; got {body['warnings']}"
+        )
+        assert "data" not in body["vega_lite_spec"]
 
 
 # ─── Schema Endpoint ─────────────────────────────────────────────

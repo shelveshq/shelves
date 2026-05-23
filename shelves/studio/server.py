@@ -164,10 +164,7 @@ async def _compile_file_and_broadcast(
     """Read a YAML file, compile it, and broadcast the result."""
     import yaml as _yaml
 
-    from shelves.data.bind import resolve_data
-    from shelves.schema.chart_schema import parse_chart
-    from shelves.theme.merge import load_theme, merge_theme
-    from shelves.translator.translate import translate_chart
+    from shelves.pipeline import compile_chart, resolve_model_data
 
     try:
         content = abs_path.read_text()
@@ -201,16 +198,20 @@ async def _compile_file_and_broadcast(
         if not isinstance(raw, dict) or "sheet" not in raw:
             return
 
-        spec = parse_chart(content)
-        vl_spec = translate_chart(spec, models_dir=models_dir if models_dir.exists() else None)
+        vl_spec, spec = compile_chart(
+            content,
+            theme_path=theme_path,
+            models_dir=models_dir if models_dir.exists() else None,
+        )
 
-        theme = load_theme(theme_path) if theme_path is not None else load_theme()
-        vl_spec = merge_theme(vl_spec, theme)
-
-        # Resolve data from models (Cube sources)
         warnings: list[str] = []
         try:
-            vl_spec = resolve_data(vl_spec, spec, models_dir=models_dir)
+            vl_spec = resolve_model_data(
+                vl_spec,
+                spec,
+                models_dir=models_dir,
+                data_base_dir=project_dir,
+            )
         except Exception as e:
             warnings.append(f"Data resolution skipped: {e}")
 
@@ -504,10 +505,7 @@ async def _compile_yaml(request: Request) -> JSONResponse:
     """POST /compile — compile YAML body to Vega-Lite spec."""
     import yaml as _yaml
 
-    from shelves.data.bind import resolve_data
-    from shelves.schema.chart_schema import parse_chart
-    from shelves.theme.merge import load_theme, merge_theme
-    from shelves.translator.translate import translate_chart
+    from shelves.pipeline import compile_chart, resolve_model_data
 
     yaml_body = (await request.body()).decode("utf-8")
 
@@ -520,31 +518,28 @@ async def _compile_yaml(request: Request) -> JSONResponse:
         if not isinstance(raw, dict) or "sheet" not in raw:
             return JSONResponse({"vega_lite_spec": None, "errors": [], "warnings": []})
     except Exception:
-        pass  # Let parse_chart handle malformed YAML
+        pass  # Let compile_chart handle malformed YAML
 
-    try:
-        spec = parse_chart(yaml_body)
-    except Exception as e:
-        return JSONResponse({"vega_lite_spec": None, "errors": [str(e)], "warnings": []})
-
-    try:
-        models_dir = request.app.state.models_dir
-        vl_spec = translate_chart(spec, models_dir=models_dir if models_dir.exists() else None)
-    except Exception as e:
-        return JSONResponse({"vega_lite_spec": None, "errors": [str(e)], "warnings": []})
-
+    models_dir = request.app.state.models_dir
     theme_path: Path | None = request.app.state.theme_path
+
     try:
-        theme = load_theme(theme_path) if theme_path is not None else load_theme()
-        vl_spec = merge_theme(vl_spec, theme)
+        vl_spec, spec = compile_chart(
+            yaml_body,
+            theme_path=theme_path,
+            models_dir=models_dir if models_dir.exists() else None,
+        )
     except Exception as e:
         return JSONResponse({"vega_lite_spec": None, "errors": [str(e)], "warnings": []})
 
-    # Resolve data from models (Cube sources)
     warnings: list[str] = []
     try:
-        models_dir = request.app.state.models_dir
-        vl_spec = resolve_data(vl_spec, spec, models_dir=models_dir)
+        vl_spec = resolve_model_data(
+            vl_spec,
+            spec,
+            models_dir=models_dir,
+            data_base_dir=request.app.state.project_dir,
+        )
     except Exception as e:
         warnings.append(f"Data resolution skipped: {e}")
 
@@ -647,13 +642,11 @@ async def _run_dashboard_pipeline(
     models_dir: Path | None = None,
 ) -> dict:
     """Run the dashboard compilation pipeline and return a result dict."""
-    from shelves.data.bind import resolve_data
-    from shelves.schema.chart_schema import parse_chart
+    from shelves.pipeline import compile_chart, resolve_model_data
     from shelves.schema.layout_schema import parse_dashboard
-    from shelves.theme.merge import load_theme, merge_theme
+    from shelves.theme.merge import load_theme
     from shelves.translator.layout import translate_dashboard
     from shelves.translator.layout_flatten import flatten_dashboard
-    from shelves.translator.translate import translate_chart
 
     try:
         spec = parse_dashboard(yaml_body)
@@ -690,14 +683,18 @@ async def _run_dashboard_pipeline(
             }
         try:
             chart_yaml = chart_path.read_text()
-            chart_spec = parse_chart(chart_yaml)
-            vl = translate_chart(
-                chart_spec, models_dir=models_dir if models_dir and models_dir.exists() else None
+            vl, chart_spec = compile_chart(
+                chart_yaml,
+                theme=theme,
+                models_dir=models_dir if models_dir and models_dir.exists() else None,
             )
-            vl = merge_theme(vl, theme)
-            # Data binding (best-effort)
             try:
-                vl = resolve_data(vl, chart_spec, models_dir=models_dir)
+                vl = resolve_model_data(
+                    vl,
+                    chart_spec,
+                    models_dir=models_dir,
+                    data_base_dir=project_dir,
+                )
             except Exception as de:
                 warnings.append(f"Data resolution skipped for '{name}': {de}")
             chart_specs[name] = vl
