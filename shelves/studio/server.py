@@ -206,7 +206,12 @@ async def _compile_file_and_broadcast(
 
         warnings: list[str] = []
         try:
-            vl_spec = resolve_model_data(vl_spec, spec, models_dir=models_dir)
+            vl_spec = resolve_model_data(
+                vl_spec,
+                spec,
+                models_dir=models_dir,
+                data_base_dir=project_dir,
+            )
         except Exception as e:
             warnings.append(f"Data resolution skipped: {e}")
 
@@ -529,7 +534,12 @@ async def _compile_yaml(request: Request) -> JSONResponse:
 
     warnings: list[str] = []
     try:
-        vl_spec = resolve_model_data(vl_spec, spec, models_dir=models_dir)
+        vl_spec = resolve_model_data(
+            vl_spec,
+            spec,
+            models_dir=models_dir,
+            data_base_dir=request.app.state.project_dir,
+        )
     except Exception as e:
         warnings.append(f"Data resolution skipped: {e}")
 
@@ -679,7 +689,12 @@ async def _run_dashboard_pipeline(
                 models_dir=models_dir if models_dir and models_dir.exists() else None,
             )
             try:
-                vl = resolve_model_data(vl, chart_spec, models_dir=models_dir)
+                vl = resolve_model_data(
+                    vl,
+                    chart_spec,
+                    models_dir=models_dir,
+                    data_base_dir=project_dir,
+                )
             except Exception as de:
                 warnings.append(f"Data resolution skipped for '{name}': {de}")
             chart_specs[name] = vl

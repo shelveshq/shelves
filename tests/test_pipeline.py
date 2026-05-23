@@ -123,7 +123,58 @@ class TestCompileChartErrors:
 
 
 class TestResolveModelData:
-    def test_function_exists(self):
-        from shelves.pipeline import resolve_model_data
+    def test_inline_binds_when_file_exists(self):
+        """Inline model with existing data file binds rows onto the spec."""
+        from shelves.pipeline import compile_chart, resolve_model_data
 
-        assert callable(resolve_model_data)
+        yaml_text = load_yaml("simple_bar.yaml")
+        vl_spec, spec = compile_chart(yaml_text, no_theme=True, models_dir=MODELS_DIR)
+
+        result = resolve_model_data(
+            vl_spec,
+            spec,
+            models_dir=MODELS_DIR,
+            data_base_dir=MODELS_DIR.parent,  # tests/fixtures/
+        )
+
+        assert "data" in result
+        assert isinstance(result["data"]["values"], list)
+        assert len(result["data"]["values"]) > 0
+
+    def test_inline_missing_file_returns_spec_unchanged(self):
+        """Inline model with non-existent data file returns vl_spec unchanged."""
+        from shelves.pipeline import compile_chart, resolve_model_data
+
+        yaml_text = load_yaml("simple_bar.yaml")
+        vl_spec, spec = compile_chart(yaml_text, no_theme=True, models_dir=MODELS_DIR)
+
+        result = resolve_model_data(
+            vl_spec,
+            spec,
+            models_dir=MODELS_DIR,
+            data_base_dir=Path("/nonexistent/base"),
+        )
+
+        assert "data" not in result
+        assert result == vl_spec
+
+    def test_cube_delegates_to_resolve_data(self):
+        """Cube-source model delegates to resolve_data."""
+        from unittest.mock import patch
+
+        from shelves.pipeline import compile_chart, resolve_model_data
+
+        yaml_text = (
+            'sheet: "Cube Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
+        vl_spec, spec = compile_chart(yaml_text, no_theme=True, models_dir=MODELS_DIR)
+
+        fake_rows = [{"category": "A", "net_sales": 100}]
+        with patch(
+            "shelves.data.bind.resolve_data",
+            return_value={**vl_spec, "data": {"values": fake_rows}},
+        ) as mock_rd:
+            result = resolve_model_data(vl_spec, spec, models_dir=MODELS_DIR)
+
+        assert mock_rd.called
+        assert result["data"]["values"] == fake_rows

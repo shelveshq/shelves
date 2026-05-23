@@ -297,27 +297,22 @@ marks: bar
         assert len(body["warnings"]) > 0
         assert "data" in body["warnings"][0].lower() or "cube" in body["warnings"][0].lower()
 
-    def test_compile_inline_model_missing_path_no_warning(self):
-        """Inline model with non-existent data path: silent skip (no warning).
-
-        Validates that the studio server uses the consolidated resolve_model_data
-        pipeline, which routes by source type. For inline models with a missing
-        file, it returns vl_spec unchanged without raising — so no warning.
-
-        Contrast with the previous direct resolve_data path, which would raise
-        ValueError ('No data provided for model …') and add a warning.
-        """
+    def test_compile_inline_model_binds_data(self):
+        """Inline model with on-disk data binds rows via data_base_dir=project_dir."""
         client = _client()
-        # _VALID_YAML uses `data: orders` — an inline model whose `source.path`
-        # ('data/orders.json') does NOT exist relative to the test runner's CWD.
         response = client.post("/compile", content=self._VALID_YAML)
 
         body = response.json()
         assert body["vega_lite_spec"] is not None
         assert body["errors"] == []
         assert body["warnings"] == [], (
-            f"Expected no warning for inline model with missing path; got {body['warnings']}"
+            f"Expected no warnings for inline model with valid data; got {body['warnings']}"
         )
+        assert "data" in body["vega_lite_spec"], (
+            "Expected inline model data to be bound onto the spec"
+        )
+        assert isinstance(body["vega_lite_spec"]["data"]["values"], list)
+        assert len(body["vega_lite_spec"]["data"]["values"]) > 0
 
 
 # ─── Schema Endpoint ─────────────────────────────────────────────

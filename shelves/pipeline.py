@@ -72,10 +72,11 @@ def resolve_model_data(
     Resolve data from the chart's model source.
 
     Loads the model for spec.data, routes by source type:
-    - inline: reads JSON from the source path and binds rows
-    - cube/other: queries Cube.dev API and binds
+    - inline: reads JSON from the source path and binds rows.
+      If the file is missing, returns vl_spec unchanged (silent no-op).
+    - cube/other: delegates to resolve_data, which may raise on failure.
 
-    Raises on failure — callers should wrap in try/except for best-effort.
+    Callers should wrap in try/except for best-effort data binding.
 
     Args:
         vl_spec: Compiled Vega-Lite spec (no data yet).
