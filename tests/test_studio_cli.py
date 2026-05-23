@@ -314,6 +314,31 @@ marks: bar
         assert isinstance(body["vega_lite_spec"]["data"]["values"], list)
         assert len(body["vega_lite_spec"]["data"]["values"]) > 0
 
+    def test_compile_inline_model_missing_path_no_warning(self):
+        """Inline model whose data file doesn't exist: silent skip, no warning."""
+        from starlette.testclient import TestClient
+
+        # Point project_dir at a temp dir so data/orders.json won't be found
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # Copy the models dir so the model itself loads
+            import shutil
+
+            shutil.copytree(PROJECT_DIR / "models", tmp_path / "models")
+            app = create_app(project_dir=tmp_path)
+            client = TestClient(app)
+            response = client.post("/compile", content=self._VALID_YAML)
+
+        body = response.json()
+        assert body["vega_lite_spec"] is not None
+        assert body["errors"] == []
+        assert body["warnings"] == [], (
+            f"Expected no warning for missing inline data; got {body['warnings']}"
+        )
+        assert "data" not in body["vega_lite_spec"]
+
 
 # ─── Schema Endpoint ─────────────────────────────────────────────
 
