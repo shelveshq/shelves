@@ -96,6 +96,8 @@ from shelves.translator.encodings import (
 )
 from shelves.translator.filters import build_transforms
 from shelves.translator.marks import build_mark
+from shelves.translator.panel import build_panel_encoding
+from shelves.translator.resolution import resolve_mark, resolve_property
 from shelves.translator.sort import apply_sort
 
 
@@ -223,7 +225,7 @@ def compile_layer_entry(
     Raises: ValueError if no mark can be resolved for the entry's primary measure.
     """
     # Step 1: Resolve primary mark (must succeed).
-    primary_mark = _resolve_mark(
+    primary_mark = resolve_mark(
         layer_mark=None,
         entry_mark=entry.mark,
         top_level_mark=spec.marks,
@@ -231,9 +233,9 @@ def compile_layer_entry(
     )
 
     # Step 2: Build the primary layer (entry's own measure).
-    primary_color = _resolve_property(None, entry.color, spec.color)
-    primary_detail = _resolve_property(None, entry.detail, spec.detail)
-    primary_size = _resolve_property(None, entry.size, spec.size)
+    primary_color = resolve_property(None, entry.color, spec.color)
+    primary_detail = resolve_property(None, entry.detail, spec.detail)
+    primary_size = resolve_property(None, entry.size, spec.size)
     primary_opacity = entry.opacity  # opacity does NOT cascade
 
     primary = _build_layer_spec(
@@ -255,15 +257,15 @@ def compile_layer_entry(
     # Step 3: Build each secondary layer.
     secondaries = []
     for layer in entry.layer:  # type: ignore[union-attr]
-        layer_mark = _resolve_mark(
+        layer_mark = resolve_mark(
             layer_mark=layer.mark,
             entry_mark=entry.mark,
             top_level_mark=spec.marks,
             measure_name=layer.measure,
         )
-        layer_color = _resolve_property(layer.color, entry.color, spec.color)
+        layer_color = resolve_property(layer.color, entry.color, spec.color)
         layer_detail = _resolve_layer_detail(layer, entry, spec)
-        layer_size = _resolve_property(layer.size, entry.size, spec.size)
+        layer_size = resolve_property(layer.size, entry.size, spec.size)
         layer_opacity = layer.opacity
 
         secondary = _build_layer_spec(
@@ -310,61 +312,22 @@ def _build_simple_panel(
     """
     Build a single non-layered panel for use inside a multi-entry stacked layout
     where at least one sibling entry has layers.
-
-    Mirrors the per-panel logic of stacked.py:_compile_concat but builds ONE
-    panel at a time so it can be interleaved with compile_layer_entry panels.
-    Adds per-panel transforms from spec.filters, matching
-    stacked.py:_compile_concat behavior.
     """
-    # Step 1: Resolve mark.
-    mark = _resolve_mark(
-        layer_mark=None,
-        entry_mark=entry.mark,
-        top_level_mark=spec.marks,
-        measure_name=entry.measure,
+    mark = resolve_mark(None, entry.mark, spec.marks, entry.measure)
+
+    encoding = build_panel_encoding(
+        entry=entry,
+        shared_enc=shared_enc,
+        shared_field=shared_field,
+        shared_axis=shared_axis,
+        measure_axis=measure_axis,
+        spec=spec,
+        resolver=resolver,
     )
 
-    # Step 2: Build encoding.
-    encoding: dict[str, Any] = {}
-
-    # 2a: Shared axis — copy and inject title/format/grid.
-    shared_axis_enc = {**shared_enc}
-    _auto_inject_from_model(shared_axis_enc, shared_field, resolver, None, channel=shared_axis)
-    encoding[shared_axis] = shared_axis_enc
-
-    # 2b: Measure axis.
-    measure_enc = build_field_encoding(entry.measure, resolver)
-    _auto_inject_from_model(measure_enc, entry.measure, resolver, None, channel=measure_axis)
-    encoding[measure_axis] = measure_enc
-
-    # Step 3: Color — entry overrides top-level.
-    color = entry.color if entry.color is not None else spec.color
-    if color is not None:
-        encoding["color"] = build_color(color, resolver)
-
-    # Step 4: Detail — entry overrides top-level.
-    detail = entry.detail if entry.detail is not None else spec.detail
-    if detail is not None:
-        encoding["detail"] = build_detail(detail, resolver)
-
-    # Step 5: Size — entry overrides top-level.
-    size = entry.size if entry.size is not None else spec.size
-    if size is not None:
-        encoding["size"] = build_size(size, resolver)
-
-    # Step 6: Tooltip.
-    if spec.tooltip:
-        encoding["tooltip"] = build_tooltip(spec.tooltip, resolver)
-
-    # Step 7: Sort.
-    apply_sort(encoding, spec.sort, resolver)
-
-    # Step 8: Build mark (merge entry opacity if set).
     vl_mark = _apply_opacity_to_mark(build_mark(mark), entry.opacity)
-
     panel: dict[str, Any] = {"mark": vl_mark, "encoding": encoding}
 
-    # Step 9: Transforms per-panel (matching stacked.py:_compile_concat behavior).
     transforms = build_transforms(spec.filters, resolver)
     if transforms:
         panel["transform"] = transforms
@@ -449,44 +412,6 @@ def _apply_opacity_to_mark(
     if "opacity" not in vl_mark:
         vl_mark["opacity"] = opacity
     return vl_mark
-
-
-def _resolve_property(
-    layer_value: Any,
-    entry_value: Any,
-    top_level_value: Any,
-) -> Any:
-    """
-    Generic 3-level cascade: layer > entry > top-level. Returns first non-None,
-    or None if all None. Used for color and size.
-
-    NOT used for mark (which raises) or detail (explicit-null semantics).
-    NOT used for opacity (which doesn't cascade).
-    """
-    if layer_value is not None:
-        return layer_value
-    if entry_value is not None:
-        return entry_value
-    return top_level_value
-
-
-def _resolve_mark(
-    layer_mark: MarkSpec | None,
-    entry_mark: MarkSpec | None,
-    top_level_mark: MarkSpec | None,
-    measure_name: str,
-) -> MarkSpec:
-    """
-    Resolve mark via 3-level cascade. Mark MUST resolve.
-    Raises ValueError("No mark defined for measure '<name>'") if all three are None.
-    """
-    if layer_mark is not None:
-        return layer_mark
-    if entry_mark is not None:
-        return entry_mark
-    if top_level_mark is not None:
-        return top_level_mark
-    raise ValueError(f"No mark defined for measure '{measure_name}'")
 
 
 def _resolve_layer_detail(

@@ -9,13 +9,15 @@ This module handles **Translate**: `ChartSpec` → Vega-Lite dict.
 - `filters.py` — Translates DSL `ShelfFilter` to Vega-Lite transform filters
 - `sort.py` — Sort encoding generation
 - `marks.py` — Mark type mapping and mark property generation
+- `resolution.py` — Mark and property cascade helpers (3-level: layer > entry > top-level)
+- `panel.py` — Panel encoding builder for stacked/layered panels (shared axis, measure axis, color/detail/size/tooltip/sort)
 - `facet.py` — Facet wrapping; applies uniformly to any inner spec shape
 
 ### Patterns (`patterns/`)
 
 - `single.py` — String shelves → single-measure charts
 - `stacked.py` — List shelves → multi-measure: same marks use `repeat`, different marks use `vconcat`/`hconcat`
-- `layers.py` — Layer entries (Phase 1a — parsed but raises `NotImplementedError`)
+- `layers.py` — Layer entries (Phase 1a — dual/multi-axis, stacked layers)
 
 ## Routing Logic
 
