@@ -23,11 +23,9 @@ from unittest.mock import AsyncMock
 
 from tests.conftest import MODELS_DIR, SubprocessOutputDrainer
 
-from shelves.studio.server import (
-    ConnectionManager,
-    _compile_file_and_broadcast,
-    create_app,
-)
+from shelves.studio.connection import ConnectionManager
+from shelves.studio.lifespan import compile_file_and_broadcast as _compile_file_and_broadcast
+from shelves.studio.server import create_app
 from shelves.studio.watcher import COMPILE_EXTENSIONS, WATCH_EXTENSIONS, should_compile
 
 # ─── Helpers ─────────────────────────────────────────────────────
