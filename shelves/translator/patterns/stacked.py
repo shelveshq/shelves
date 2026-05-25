@@ -25,6 +25,8 @@ from shelves.translator.encodings import (
     build_tooltip,
 )
 from shelves.translator.filters import build_transforms
+from shelves.translator.panel import build_panel_encoding
+from shelves.translator.resolution import resolve_mark
 from shelves.translator.sort import apply_sort
 
 VegaLiteSpec = dict[str, Any]
@@ -93,7 +95,9 @@ def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpe
     transforms = build_transforms(spec.filters, resolver)
 
     # Try repeat path: all entries use the same effective mark
-    effective_marks: list[MarkSpec] = [_resolve_mark(e, spec.marks) for e in entries]
+    effective_marks: list[MarkSpec] = [
+        resolve_mark(None, e.mark, spec.marks, e.measure) for e in entries
+    ]
     all_same_mark = len(set(str(m) for m in effective_marks)) == 1
 
     if all_same_mark and not any(e.color or e.detail or e.size for e in entries):
@@ -123,15 +127,6 @@ def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpe
         resolver,
         transforms,
     )
-
-
-def _resolve_mark(entry: MeasureEntry, default_mark: MarkSpec | None) -> MarkSpec:
-    """Get the effective mark for an entry, falling back to the top-level default."""
-    if entry.mark is not None:
-        return entry.mark
-    if default_mark is not None:
-        return default_mark
-    raise ValueError(f'Measure entry "{entry.measure}" has no mark and no top-level marks default.')
 
 
 def _compile_repeat(
@@ -221,45 +216,16 @@ def _compile_concat(
     is_hconcat = concat_key == "hconcat"
     panels = []
     for i, (entry, mark) in enumerate(zip(entries, effective_marks)):
-        # Build shared axis encoding with auto-injected title, format, and grid
-        shared_enc_copy: dict[str, Any] = {**shared_enc}
-        _auto_inject_from_model(shared_enc_copy, shared_field, resolver, None, channel=shared_axis)
+        panel_encoding = build_panel_encoding(
+            entry=entry,
+            shared_enc=shared_enc,
+            shared_field=shared_field,
+            shared_axis=shared_axis,
+            measure_axis=measure_axis,
+            spec=spec,
+            resolver=resolver,
+        )
 
-        # Build measure axis encoding with auto-injected title, format, and grid
-        measure_enc: dict[str, Any] = build_field_encoding(entry.measure, resolver)
-        _auto_inject_from_model(measure_enc, entry.measure, resolver, None, channel=measure_axis)
-
-        panel_encoding: dict[str, Any] = {
-            shared_axis: shared_enc_copy,
-            measure_axis: measure_enc,
-        }
-
-        # Color: entry-level overrides top-level
-        color = entry.color if entry.color is not None else spec.color
-        if color is not None:
-            panel_encoding["color"] = build_color(color, resolver)
-
-        # Detail: entry-level overrides top-level
-        detail = entry.detail if entry.detail is not None else spec.detail
-        if detail:
-            panel_encoding["detail"] = {
-                "field": detail,
-                "type": resolver.resolve(detail),
-            }
-
-        # Size: entry-level overrides top-level
-        size = entry.size if entry.size is not None else spec.size
-        if size is not None:
-            if isinstance(size, (int, float)):
-                panel_encoding["size"] = {"value": size}
-            else:
-                panel_encoding["size"] = {"field": size, "type": resolver.resolve(size)}
-
-        # Tooltip: shared from top-level
-        if spec.tooltip:
-            panel_encoding["tooltip"] = build_tooltip(spec.tooltip, resolver)
-
-        # KAN-232: suppress shared axis on non-edge panels
         if not _resolve_shared_axis(entries, i, is_hconcat):
             _suppress_shared_axis(panel_encoding, shared_axis)
 
@@ -271,7 +237,6 @@ def _compile_concat(
         if transforms:
             panel["transform"] = transforms
 
-        apply_sort(panel_encoding, spec.sort, resolver)
         panels.append(panel)
 
     return {concat_key: panels, "spacing": 10}
