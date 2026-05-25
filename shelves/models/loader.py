@@ -64,8 +64,15 @@ def load_model(
     if not model_path.exists():
         raise FileNotFoundError(f"Data model '{model_name}' not found at {model_path}")
 
-    raw = yaml.safe_load(model_path.read_text())
-    data_model = DataModel.model_validate(raw)
+    try:
+        raw = yaml.safe_load(model_path.read_text())
+    except yaml.YAMLError as e:
+        raise ValueError(f"Invalid model YAML in {model_path}: {e}") from e
+
+    try:
+        data_model = DataModel.model_validate(raw)
+    except Exception as e:
+        raise ValueError(f"Invalid model YAML in {model_path}: {e}") from e
 
     if data_model.model != model_name:
         raise ValueError(

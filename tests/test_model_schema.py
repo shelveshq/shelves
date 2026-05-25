@@ -229,7 +229,7 @@ class TestLoader:
             load_model("invalid_name_mismatch", models_dir=FIXTURES_DIR)
 
     def test_empty_measures_file_raises(self):
-        with pytest.raises(ValidationError, match="at least one measure"):
+        with pytest.raises(ValueError, match="at least one measure"):
             load_model("empty_measures", models_dir=FIXTURES_DIR)
 
     def test_custom_models_dir(self):

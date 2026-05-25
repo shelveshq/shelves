@@ -65,13 +65,20 @@ def resolve_data(
     model = load_model(chart_spec.data, models_dir=models_dir)
     resolver = ModelResolver(model)
 
-    if model.source and model.source.type == "cube":
-        from shelves.data.cube_client import fetch_from_cube_model
+    if model.source:
+        from shelves.data.sources import get_adapter
 
-        fetched = fetch_from_cube_model(model, chart_spec, resolver)
-        return bind_data(spec, fetched)
+        try:
+            adapter = get_adapter(model.source.type)
+        except KeyError:
+            pass
+        else:
+            fetched = adapter.fetch(model, chart_spec, resolver)
+            return bind_data(spec, fetched)
 
-    raise ValueError(
+    from shelves.data.errors import NoDataSourceError
+
+    raise NoDataSourceError(
         f"No data provided for model '{chart_spec.data}'. "
-        "Pass --data or configure a Cube source in the model."
+        "Pass --data or configure a supported source in the model."
     )

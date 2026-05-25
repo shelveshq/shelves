@@ -55,6 +55,12 @@ class TestResolveData:
         with pytest.raises(ValueError, match="No data provided"):
             resolve_data(simple_vl, simple_spec, models_dir=MODELS_DIR)
 
+    def test_no_cube_source_raises_typed_error(self, simple_vl, simple_spec):
+        from shelves.data.errors import NoDataSourceError
+
+        with pytest.raises(NoDataSourceError, match="No data provided"):
+            resolve_data(simple_vl, simple_spec, models_dir=MODELS_DIR)
+
     @respx.mock
     def test_cube_fetch_when_no_rows(self, monkeypatch):
         """Full pipeline: YAML → translate → resolve_data (Cube) → has data."""
