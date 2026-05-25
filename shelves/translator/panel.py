@@ -54,7 +54,7 @@ def build_panel_encoding(
         encoding["color"] = build_color(color, resolver)
 
     detail = resolve_property(None, entry.detail, spec.detail)
-    if detail is not None:
+    if detail:
         encoding["detail"] = build_detail(detail, resolver)
 
     size = resolve_property(None, entry.size, spec.size)

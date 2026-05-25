@@ -41,9 +41,10 @@ def resolve_property(
     Generic 3-level cascade: layer > entry > top-level.
     Returns first non-None, or None if all None.
 
-    Used for color and size. NOT used for:
+    Used for color, size, and entry/spec-level detail. NOT used for:
       - mark (which raises on all-None)
-      - detail (which has explicit-null semantics via model_fields_set)
+      - layer-level detail (which has explicit-null semantics via model_fields_set;
+        handled by _resolve_layer_detail in layers.py)
       - opacity (which does not cascade)
 
     For 2-level callers (stacked.py), pass layer_value=None.
