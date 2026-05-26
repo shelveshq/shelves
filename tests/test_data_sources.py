@@ -40,6 +40,34 @@ def test_unknown_source_raises():
         get_adapter("duckdb")
 
 
+def test_unsupported_source_type_mentions_type(monkeypatch):
+    """When a model has a source type with no registered adapter, the error should name it."""
+    from unittest.mock import patch
+    from shelves.data.errors import NoDataSourceError
+    from shelves.models.schema import DataModel
+
+    yaml = load_yaml("cube_sales_by_category.yaml")
+    spec = parse_chart(yaml)
+    vl = translate_chart(spec, models_dir=MODELS_DIR)
+
+    model = DataModel.model_validate(
+        {
+            "model": "cube_orders",
+            "label": "Orders",
+            "source": {"type": "cube", "cube": "Orders"},
+            "measures": {"net_sales": {"label": "Net Sales"}},
+            "dimensions": {"category": {"label": "Category"}},
+        }
+    )
+    # Patch the source type to something unsupported after construction
+    fake_source = type("FakeSource", (), {"type": "postgres"})()
+    model.source = fake_source  # type: ignore[assignment]
+
+    with patch("shelves.models.loader.load_model", return_value=model):
+        with pytest.raises(NoDataSourceError, match="postgres"):
+            resolve_data(vl, spec, models_dir=MODELS_DIR)
+
+
 @respx.mock
 def test_resolve_data_uses_registry(monkeypatch):
     """resolve_data with a cube-sourced model goes through the adapter registry."""

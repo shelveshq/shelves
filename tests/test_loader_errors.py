@@ -31,6 +31,27 @@ def test_validation_error_includes_path():
         load_model("invalid_schema", models_dir=FIXTURES_DIR)
 
 
+def test_yaml_error_message_says_yaml():
+    """YAML parse errors should say 'Invalid YAML syntax', not 'Invalid model schema'."""
+    with pytest.raises(ValueError, match="Invalid YAML syntax"):
+        load_model("invalid_yaml", models_dir=FIXTURES_DIR)
+
+
+def test_schema_error_message_says_schema():
+    """Pydantic validation errors should say 'Invalid model schema', not 'Invalid model YAML'."""
+    with pytest.raises(ValueError, match="Invalid model schema"):
+        load_model("invalid_schema", models_dir=FIXTURES_DIR)
+
+
+def test_validation_error_is_chained():
+    """The original pydantic.ValidationError should be chained as __cause__."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValueError) as exc_info:
+        load_model("invalid_schema", models_dir=FIXTURES_DIR)
+    assert isinstance(exc_info.value.__cause__, ValidationError)
+
+
 def test_invalid_model_not_cached():
     """Bad models must NOT be cached — calling twice should raise both times."""
     with pytest.raises(ValueError):

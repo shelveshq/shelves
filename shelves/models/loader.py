@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 
 from shelves.models.schema import DataModel
 
@@ -51,8 +52,8 @@ def load_model(
 
     Raises:
         FileNotFoundError: If `<models_dir>/<model_name>.yaml` does not exist.
-        ValueError: If the `model` field inside the YAML does not match `model_name`.
-        pydantic.ValidationError: If the YAML fails Pydantic schema validation.
+        ValueError: If the YAML is syntactically invalid, fails schema validation,
+                    or the `model` field does not match `model_name`.
     """
     dir_path = Path(models_dir).resolve() if models_dir else DEFAULT_MODELS_DIR
     cache_key = f"{dir_path}:{model_name}"
@@ -67,12 +68,12 @@ def load_model(
     try:
         raw = yaml.safe_load(model_path.read_text())
     except yaml.YAMLError as e:
-        raise ValueError(f"Invalid model YAML in {model_path}: {e}") from e
+        raise ValueError(f"Invalid YAML syntax in {model_path}: {e}") from e
 
     try:
         data_model = DataModel.model_validate(raw)
-    except Exception as e:
-        raise ValueError(f"Invalid model YAML in {model_path}: {e}") from e
+    except ValidationError as e:
+        raise ValueError(f"Invalid model schema in {model_path}: {e}") from e
 
     if data_model.model != model_name:
         raise ValueError(

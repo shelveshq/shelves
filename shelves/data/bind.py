@@ -52,9 +52,8 @@ def resolve_data(
         Vega-Lite spec with data attached.
 
     Raises:
-        CubeConfigError: If Cube env vars are missing and no rows provided.
-        CubeQueryError: If the Cube API returns an error.
-        ValueError: If no rows provided and the model has no Cube source.
+        NoDataSourceError: If no rows provided and the model has no supported source.
+        CubeError: If the Cube API request fails (auth, server, timeout, or query error).
     """
     if rows is not None:
         return bind_data(spec, rows)
@@ -71,7 +70,13 @@ def resolve_data(
         try:
             adapter = get_adapter(model.source.type)
         except KeyError:
-            pass
+            from shelves.data.errors import NoDataSourceError
+
+            raise NoDataSourceError(
+                f"No adapter registered for source type '{model.source.type}' "
+                f"on model '{chart_spec.data}'. "
+                "Pass --data or register an adapter for this source type."
+            )
         else:
             fetched = adapter.fetch(model, chart_spec, resolver)
             return bind_data(spec, fetched)
