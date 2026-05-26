@@ -12,6 +12,7 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        exclude: tests/fixtures/models/invalid_yaml\.yaml
       - id: check-toml
       - id: check-merge-conflict
       - id: no-commit-to-branch

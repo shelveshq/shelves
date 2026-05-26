@@ -21,15 +21,7 @@ from shelves.models.schema import (
     TemporalDimensionDefinition,
 )
 from shelves.schema.field_types import VegaLiteType
-
-# Grain → Vega-Lite timeUnit mapping
-GRAIN_TO_TIME_UNIT: dict[str, str] = {
-    "day": "yearmonthdate",
-    "week": "yearweek",
-    "month": "yearmonth",
-    "quarter": "yearquarter",
-    "year": "year",
-}
+from shelves.schema.temporal import GRAIN_TO_TIME_UNIT
 
 
 def _humanize_field_name(name: str) -> str:

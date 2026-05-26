@@ -51,8 +51,14 @@ class TestResolveData:
         assert result["data"]["values"] == []
 
     def test_no_cube_source_raises_when_no_rows(self, simple_vl, simple_spec):
-        # orders model has inline source, not cube — should raise ValueError
-        with pytest.raises(ValueError, match="No data provided"):
+        # orders model has inline source, no adapter registered — should raise ValueError
+        with pytest.raises(ValueError, match="No adapter registered for source type 'inline'"):
+            resolve_data(simple_vl, simple_spec, models_dir=MODELS_DIR)
+
+    def test_no_cube_source_raises_typed_error(self, simple_vl, simple_spec):
+        from shelves.data.errors import NoDataSourceError
+
+        with pytest.raises(NoDataSourceError, match="No adapter registered"):
             resolve_data(simple_vl, simple_spec, models_dir=MODELS_DIR)
 
     @respx.mock

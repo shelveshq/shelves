@@ -19,6 +19,9 @@ from shelves.data.cube_client import (
     CubeConfig,
     CubeConfigError,
     CubeQueryError,
+    CubeAuthError,
+    CubeServerError,
+    CubeTimeoutError,
     build_cube_query,
     fetch_from_cube_model,
     _strip_prefix,
@@ -416,7 +419,7 @@ class TestFetchFromCubeModel:
         respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
             return_value=httpx.Response(500, text="Internal error")
         )
-        with pytest.raises(CubeQueryError, match="500"):
+        with pytest.raises(CubeServerError, match="500"):
             fetch_from_cube_model(cube_model, chart_spec, cube_resolver, config=config)
 
     @respx.mock
@@ -447,3 +450,131 @@ class TestFetchFromCubeModel:
         monkeypatch.delenv("CUBE_API_TOKEN", raising=False)
         with pytest.raises(CubeConfigError):
             fetch_from_cube_model(cube_model, chart_spec, cube_resolver)
+
+
+# ─── FakeTransport for injection tests ──────────────────────────────
+
+
+class FakeTransport:
+    def __init__(self, response_data: list[dict]):
+        self.response_data = response_data
+        self.last_request: dict | None = None
+
+    def post(self, url: str, *, json: dict, headers: dict) -> httpx.Response:
+        self.last_request = {"url": url, "json": json, "headers": headers}
+        return httpx.Response(200, json={"data": self.response_data})
+
+
+# ─── TestFetchWithTransport ─────────────────────────────────────────
+
+
+class TestFetchWithTransport:
+    CUBE_URL = "http://localhost:4000"
+
+    @pytest.fixture
+    def config(self):
+        return CubeConfig(api_url=self.CUBE_URL, api_token=self.CUBE_TOKEN)
+
+    CUBE_TOKEN = "test-token"
+
+    def test_fake_transport_injection(self, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
+        transport = FakeTransport(
+            [
+                {"orders.net_sales": 100, "orders.category": "Furniture"},
+            ]
+        )
+        config = CubeConfig(api_url="http://fake:4000", api_token="tok")
+        rows = fetch_from_cube_model(
+            cube_model,
+            spec,
+            cube_resolver,
+            config=config,
+            transport=transport,
+        )
+        assert rows == [{"net_sales": 100, "category": "Furniture"}]
+        assert transport.last_request is not None
+        assert transport.last_request["url"] == "http://fake:4000/cubejs-api/v1/load"
+        assert transport.last_request["headers"]["Authorization"] == "tok"
+
+    @respx.mock
+    def test_default_transport_uses_httpx(self, cube_model, cube_resolver):
+        respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            return_value=httpx.Response(200, json={"data": []})
+        )
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
+        config = CubeConfig(api_url=self.CUBE_URL, api_token=self.CUBE_TOKEN)
+        rows = fetch_from_cube_model(cube_model, spec, cube_resolver, config=config)
+        assert rows == []
+
+
+# ─── TestHTTPErrorClassification ────────────────────────────────────
+
+
+class TestHTTPErrorClassification:
+    CUBE_URL = "http://localhost:4000"
+
+    @pytest.fixture
+    def config(self):
+        return CubeConfig(api_url=self.CUBE_URL, api_token="tok")
+
+    @respx.mock
+    def test_401_raises_auth_error(self, config, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
+        respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            return_value=httpx.Response(401, text="Unauthorized")
+        )
+        with pytest.raises(CubeAuthError, match="401"):
+            fetch_from_cube_model(cube_model, spec, cube_resolver, config=config)
+
+    @respx.mock
+    def test_403_raises_auth_error(self, config, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
+        respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            return_value=httpx.Response(403, text="Forbidden")
+        )
+        with pytest.raises(CubeAuthError, match="403"):
+            fetch_from_cube_model(cube_model, spec, cube_resolver, config=config)
+
+    @respx.mock
+    def test_500_raises_server_error(self, config, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
+        respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            return_value=httpx.Response(500, text="Internal Server Error")
+        )
+        with pytest.raises(CubeServerError, match="500"):
+            fetch_from_cube_model(cube_model, spec, cube_resolver, config=config)
+
+    @respx.mock
+    def test_timeout_raises_cube_timeout(self, config, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
+        respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            side_effect=httpx.TimeoutException("Connection timed out")
+        )
+        with pytest.raises(CubeTimeoutError, match="timed out"):
+            fetch_from_cube_model(cube_model, spec, cube_resolver, config=config)
+
+    @respx.mock
+    def test_error_body_truncated(self, config, cube_model, cube_resolver):
+        spec = parse_chart(
+            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
+        )
+        long_body = "x" * 1000
+        respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            return_value=httpx.Response(400, text=long_body)
+        )
+        with pytest.raises(CubeQueryError) as exc_info:
+            fetch_from_cube_model(cube_model, spec, cube_resolver, config=config)
+        assert len(str(exc_info.value)) <= 600

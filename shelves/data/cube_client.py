@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import warnings
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -45,6 +45,18 @@ class CubeQueryError(CubeError):
     """Cube API returned an error response."""
 
 
+class CubeAuthError(CubeError):
+    """Cube API returned 401 or 403."""
+
+
+class CubeServerError(CubeError):
+    """Cube API returned 5xx."""
+
+
+class CubeTimeoutError(CubeError):
+    """Cube request timed out."""
+
+
 # ─── Config ──────────────────────────────────────────────────────────
 
 
@@ -73,6 +85,24 @@ class CubeConfig:
 
         # Strip trailing slash for consistent URL joining
         return cls(api_url=api_url.rstrip("/"), api_token=api_token)
+
+
+# ─── HTTP Transport ─────────────────────────────────────────────────
+
+
+class HTTPTransport(Protocol):
+    def post(self, url: str, *, json: dict, headers: dict) -> httpx.Response: ...
+
+
+class HttpxTransport:
+    """Default transport using httpx.Client."""
+
+    def __init__(self, timeout: float = 30.0) -> None:
+        self._timeout = timeout
+
+    def post(self, url: str, *, json: dict, headers: dict) -> httpx.Response:
+        with httpx.Client(timeout=self._timeout) as client:
+            return client.post(url, json=json, headers=headers)
 
 
 # ─── Field Extraction ────────────────────────────────────────────────
@@ -334,6 +364,7 @@ def fetch_from_cube_model(
     chart_spec: ChartSpec,
     resolver: FieldTypeResolver,
     config: CubeConfig | None = None,
+    transport: HTTPTransport | None = None,
 ) -> list[dict[str, Any]]:
     """
     Fetch data from a Cube.dev instance using a DataModel.
@@ -346,16 +377,23 @@ def fetch_from_cube_model(
         chart_spec: The parsed ChartSpec (for field extraction + filters).
         resolver: ModelResolver for classifying fields.
         config: Cube connection config. If None, reads from environment.
+        transport: HTTP transport. If None, uses HttpxTransport (default httpx).
 
     Returns:
         List of row dicts with field names matching the DSL (no cube prefix).
 
     Raises:
         CubeConfigError: If environment variables are not set.
-        CubeQueryError: If the Cube API returns an error.
+        CubeAuthError: If Cube returns 401 or 403.
+        CubeServerError: If Cube returns 5xx.
+        CubeTimeoutError: If the request times out.
+        CubeQueryError: If Cube returns any other non-200 status.
     """
     if config is None:
         config = CubeConfig.from_env()
+
+    if transport is None:
+        transport = HttpxTransport()
 
     assert isinstance(model.source, CubeSource), "resolve_data requires a CubeSource"
     cube_name = model.source.cube
@@ -364,13 +402,19 @@ def fetch_from_cube_model(
     url = f"{config.api_url}/cubejs-api/v1/load"
     headers = {"Authorization": config.api_token}
 
-    with httpx.Client(timeout=30.0) as client:
-        response = client.post(url, json={"query": query}, headers=headers)
+    try:
+        response = transport.post(url, json={"query": query}, headers=headers)
+    except httpx.TimeoutException as e:
+        raise CubeTimeoutError(f"Cube request timed out: {e}") from e
 
     if response.status_code != 200:
-        raise CubeQueryError(f"Cube API error (HTTP {response.status_code}): {response.text}")
+        body = response.text[:500]
+        if response.status_code in (401, 403):
+            raise CubeAuthError(f"Cube auth error (HTTP {response.status_code}): {body}")
+        elif response.status_code >= 500:
+            raise CubeServerError(f"Cube server error (HTTP {response.status_code}): {body}")
+        else:
+            raise CubeQueryError(f"Cube API error (HTTP {response.status_code}): {body}")
 
-    body = response.json()
-    raw_rows = body.get("data", [])
-
+    raw_rows = response.json().get("data", [])
     return [_strip_prefix(row) for row in raw_rows]
