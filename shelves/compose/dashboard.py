@@ -54,7 +54,7 @@ def compose_dashboard(
     """
     spec = load_dashboard(dashboard_path)
 
-    theme = theme or load_theme() if not no_theme else ThemeSpec()
+    theme = ThemeSpec() if no_theme else (theme or load_theme())
 
     sheets = _discover_sheets(spec)
 

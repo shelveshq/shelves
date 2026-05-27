@@ -349,6 +349,33 @@ root:
       target: _blank
 """)
         assert 'target="_blank"' in html
+        assert 'rel="noopener noreferrer"' in html
+
+    def test_button_target_blank_has_rel(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "External"
+      href: "https://example.com"
+      target: _blank
+""")
+        assert 'target="_blank"' in html
+        assert 'rel="noopener noreferrer"' in html
+
+    def test_link_target_self_no_rel(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - link: "Internal"
+      href: "/page"
+""")
+        assert 'rel="noopener' not in html
 
     def test_blank_renders_empty_div(self):
         html = _translate("""\

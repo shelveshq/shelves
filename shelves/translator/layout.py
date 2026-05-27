@@ -165,7 +165,11 @@ def _render_button_link(
     node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str
 ) -> str:
     defn = node.component
-    target_attr = f' target="{defn.target}"' if defn.target != "_self" else ""  # type: ignore[union-attr]
+    if defn.target != "_self":  # type: ignore[union-attr]
+        rel = ' rel="noopener noreferrer"' if defn.target == "_blank" else ""  # type: ignore[union-attr]
+        target_attr = f' target="{defn.target}"{rel}'  # type: ignore[union-attr]
+    else:
+        target_attr = ""
     escaped_text = html.escape(defn.text)  # type: ignore[union-attr]
     escaped_href = html.escape(defn.href, quote=True)  # type: ignore[union-attr]
     a_css = _build_button_link_inner_css(defn)  # type: ignore[arg-type]
