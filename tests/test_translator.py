@@ -125,3 +125,50 @@ class TestSchemaPresent:
         vl = compile_fixture("simple_bar.yaml")
         assert "$schema" in vl
         assert "vega-lite" in vl["$schema"]
+
+
+class TestTranslateChartDI:
+    def test_injected_resolver_used(self):
+        """translate_chart uses an injected resolver instead of building its own."""
+        from shelves.schema.chart_schema import parse_chart
+        from shelves.translator.translate import translate_chart
+
+        class StubResolver:
+            def resolve(self, field_name):
+                return "nominal"
+
+            def resolve_base_field(self, field_ref):
+                return field_ref
+
+            def resolve_time_unit(self, field_ref):
+                return None
+
+            def resolve_label(self, field_ref):
+                return field_ref.title()
+
+            def resolve_format(self, field_ref):
+                return None
+
+            def resolve_default_sort(self, field_ref):
+                return None
+
+            def resolve_sort_order(self, field_ref):
+                return None
+
+            def resolve_grain(self, field_ref):
+                return None
+
+            def is_measure(self, field_ref):
+                return False
+
+        yaml_str = """\
+sheet: "DI Test"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+"""
+        spec = parse_chart(yaml_str)
+        vl = translate_chart(spec, resolver=StubResolver())
+        assert vl["encoding"]["x"]["type"] == "nominal"
+        assert vl["encoding"]["y"]["type"] == "nominal"

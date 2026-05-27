@@ -4,6 +4,7 @@ Shared test fixtures and helpers.
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import threading
 from pathlib import Path
@@ -75,10 +76,8 @@ class SubprocessOutputDrainer:
         except (OSError, ValueError):
             pass
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 pipe.close()
-            except Exception:
-                pass
 
     def join(self, timeout: float = 5.0) -> None:
         self._t_out.join(timeout=timeout)

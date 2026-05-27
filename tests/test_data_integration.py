@@ -11,12 +11,12 @@ import httpx
 import pytest
 import respx
 
-from shelves.schema.chart_schema import parse_chart
-from shelves.translator.translate import translate_chart
-from shelves.theme.merge import merge_theme
 from shelves.data.bind import resolve_data
-from shelves.render.to_html import render_html
 from shelves.models.loader import clear_model_cache
+from shelves.render.to_html import render_html
+from shelves.schema.chart_schema import parse_chart
+from shelves.theme.merge import merge_theme
+from shelves.translator.translate import translate_chart
 from tests.conftest import load_yaml
 
 MODELS_DIR = Path(__file__).parent / "fixtures" / "models"

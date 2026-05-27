@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from shelves.models.loader import load_model, clear_model_cache
+from shelves.models.loader import clear_model_cache, load_model
 from shelves.models.resolver import ModelResolver
 from shelves.schema.field_types import FieldTypeResolver
 

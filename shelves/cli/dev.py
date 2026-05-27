@@ -26,14 +26,13 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
 import yaml as yaml_lib
-from watchdog.observers import Observer
+from dotenv import load_dotenv
 from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 from shelves.data.bind import resolve_data
 from shelves.render.to_html import render_html
 from shelves.theme.merge import load_theme
-
-from dotenv import load_dotenv
 
 load_dotenv()  # Load environment variables from .env file (for CUBE_API_URL, etc.)
 
@@ -287,6 +286,7 @@ def main():
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nStopping...")
+    finally:
         observer.stop()
         observer.join()
         server.server_close()

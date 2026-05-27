@@ -7,13 +7,12 @@ and the full YAML -> HTML pipeline.
 
 import json
 
-from shelves.render.to_html import render_html
-from shelves.theme.merge import merge_theme, load_theme
 from shelves.data.bind import bind_data
+from shelves.render.to_html import render_html
 from shelves.schema.chart_schema import parse_chart
+from shelves.theme.merge import load_theme, merge_theme
 from shelves.translator.translate import translate_chart
-from tests.conftest import load_yaml, load_data, MODELS_DIR
-
+from tests.conftest import MODELS_DIR, load_data, load_yaml
 
 # ─── HTML Rendering ──────────────────────────────────────────────
 
@@ -53,6 +52,13 @@ class TestRenderHTML:
         title_section = html.split("<title>")[1].split("</title>")[0]
         assert "<script>" not in title_section
         assert "&lt;" in title_section
+
+    def test_script_breakout_escaped(self):
+        """</script> in a spec string must not break out of the script block."""
+        spec = {"mark": "bar", "title": "</script><script>alert(1)</script>"}
+        result = render_html(spec)
+        json_area = result.split("const spec = ")[1].split("vegaEmbed")[0]
+        assert "</script>" not in json_area
 
 
 # ─── Theme Merge ─────────────────────────────────────────────────
@@ -167,7 +173,7 @@ class TestEndToEnd:
         assert '"config"' in html_str
 
     def test_full_pipeline_model_auto_inject(self):
-        """End-to-end: parse → translate (with model) → verify auto-injected values → theme → data → HTML."""
+        """End-to-end: parse → translate (with model) → auto-inject → theme → data → HTML."""
         yaml_str = load_yaml("simple_bar.yaml")
         spec = parse_chart(yaml_str)
         vl = translate_chart(spec, models_dir=MODELS_DIR)

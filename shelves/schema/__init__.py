@@ -1,3 +1,3 @@
-from shelves.schema.layout_schema import parse_dashboard, DashboardSpec
+from shelves.schema.layout_schema import DashboardSpec, parse_dashboard
 
-__all__ = ["parse_dashboard", "DashboardSpec"]
+__all__ = ["DashboardSpec", "parse_dashboard"]

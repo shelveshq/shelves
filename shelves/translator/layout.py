@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import json
+from collections.abc import Callable
 from typing import Literal
 
 from shelves.schema.layout_schema import (
@@ -106,9 +107,9 @@ def _render_children(
 def _build_button_link_inner_css(defn: ButtonComponent | LinkComponent) -> str:
     """Build CSS for a button/link inner element (no padding — outer div handles it)."""
     from shelves.translator.layout_styles import (
+        _STYLE_EXTRA_KEYS,
         BUTTON_DEFAULTS,
         LINK_DEFAULTS,
-        _STYLE_EXTRA_KEYS,
         _css_prop_name,
     )
 
@@ -127,25 +128,109 @@ def _build_button_link_inner_css(defn: ButtonComponent | LinkComponent) -> str:
     return "; ".join(f"{k}: {v}" for k, v in defaults.items())
 
 
+def _render_root(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
+    assert isinstance(node.component, RootComponent)
+    inner = _render_children(node, node.component, ctx)
+    return f'<div style="{safe_outer}">{inner}</div>'
+
+
+def _render_container(
+    node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str
+) -> str:
+    assert isinstance(node.component, ContainerComponent)
+    inner_html = _render_children(node, node.component, ctx)
+    return f'<div style="{safe_outer}"><div style="{safe_inner}">{inner_html}</div></div>'
+
+
+def _render_sheet(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
+    defn = node.component
+    sheet_name = node.name or ctx.next_auto_id()
+    if defn.fit is not None:  # type: ignore[union-attr]
+        ctx.sheet_fit_modes[sheet_name] = defn.fit  # type: ignore[union-attr]
+    if not defn.show_title:  # type: ignore[union-attr]
+        ctx.sheet_show_titles[sheet_name] = False
+    ctx.sheet_content_dims[sheet_name] = (node.content_width, node.content_height)
+    safe_name = html.escape(sheet_name, quote=True)
+    return (
+        f'<div style="{safe_outer}"><div id="sheet-{safe_name}" style="{safe_inner}"></div></div>'
+    )
+
+
+def _render_text(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
+    escaped_content = html.escape(node.component.content)  # type: ignore[union-attr]
+    return f'<div style="{safe_outer}"><div style="{safe_inner}">{escaped_content}</div></div>'
+
+
+def _render_button_link(
+    node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str
+) -> str:
+    defn = node.component
+    if defn.target != "_self":  # type: ignore[union-attr]
+        rel = ' rel="noopener noreferrer"' if defn.target == "_blank" else ""  # type: ignore[union-attr]
+        target_attr = f' target="{defn.target}"{rel}'  # type: ignore[union-attr]
+    else:
+        target_attr = ""
+    escaped_text = html.escape(defn.text)  # type: ignore[union-attr]
+    escaped_href = html.escape(defn.href, quote=True)  # type: ignore[union-attr]
+    a_css = _build_button_link_inner_css(defn)  # type: ignore[arg-type]
+    if defn.html:  # type: ignore[union-attr]
+        if a_css and not a_css.endswith(";"):
+            a_css += "; "
+        a_css += defn.html  # type: ignore[union-attr]
+    safe_a_css = html.escape(a_css, quote=True)
+    return (
+        f'<div style="{safe_outer}">'
+        f'<a href="{escaped_href}"{target_attr} style="{safe_a_css}">{escaped_text}</a>'
+        f"</div>"
+    )
+
+
+def _render_image(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
+    defn = node.component
+    escaped_src = html.escape(defn.src, quote=True)  # type: ignore[union-attr]
+    escaped_alt = html.escape(defn.alt, quote=True)  # type: ignore[union-attr]
+    img_css = "width: 100%; height: 100%; object-fit: contain"
+    inner_css = resolve_inner_styles(defn, ctx)
+    if inner_css:
+        img_css += "; " + inner_css
+    if defn.html:  # type: ignore[union-attr]
+        img_css += "; " + defn.html  # type: ignore[union-attr]
+    safe_img_css = html.escape(img_css, quote=True)
+    return (
+        f'<div style="{safe_outer}">'
+        f'<img src="{escaped_src}" alt="{escaped_alt}"'
+        f' style="{safe_img_css}">'
+        f"</div>"
+    )
+
+
+def _render_blank(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
+    return f'<div style="{safe_outer}"><div style="{safe_inner}"></div></div>'
+
+
+_RENDERERS: dict[type, Callable[[ResolvedNode, RenderContext, str, str], str]] = {
+    RootComponent: _render_root,
+    ContainerComponent: _render_container,
+    SheetComponent: _render_sheet,
+    TextComponent: _render_text,
+    ButtonComponent: _render_button_link,
+    LinkComponent: _render_button_link,
+    ImageComponent: _render_image,
+    BlankComponent: _render_blank,
+}
+
+
 def render_node(
     node: ResolvedNode,
     ctx: RenderContext,
     parent_orientation: Literal["horizontal", "vertical"] | None = None,
 ) -> str:
-    """Recursively render a ResolvedNode tree to HTML.
-
-    Every non-root component uses a div-in-div structure: an outer div owns
-    dimensions, padding, overflow, and box-sizing; an inner div (or inner
-    element) holds the content at width:100%/height:100%.
-
-    Root components use a single div (they have no parent layout concerns).
-    """
+    """Recursively render a ResolvedNode tree to HTML."""
     defn = node.component
-    name = node.name
 
     outer_css = resolve_styles(
         defn,
-        name,
+        node.name,
         ctx,
         parent_orientation=parent_orientation,
         resolved_width=node.outer_width,
@@ -154,73 +239,13 @@ def render_node(
     )
     safe_outer = html.escape(outer_css, quote=True)
 
-    # Root: single div containing all children
-    if isinstance(defn, RootComponent):
-        inner = _render_children(node, defn, ctx)
-        return f'<div style="{safe_outer}">{inner}</div>'
-
-    # All other components: div-in-div
-    inner_css = resolve_inner_styles(defn, ctx)
+    inner_css = "" if isinstance(defn, RootComponent) else resolve_inner_styles(defn, ctx)
     safe_inner = html.escape(inner_css, quote=True)
 
-    if isinstance(defn, ContainerComponent):
-        inner_html = _render_children(node, defn, ctx)
-        return f'<div style="{safe_outer}"><div style="{safe_inner}">{inner_html}</div></div>'
-
-    elif isinstance(defn, SheetComponent):
-        sheet_name = name or ctx.next_auto_id()
-        if defn.fit is not None:
-            ctx.sheet_fit_modes[sheet_name] = defn.fit
-        if not defn.show_title:
-            ctx.sheet_show_titles[sheet_name] = False
-        ctx.sheet_content_dims[sheet_name] = (node.content_width, node.content_height)
-        safe_name = html.escape(sheet_name, quote=True)
-        return (
-            f'<div style="{safe_outer}">'
-            f'<div id="sheet-{safe_name}" style="{safe_inner}"></div>'
-            f"</div>"
-        )
-
-    elif isinstance(defn, TextComponent):
-        escaped_content = html.escape(defn.content)
-        return f'<div style="{safe_outer}"><div style="{safe_inner}">{escaped_content}</div></div>'
-
-    elif isinstance(defn, (ButtonComponent, LinkComponent)):
-        target_attr = f' target="{defn.target}"' if defn.target != "_self" else ""
-        escaped_text = html.escape(defn.text)
-        escaped_href = html.escape(defn.href, quote=True)
-        a_css = _build_button_link_inner_css(defn)
-        if defn.html:
-            if a_css and not a_css.endswith(";"):
-                a_css += "; "
-            a_css += defn.html
-        safe_a_css = html.escape(a_css, quote=True)
-        return (
-            f'<div style="{safe_outer}">'
-            f'<a href="{escaped_href}"{target_attr} style="{safe_a_css}">{escaped_text}</a>'
-            f"</div>"
-        )
-
-    elif isinstance(defn, ImageComponent):
-        escaped_src = html.escape(defn.src, quote=True)
-        escaped_alt = html.escape(defn.alt, quote=True)
-        img_css = "width: 100%; height: 100%; object-fit: contain"
-        if inner_css:
-            img_css += "; " + inner_css
-        if defn.html:
-            img_css += "; " + defn.html
-        safe_img_css = html.escape(img_css, quote=True)
-        return (
-            f'<div style="{safe_outer}">'
-            f'<img src="{escaped_src}" alt="{escaped_alt}"'
-            f' style="{safe_img_css}">'
-            f"</div>"
-        )
-
-    elif isinstance(defn, BlankComponent):
-        return f'<div style="{safe_outer}"><div style="{safe_inner}"></div></div>'
-
-    return ""
+    renderer = _RENDERERS.get(type(defn))
+    if renderer is None:
+        return ""
+    return renderer(node, ctx, safe_outer, safe_inner)
 
 
 def _is_compound_spec(spec: dict) -> bool:
@@ -331,7 +356,7 @@ def wrap_html_page(
                 modified_spec["title"] = None
             specs_obj[f"sheet-{sheet_name}"] = modified_spec
 
-        specs_json = json.dumps(specs_obj, indent=2)
+        specs_json = json.dumps(specs_obj, indent=2).replace("</", r"<\/")
         script_lines.append(f"    const specs = {specs_json};")
         script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
         script_lines.append(

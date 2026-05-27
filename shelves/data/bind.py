@@ -76,7 +76,7 @@ def resolve_data(
                 f"No adapter registered for source type '{model.source.type}' "
                 f"on model '{chart_spec.data}'. "
                 "Pass --data or register an adapter for this source type."
-            )
+            ) from None
         else:
             fetched = adapter.fetch(model, chart_spec, resolver)
             return bind_data(spec, fetched)

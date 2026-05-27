@@ -5,6 +5,7 @@ Unit tests for translator/resolution.py — mark and property cascade helpers.
 """
 
 import pytest
+
 from shelves.translator.resolution import resolve_mark, resolve_property
 
 

@@ -15,9 +15,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from shelves.schema.chart_schema import ChartSpec, MeasureEntry, MarkSpec
+from shelves.schema.chart_schema import ChartSpec, MarkSpec, MeasureEntry
 from shelves.schema.field_types import FieldTypeResolver
-from shelves.translator.marks import build_mark
 from shelves.translator.encodings import (
     _auto_inject_from_model,
     build_color,
@@ -25,6 +24,7 @@ from shelves.translator.encodings import (
     build_tooltip,
 )
 from shelves.translator.filters import build_transforms
+from shelves.translator.marks import build_mark
 from shelves.translator.panel import build_panel_encoding
 from shelves.translator.resolution import resolve_mark
 from shelves.translator.sort import apply_sort
@@ -98,7 +98,7 @@ def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpe
     effective_marks: list[MarkSpec] = [
         resolve_mark(None, e.mark, spec.marks, e.measure) for e in entries
     ]
-    all_same_mark = len(set(str(m) for m in effective_marks)) == 1
+    all_same_mark = len({str(m) for m in effective_marks}) == 1
 
     if all_same_mark and not any(e.color or e.detail or e.size for e in entries):
         # Clean repeat: all panels identical except the measure field
@@ -215,7 +215,7 @@ def _compile_concat(
 
     is_hconcat = concat_key == "hconcat"
     panels = []
-    for i, (entry, mark) in enumerate(zip(entries, effective_marks)):
+    for i, (entry, mark) in enumerate(zip(entries, effective_marks, strict=False)):
         panel_encoding = build_panel_encoding(
             entry=entry,
             shared_enc=shared_enc,

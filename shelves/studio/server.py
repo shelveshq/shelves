@@ -49,7 +49,8 @@ def create_app(
         theme_path: Optional absolute path to a theme YAML file.
         models_dir: Directory containing model YAML files. Defaults to project_dir/models.
         charts_dir: Directory containing chart YAML files. Defaults to project_dir/charts.
-        dashboards_dir: Directory containing dashboard YAML files. Defaults to project_dir/dashboards.
+        dashboards_dir: Directory containing dashboard YAML files.
+            Defaults to project_dir/dashboards.
 
     Returns:
         Configured FastAPI instance.

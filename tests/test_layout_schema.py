@@ -9,13 +9,13 @@ These tests define expected behavior for the implementation to follow.
 """
 
 import pytest
+from pydantic import ValidationError
 
-from tests.conftest import load_layout_yaml
 from shelves.schema.layout_schema import (
     parse_dashboard,
     resolve_child,
 )
-
+from tests.conftest import load_layout_yaml
 
 # ─── Happy Path: Parsing Fixtures ────────────────────────────────────
 
@@ -88,7 +88,7 @@ class TestResolveChild:
 
     def test_resolve_sheet_with_fit(self):
         entry = {"sheet": "charts/foo.yaml", "fit": "width", "show_title": False}
-        name, comp = resolve_child(entry, {})
+        _, comp = resolve_child(entry, {})
         assert comp.fit == "width"
         assert comp.show_title is False
 
@@ -102,13 +102,13 @@ class TestResolveChild:
 
     def test_resolve_text_multiline(self):
         entry = {"text": "Line 1\nLine 2\n", "preset": "caption"}
-        name, comp = resolve_child(entry, {})
+        _, comp = resolve_child(entry, {})
         assert "Line 1" in comp.content
         assert "Line 2" in comp.content
 
     def test_resolve_image(self):
         entry = {"image": "logo.svg", "alt": "Company Logo", "height": 40, "width": 120}
-        name, comp = resolve_child(entry, {})
+        _, comp = resolve_child(entry, {})
         assert comp.type == "image"
         assert comp.src == "logo.svg"
         assert comp.alt == "Company Logo"
@@ -117,14 +117,14 @@ class TestResolveChild:
 
     def test_resolve_button(self):
         entry = {"button": "View Details →", "href": "/dashboards/detail"}
-        name, comp = resolve_child(entry, {})
+        _, comp = resolve_child(entry, {})
         assert comp.type == "button"
         assert comp.text == "View Details →"
         assert comp.href == "/dashboards/detail"
 
     def test_resolve_link(self):
         entry = {"link": "Data Dictionary ↗", "href": "/docs", "target": "_blank"}
-        name, comp = resolve_child(entry, {})
+        _, comp = resolve_child(entry, {})
         assert comp.type == "link"
         assert comp.text == "Data Dictionary ↗"
         assert comp.href == "/docs"
@@ -132,12 +132,12 @@ class TestResolveChild:
 
     def test_resolve_blank(self):
         entry = {"blank": None}
-        name, comp = resolve_child(entry, {})
+        _, comp = resolve_child(entry, {})
         assert comp.type == "blank"
 
     def test_resolve_blank_with_size(self):
         entry = {"blank": None, "height": 16}
-        name, comp = resolve_child(entry, {})
+        _, comp = resolve_child(entry, {})
         assert comp.type == "blank"
         assert comp.height == 16
 
@@ -169,7 +169,7 @@ class TestResolveChild:
                 ],
             }
         }
-        name, comp = resolve_child(entry, {})
+        _, comp = resolve_child(entry, {})
         assert comp.type == "vertical"
         assert comp.padding == 24
         assert comp.gap == 12
@@ -182,7 +182,7 @@ class TestResolveChild:
                 "contains": [],
             }
         }
-        name, comp = resolve_child(entry, {})
+        _, comp = resolve_child(entry, {})
         assert comp.height == 56
         assert comp.width == "80%"
 
@@ -386,7 +386,7 @@ root:
   contains:
     - text: "Hello"
 """
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, ValidationError)):
             parse_dashboard(yaml_str)
 
     def test_root_requires_contains(self):
@@ -396,7 +396,7 @@ canvas: { width: 1440, height: 900 }
 root:
   orientation: vertical
 """
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, ValidationError)):
             parse_dashboard(yaml_str)
 
     def test_root_accepts_gap(self):
@@ -594,7 +594,7 @@ root:
   orientation: vertical
   contains: []
 """
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, ValidationError)):
             parse_dashboard(yaml_str)
 
     def test_missing_root(self):
@@ -602,7 +602,7 @@ root:
 dashboard: "No Root"
 canvas: { width: 1440, height: 900 }
 """
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, ValidationError)):
             parse_dashboard(yaml_str)
 
     def test_unknown_type_key_raises(self):
@@ -620,7 +620,7 @@ root:
     - text: "Hello"
       preset: huge
 """
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, ValidationError)):
             parse_dashboard(yaml_str)
 
     def test_invalid_fit_value_raises(self):
@@ -633,7 +633,7 @@ root:
     - sheet: charts/foo.yaml
       fit: stretch
 """
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, ValidationError)):
             parse_dashboard(yaml_str)
 
     def test_style_ref_not_found_raises(self):
@@ -698,7 +698,7 @@ root:
 """
         # "kpi:" with null value looks like a dict {"kpi": None}
         # Since "kpi" is not a known type, this should error
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, ValidationError)):
             parse_dashboard(yaml_str)
 
     def test_leaf_with_contains_raises(self):
@@ -725,7 +725,7 @@ root:
   contains:
     - button: "Click me"
 """
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, ValidationError)):
             parse_dashboard(yaml_str)
 
     def test_link_missing_href_raises(self):
@@ -737,7 +737,7 @@ root:
   contains:
     - link: "Click me"
 """
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, ValidationError)):
             parse_dashboard(yaml_str)
 
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from shelves.models.loader import load_model, clear_model_cache
+from shelves.models.loader import clear_model_cache, load_model
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "models"
 

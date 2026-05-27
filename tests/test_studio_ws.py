@@ -20,13 +20,11 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock
 
-
-from tests.conftest import MODELS_DIR, SubprocessOutputDrainer
-
 from shelves.studio.connection import ConnectionManager
 from shelves.studio.lifespan import compile_file_and_broadcast as _compile_file_and_broadcast
 from shelves.studio.server import create_app
 from shelves.studio.watcher import COMPILE_EXTENSIONS, WATCH_EXTENSIONS, should_compile
+from tests.conftest import MODELS_DIR, SubprocessOutputDrainer
 
 # ─── Helpers ─────────────────────────────────────────────────────
 
@@ -167,22 +165,23 @@ class TestWebSocketEndpoint:
         from starlette.testclient import TestClient
 
         app = create_app(project_dir=tmp_path)
-        with TestClient(app) as client:
-            with client.websocket_connect("/ws") as ws:
-                # Connected — server accepted without error
-                # Close cleanly
-                ws.close()
+        with TestClient(app) as client, client.websocket_connect("/ws") as ws:
+            # Connected — server accepted without error
+            # Close cleanly
+            ws.close()
 
     def test_ws_connect_multiple_clients(self, tmp_path):
         """Multiple WebSocket clients can connect simultaneously."""
         from starlette.testclient import TestClient
 
         app = create_app(project_dir=tmp_path)
-        with TestClient(app) as client:
-            with client.websocket_connect("/ws") as ws1:
-                with client.websocket_connect("/ws") as ws2:
-                    ws1.close()
-                    ws2.close()
+        with (
+            TestClient(app) as client,
+            client.websocket_connect("/ws") as ws1,
+            client.websocket_connect("/ws") as ws2,
+        ):
+            ws1.close()
+            ws2.close()
 
 
 # ─── Default theme applied without --theme ───────────────────────

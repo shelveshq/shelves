@@ -22,7 +22,7 @@ class TestCompileChart:
         from shelves.pipeline import compile_chart
 
         yaml_text = load_yaml("simple_bar.yaml")
-        vl_spec, spec = compile_chart(yaml_text, models_dir=MODELS_DIR)
+        vl_spec, _spec = compile_chart(yaml_text, models_dir=MODELS_DIR)
 
         assert "$schema" in vl_spec
         assert "mark" in vl_spec
@@ -33,7 +33,7 @@ class TestCompileChart:
         from shelves.pipeline import compile_chart
 
         yaml_text = load_yaml("simple_bar.yaml")
-        vl_spec, spec = compile_chart(yaml_text, models_dir=MODELS_DIR)
+        vl_spec, _spec = compile_chart(yaml_text, models_dir=MODELS_DIR)
 
         assert isinstance(vl_spec, dict)
         assert all(isinstance(k, str) for k in vl_spec)
@@ -42,7 +42,7 @@ class TestCompileChart:
         from shelves.pipeline import compile_chart
 
         yaml_text = load_yaml("simple_bar.yaml")
-        vl_spec, spec = compile_chart(yaml_text, no_theme=True, models_dir=MODELS_DIR)
+        vl_spec, _spec = compile_chart(yaml_text, no_theme=True, models_dir=MODELS_DIR)
 
         assert "config" not in vl_spec
 
@@ -50,7 +50,7 @@ class TestCompileChart:
         from shelves.pipeline import compile_chart
 
         yaml_text = load_yaml("simple_bar.yaml")
-        vl_spec, spec = compile_chart(
+        vl_spec, _spec = compile_chart(
             yaml_text,
             theme_path=CUSTOM_THEME_PATH,
             models_dir=MODELS_DIR,
@@ -64,7 +64,7 @@ class TestCompileChart:
         from shelves.schema.chart_schema import ChartSpec
 
         yaml_text = load_yaml("simple_bar.yaml")
-        vl_spec, spec = compile_chart(yaml_text, models_dir=MODELS_DIR)
+        _vl_spec, spec = compile_chart(yaml_text, models_dir=MODELS_DIR)
 
         assert isinstance(spec, ChartSpec)
         assert spec.sheet == "Revenue by Country"
@@ -72,8 +72,8 @@ class TestCompileChart:
 
 class TestCompileChartInlineData:
     def test_inline_rows_bound(self):
-        from shelves.pipeline import compile_chart
         from shelves.data.bind import resolve_data
+        from shelves.pipeline import compile_chart
 
         yaml_text = load_yaml("simple_bar.yaml")
         rows = [{"category": "A", "net_sales": 100}]
@@ -83,8 +83,8 @@ class TestCompileChartInlineData:
         assert vl_spec["data"]["values"] == rows
 
     def test_empty_rows_bound(self):
-        from shelves.pipeline import compile_chart
         from shelves.data.bind import resolve_data
+        from shelves.pipeline import compile_chart
 
         yaml_text = load_yaml("simple_bar.yaml")
         vl_spec, spec = compile_chart(yaml_text, models_dir=MODELS_DIR)
@@ -118,7 +118,7 @@ class TestCompileChartErrors:
     def test_empty_yaml_raises(self):
         from shelves.pipeline import compile_chart
 
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, TypeError, AttributeError)):
             compile_chart("", models_dir=MODELS_DIR)
 
 

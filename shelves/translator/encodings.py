@@ -17,13 +17,12 @@ from __future__ import annotations
 from typing import Any
 
 from shelves.schema.chart_schema import (
+    HEX_COLOR_RE,
     ChartSpec,
     ColorSpec,
     TooltipSpec,
-    HEX_COLOR_RE,
 )
 from shelves.schema.field_types import FieldTypeResolver
-
 
 # ─── Core field encoding helper ───────────────────────────────────
 

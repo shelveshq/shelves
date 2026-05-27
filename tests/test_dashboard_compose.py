@@ -11,10 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import DATA_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
-
 from shelves.compose.dashboard import compose_dashboard
 from shelves.theme.merge import load_theme
+from tests.conftest import DATA_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
 
 THEMES_DIR = Path(__file__).parent / "fixtures" / "themes"
 
@@ -124,6 +123,15 @@ root:
         assert 'id="sheet-revenue_chart"' in html
         assert "vegaEmbed" in html
 
+    def test_no_theme_overrides_explicit_theme(self):
+        """no_theme=True must ignore an explicitly provided theme."""
+        custom_theme = load_theme()
+        result_with_theme = _compose("compose_minimal.yaml", theme=custom_theme, no_theme=True)
+        result_no_theme = _compose("compose_minimal.yaml", no_theme=True)
+        # Both have no_theme=True — the explicit theme should be discarded,
+        # so both should produce identical output.
+        assert result_with_theme == result_no_theme
+
     def test_compose_dashboard_with_no_sheets(self):
         """Dashboard with only text components produces valid HTML, no vegaEmbed calls."""
         from shelves.schema.layout_schema import parse_dashboard
@@ -164,7 +172,7 @@ root:
         dashboard_path = LAYOUT_DIR / "_tmp_missing.yaml"
         dashboard_path.write_text(yaml_str)
         try:
-            with pytest.raises(FileNotFoundError, match="does_not_exist.yaml"):
+            with pytest.raises(FileNotFoundError, match=r"does_not_exist\.yaml"):
                 compose_dashboard(
                     dashboard_path=dashboard_path,
                     chart_base_dir=YAML_DIR,

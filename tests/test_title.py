@@ -5,10 +5,10 @@ Tests that translate_chart() injects title/subtitle from spec.sheet/description,
 and that show_title in the dashboard Layout DSL correctly suppresses them.
 """
 
+from shelves.compose.dashboard import compose_dashboard
 from shelves.schema.chart_schema import parse_chart
 from shelves.translator.translate import translate_chart
-from shelves.compose.dashboard import compose_dashboard
-from tests.conftest import compile_fixture, MODELS_DIR, YAML_DIR, DATA_DIR
+from tests.conftest import DATA_DIR, MODELS_DIR, YAML_DIR, compile_fixture
 
 
 class TestChartTitle:

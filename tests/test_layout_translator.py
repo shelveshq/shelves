@@ -8,15 +8,13 @@ HTML output, and integration with the solver.
 These tests define expected behavior for the implementation to follow.
 """
 
-from tests.conftest import load_layout_yaml
-
 from shelves.schema.layout_schema import (
     parse_dashboard,
 )
 from shelves.theme.merge import load_theme
 from shelves.translator.layout import translate_dashboard
 from shelves.translator.layout_styles import RenderContext, resolve_styles
-
+from tests.conftest import load_layout_yaml
 
 # ─── Helpers ──────────────────────────────────────────────────────
 
@@ -351,6 +349,33 @@ root:
       target: _blank
 """)
         assert 'target="_blank"' in html
+        assert 'rel="noopener noreferrer"' in html
+
+    def test_button_target_blank_has_rel(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "External"
+      href: "https://example.com"
+      target: _blank
+""")
+        assert 'target="_blank"' in html
+        assert 'rel="noopener noreferrer"' in html
+
+    def test_link_target_self_no_rel(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - link: "Internal"
+      href: "/page"
+""")
+        assert 'rel="noopener' not in html
 
     def test_blank_renders_empty_div(self):
         html = _translate("""\
@@ -1539,3 +1564,29 @@ root:
         assert "font-size: 24px" in html
         assert "font-weight: bold" in html
         assert "Big Title" in html
+
+
+class TestScriptEscaping:
+    """XSS: </script> in chart spec values must not break the dashboard script block."""
+
+    def test_dashboard_spec_script_breakout(self):
+        chart_specs = {
+            "test_chart": {
+                "mark": "bar",
+                "title": "</script><script>alert(1)</script>",
+            }
+        }
+        html = _translate(
+            """\
+dashboard: "XSS Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: dummy.yaml
+      name: test_chart
+""",
+            chart_specs=chart_specs,
+        )
+        json_area = html.split("const specs = ")[1].split("Object.entries")[0]
+        assert "</script>" not in json_area

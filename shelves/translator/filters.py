@@ -39,6 +39,8 @@ def _translate_filter(f: ShelfFilter, resolver: FieldTypeResolver | None = None)
     """Convert a single DSL filter to a Vega-Lite filter predicate."""
 
     field = resolver.resolve_base_field(f.field) if resolver else f.field
+    if field is None:
+        raise ValueError(f"Cannot resolve filter field {f.field!r}")
 
     match f.operator:
         case "eq":

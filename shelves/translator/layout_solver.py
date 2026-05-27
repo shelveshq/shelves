@@ -81,23 +81,27 @@ def _parse_size(value: Any) -> tuple[str, int | float]:
     raise ValueError(f"Invalid size value: {value!r}")
 
 
-def _resolve_children(
+@dataclass
+class _SizeClassification:
+    """Result of classifying children's sizes into buckets."""
+
+    buckets: list[tuple[str, int | float]]
+    pct_indices: list[int]
+    px_indices: list[int]
+    auto_indices: list[int]
+    child_margins: list[tuple[int, int, int, int]]
+    total_margin: int
+    distributable: int
+
+
+def _classify_sizes(
     flat_children: list[FlatNode],
-    container_content_w: int,
-    container_content_h: int,
-    orientation: str,
+    main_content: int,
+    is_horizontal: bool,
+    gap: int,
     container_name: str | None,
-    gap: int = 0,
-) -> list[ResolvedNode]:
-    """Resolve a list of FlatNode children within a container's content box."""
-    if not flat_children:
-        return []
-
-    is_horizontal = orientation == "horizontal"
-    main_content = container_content_w if is_horizontal else container_content_h
-    cross_content = container_content_h if is_horizontal else container_content_w
-
-    # Step 2: Subtract gap and child margins on main axis
+) -> _SizeClassification:
+    """Bucket children into pct/px/auto, compute margins, and distributable space."""
     total_gap = gap * max(len(flat_children) - 1, 0)
 
     total_margin = 0
@@ -107,116 +111,144 @@ def _resolve_children(
         margin = parse_spacing(getattr(comp, "margin", None))
         child_margins.append(margin)
         if is_horizontal:
-            total_margin += margin[1] + margin[3]  # right + left
+            total_margin += margin[1] + margin[3]
         else:
-            total_margin += margin[0] + margin[2]  # top + bottom
+            total_margin += margin[0] + margin[2]
 
     if total_gap > main_content - total_margin:
         cname = container_name or "root"
         warnings.warn(
-            f"Gap in `{cname}` ({gap}px × {max(len(flat_children) - 1, 0)} = {total_gap}px) "
-            f"exceeds available space ({max(main_content - total_margin, 0)}px); "
-            f"children will receive 0px on main axis"
+            f"Gap in `{cname}` ({gap}px × {max(len(flat_children) - 1, 0)}"
+            f" = {total_gap}px) exceeds available space"
+            f" ({max(main_content - total_margin, 0)}px);"
+            f" children will receive 0px on main axis",
+            stacklevel=2,
         )
 
     distributable = max(main_content - total_margin - total_gap, 0)
 
-    # Step 3: Classify into buckets
     buckets: list[tuple[str, int | float]] = []
     for flat_child in flat_children:
         comp = flat_child.component
-        main_size = getattr(comp, "width", None) if is_horizontal else getattr(comp, "height", None)
-        buckets.append(_parse_size(main_size))
+        sz = getattr(comp, "width", None) if is_horizontal else getattr(comp, "height", None)
+        buckets.append(_parse_size(sz))
 
-    # Step 4: Resolve sizes in priority order
-    # Percentages resolve against the content box (pre-gap, pre-margin)
-    resolved_sizes: list[int] = [0] * len(flat_children)
-
-    # Bucket A: percentages
     pct_indices = [i for i, (b, _) in enumerate(buckets) if b == "pct"]
     px_indices = [i for i, (b, _) in enumerate(buckets) if b == "px"]
     auto_indices = [i for i, (b, _) in enumerate(buckets) if b == "auto"]
 
-    resolved_a = 0
-    for i in pct_indices:
-        val = int(round(buckets[i][1] * main_content))
-        resolved_sizes[i] = val
-        resolved_a += val
+    return _SizeClassification(
+        buckets=buckets,
+        pct_indices=pct_indices,
+        px_indices=px_indices,
+        auto_indices=auto_indices,
+        child_margins=child_margins,
+        total_margin=total_margin,
+        distributable=distributable,
+    )
 
-    resolved_b = 0
-    for i in px_indices:
-        resolved_sizes[i] = int(buckets[i][1])
-        resolved_b += resolved_sizes[i]
 
-    total_claimed = resolved_a + resolved_b
+def _resolve_underconstrained(
+    cls: _SizeClassification,
+    resolved_sizes: list[int],
+    container_name: str | None,
+    flat_children: list[FlatNode],
+) -> None:
+    """Resolve sizes when total claimed <= distributable (happy path)."""
+    remaining = cls.distributable - sum(resolved_sizes[i] for i in cls.pct_indices + cls.px_indices)
+    if cls.auto_indices:
+        base = remaining // len(cls.auto_indices)
+        leftover = remaining - base * len(cls.auto_indices)
+        for idx, i in enumerate(cls.auto_indices):
+            resolved_sizes[i] = base + (1 if idx < leftover else 0)
 
-    if total_claimed <= distributable:
-        # Case 1: Everything fits
-        remaining = distributable - total_claimed
-        if auto_indices:
-            base = remaining // len(auto_indices)
-            leftover = remaining - base * len(auto_indices)
-            for idx, i in enumerate(auto_indices):
-                resolved_sizes[i] = base + (1 if idx < leftover else 0)
-        # else: remaining space is empty (start-aligned packing)
-
-        # Warn if auto children get 0
-        if auto_indices and remaining == 0:
-            for i in auto_indices:
-                child_name = flat_children[i].name or f"child[{i}]"
-                cname = container_name or "root"
-                warnings.warn(
-                    f"Auto-sized child `{child_name}` in `{cname}` received 0px on main axis; "
-                    f"container is fully claimed by explicit sizes"
-                )
-    else:
-        # Case 2: Overconstrained
-        if resolved_a <= distributable:
-            # Percentages fit; shrink fixed proportionally
-            remaining_for_fixed = distributable - resolved_a
-            if resolved_b > 0:
-                cname = container_name or "root"
-                warnings.warn(
-                    f"Children in `{cname}` exceed available space by "
-                    f"{total_claimed - distributable}px; fixed sizes reduced proportionally"
-                )
-                for i in px_indices:
-                    resolved_sizes[i] = int(
-                        round(resolved_sizes[i] / resolved_b * remaining_for_fixed)
-                    )
-                # Fix rounding
-                actual_fixed = sum(resolved_sizes[i] for i in px_indices)
-                if px_indices and actual_fixed != remaining_for_fixed:
-                    resolved_sizes[px_indices[0]] += remaining_for_fixed - actual_fixed
-            # Auto children get 0
-            for i in auto_indices:
-                resolved_sizes[i] = 0
-                child_name = flat_children[i].name or f"child[{i}]"
-                cname = container_name or "root"
-                warnings.warn(
-                    f"Auto-sized child `{child_name}` in `{cname}` received 0px on main axis; "
-                    f"container is fully claimed by explicit sizes"
-                )
-        else:
-            # Even percentages exceed space — shrink all proportionally
+    if cls.auto_indices and remaining == 0:
+        for i in cls.auto_indices:
+            child_name = flat_children[i].name or f"child[{i}]"
             cname = container_name or "root"
-            total_pct = sum(buckets[i][1] for i in pct_indices) * 100
             warnings.warn(
-                f"Percentage allocations in `{cname}` total {total_pct:.0f}% and exceed "
-                f"available space; all sizes reduced proportionally"
+                f"Auto-sized child `{child_name}` in `{cname}`"
+                f" received 0px on main axis;"
+                f" container is fully claimed by explicit sizes",
+                stacklevel=2,
             )
-            total_resolved = resolved_a + resolved_b + sum(resolved_sizes[i] for i in auto_indices)
-            if total_resolved > 0:
-                for i in range(len(resolved_sizes)):
-                    resolved_sizes[i] = int(
-                        round(resolved_sizes[i] / total_resolved * distributable)
-                    )
-            # Fix rounding
-            actual_total = sum(resolved_sizes)
-            if actual_total != distributable and resolved_sizes:
-                resolved_sizes[0] += distributable - actual_total
 
-    # Step 5: Cross-axis resolution + Step 6: Content areas + Step 7: Recurse
+
+def _resolve_overconstrained_proportional(
+    cls: _SizeClassification,
+    resolved_sizes: list[int],
+    resolved_a: int,
+    resolved_b: int,
+    container_name: str | None,
+    flat_children: list[FlatNode],
+) -> None:
+    """Resolve sizes when pct fits but pct+px exceeds distributable."""
+    remaining_for_fixed = cls.distributable - resolved_a
+    if resolved_b > 0:
+        cname = container_name or "root"
+        total_claimed = resolved_a + resolved_b
+        warnings.warn(
+            f"Children in `{cname}` exceed available space by "
+            f"{total_claimed - cls.distributable}px;"
+            f" fixed sizes reduced proportionally",
+            stacklevel=2,
+        )
+        for i in cls.px_indices:
+            resolved_sizes[i] = int(  # noqa: RUF046
+                round(resolved_sizes[i] / resolved_b * remaining_for_fixed)
+            )
+        actual_fixed = sum(resolved_sizes[i] for i in cls.px_indices)
+        if cls.px_indices and actual_fixed != remaining_for_fixed:
+            resolved_sizes[cls.px_indices[0]] += remaining_for_fixed - actual_fixed
+
+    for i in cls.auto_indices:
+        resolved_sizes[i] = 0
+        child_name = flat_children[i].name or f"child[{i}]"
+        cname = container_name or "root"
+        warnings.warn(
+            f"Auto-sized child `{child_name}` in `{cname}`"
+            f" received 0px on main axis;"
+            f" container is fully claimed by explicit sizes",
+            stacklevel=2,
+        )
+
+
+def _resolve_overconstrained_full(
+    cls: _SizeClassification,
+    resolved_sizes: list[int],
+    resolved_a: int,
+    resolved_b: int,
+    container_name: str | None,
+) -> None:
+    """Resolve sizes when even percentages exceed distributable."""
+    cname = container_name or "root"
+    total_pct = sum(cls.buckets[i][1] for i in cls.pct_indices) * 100
+    warnings.warn(
+        f"Percentage allocations in `{cname}` total {total_pct:.0f}%"
+        f" and exceed available space;"
+        f" all sizes reduced proportionally",
+        stacklevel=2,
+    )
+    total_resolved = resolved_a + resolved_b + sum(resolved_sizes[i] for i in cls.auto_indices)
+    if total_resolved > 0:
+        for i in range(len(resolved_sizes)):
+            resolved_sizes[i] = int(  # noqa: RUF046
+                round(resolved_sizes[i] / total_resolved * cls.distributable)
+            )
+    actual_total = sum(resolved_sizes)
+    if actual_total != cls.distributable and resolved_sizes:
+        resolved_sizes[0] += cls.distributable - actual_total
+
+
+def _build_resolved_nodes(
+    flat_children: list[FlatNode],
+    resolved_sizes: list[int],
+    child_margins: list[tuple[int, int, int, int]],
+    is_horizontal: bool,
+    cross_content: int,
+    container_name: str | None,
+) -> list[ResolvedNode]:
+    """Resolve cross-axis sizes, compute content areas, and recurse."""
     result: list[ResolvedNode] = []
     for idx, flat_child in enumerate(flat_children):
         child_name = flat_child.name
@@ -224,7 +256,6 @@ def _resolve_children(
         main_size = resolved_sizes[idx]
         margin = child_margins[idx]
 
-        # Cross-axis
         cross_size_val = (
             getattr(comp, "height", None) if is_horizontal else getattr(comp, "width", None)
         )
@@ -232,14 +263,9 @@ def _resolve_children(
         if cross_bucket == "px":
             cross_size = int(cross_num)
         elif cross_bucket == "pct":
-            cross_size = int(round(cross_num * cross_content))
+            cross_size = int(round(cross_num * cross_content))  # noqa: RUF046
         else:
-            # Default: 100% of container cross-axis content
-            # Subtract cross-axis margins
-            if is_horizontal:
-                cross_margins = margin[0] + margin[2]  # top + bottom
-            else:
-                cross_margins = margin[1] + margin[3]  # left + right
+            cross_margins = margin[0] + margin[2] if is_horizontal else margin[1] + margin[3]
             cross_size = max(cross_content - cross_margins, 0)
 
         if is_horizontal:
@@ -247,25 +273,24 @@ def _resolve_children(
         else:
             outer_w, outer_h = cross_size, main_size
 
-        # Content area = outer - padding
         padding = parse_spacing(getattr(comp, "padding", None))
         content_w = outer_w - padding[1] - padding[3]
         content_h = outer_h - padding[0] - padding[2]
 
-        # Clamp negative content areas
         if content_w < 0 or content_h < 0:
             cname = child_name or f"child[{idx}]"
             pad_total = (padding[0] + padding[2], padding[1] + padding[3])
             size_val = outer_w if content_w < 0 else outer_h
             pad_val = pad_total[1] if content_w < 0 else pad_total[0]
             warnings.warn(
-                f"Padding on `{cname}` ({pad_val}px) exceeds its solved size ({size_val}px); "
-                f"content area clamped to 0"
+                f"Padding on `{cname}` ({pad_val}px) exceeds its"
+                f" solved size ({size_val}px);"
+                f" content area clamped to 0",
+                stacklevel=2,
             )
             content_w = max(content_w, 0)
             content_h = max(content_h, 0)
 
-        # Recurse for containers using pre-resolved FlatNode children
         children: list[ResolvedNode] = []
         if isinstance(comp, ContainerComponent):
             child_orientation = comp.type
@@ -292,6 +317,63 @@ def _resolve_children(
         )
 
     return result
+
+
+def _resolve_children(
+    flat_children: list[FlatNode],
+    container_content_w: int,
+    container_content_h: int,
+    orientation: str,
+    container_name: str | None,
+    gap: int = 0,
+) -> list[ResolvedNode]:
+    """Resolve a list of FlatNode children within a container's content box."""
+    if not flat_children:
+        return []
+
+    is_horizontal = orientation == "horizontal"
+    main_content = container_content_w if is_horizontal else container_content_h
+    cross_content = container_content_h if is_horizontal else container_content_w
+
+    cls = _classify_sizes(flat_children, main_content, is_horizontal, gap, container_name)
+
+    resolved_sizes: list[int] = [0] * len(flat_children)
+
+    resolved_a = 0
+    for i in cls.pct_indices:
+        val = int(round(cls.buckets[i][1] * main_content))  # noqa: RUF046
+        resolved_sizes[i] = val
+        resolved_a += val
+
+    resolved_b = 0
+    for i in cls.px_indices:
+        resolved_sizes[i] = int(cls.buckets[i][1])
+        resolved_b += resolved_sizes[i]
+
+    total_claimed = resolved_a + resolved_b
+
+    if total_claimed <= cls.distributable:
+        _resolve_underconstrained(cls, resolved_sizes, container_name, flat_children)
+    elif resolved_a <= cls.distributable:
+        _resolve_overconstrained_proportional(
+            cls,
+            resolved_sizes,
+            resolved_a,
+            resolved_b,
+            container_name,
+            flat_children,
+        )
+    else:
+        _resolve_overconstrained_full(cls, resolved_sizes, resolved_a, resolved_b, container_name)
+
+    return _build_resolved_nodes(
+        flat_children,
+        resolved_sizes,
+        cls.child_margins,
+        is_horizontal,
+        cross_content,
+        container_name,
+    )
 
 
 def solve_layout(flat_tree: FlatNode) -> ResolvedNode:

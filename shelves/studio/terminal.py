@@ -8,6 +8,7 @@ Each PtyManager instance owns one PTY and its associated shell subprocess.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fcntl
 import logging
 import os
@@ -121,10 +122,8 @@ class PtyManager:
 
         def _on_readable() -> None:
             # Remove before reading so we don't re-fire on partial data.
-            try:
+            with contextlib.suppress(ValueError, OSError):
                 loop.remove_reader(fd)
-            except (ValueError, OSError):
-                pass
             try:
                 data = os.read(fd, _READ_CHUNK)
             except OSError:
@@ -145,10 +144,8 @@ class PtyManager:
             # Always clear the reader — _on_readable may not have fired if
             # we were cancelled first, which would leave a dangling callback
             # on a soon-to-be-closed fd.
-            try:
+            with contextlib.suppress(ValueError, OSError):
                 loop.remove_reader(fd)
-            except (ValueError, OSError):
-                pass
 
     def close(self) -> None:
         """
@@ -158,10 +155,8 @@ class PtyManager:
         and waits for it to exit. Safe to call multiple times.
         """
         if self._master_fd is not None:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(self._master_fd)
-            except OSError:
-                pass
             self._master_fd = None
 
         if self._proc is not None:
