@@ -17,9 +17,8 @@ import pytest
 from pydantic import ValidationError
 
 from shelves.schema.chart_schema import parse_chart
-from tests.conftest import MODELS_DIR
 from shelves.translator.translate import translate_chart
-
+from tests.conftest import MODELS_DIR
 
 # ---------------------------------------------------------------------------
 # Helpers

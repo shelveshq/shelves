@@ -1,4 +1,4 @@
-from shelves.theme.merge import merge_theme, load_theme
+from shelves.theme.merge import load_theme, merge_theme
 from shelves.theme.theme_schema import ThemeSpec
 
-__all__ = ["merge_theme", "load_theme", "ThemeSpec"]
+__all__ = ["ThemeSpec", "load_theme", "merge_theme"]

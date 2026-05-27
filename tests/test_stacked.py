@@ -5,9 +5,11 @@ Tests for multi-measure shelves compiled to repeat or vconcat.
 """
 
 import pytest
+from pydantic import ValidationError
+
 from shelves.schema.chart_schema import parse_chart
 from shelves.translator.translate import translate_chart
-from tests.conftest import load_yaml, compile_fixture, MODELS_DIR
+from tests.conftest import MODELS_DIR, compile_fixture, load_yaml
 
 
 class TestStackedPanels:
@@ -183,7 +185,7 @@ class TestStackedSchema:
         assert spec.rows[1].mark == "line"
 
     def test_rejects_both_shelves_multi(self):
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, ValidationError)):
             parse_chart("""
 sheet: "Bad"
 data: orders

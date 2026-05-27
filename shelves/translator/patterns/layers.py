@@ -84,7 +84,6 @@ from __future__ import annotations
 from typing import Any
 
 from shelves.schema.chart_schema import ChartSpec, ColorSpec, LayerEntry, MarkSpec, MeasureEntry
-from shelves.translator.patterns.stacked import _resolve_shared_axis, _suppress_shared_axis
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.translator.encodings import (
     _auto_inject_from_model,
@@ -97,6 +96,7 @@ from shelves.translator.encodings import (
 from shelves.translator.filters import build_transforms
 from shelves.translator.marks import build_mark
 from shelves.translator.panel import build_panel_encoding
+from shelves.translator.patterns.stacked import _resolve_shared_axis, _suppress_shared_axis
 from shelves.translator.resolution import resolve_mark, resolve_property
 from shelves.translator.sort import apply_sort
 
@@ -225,12 +225,15 @@ def compile_layer_entry(
     Raises: ValueError if no mark can be resolved for the entry's primary measure.
     """
     # Step 1: Resolve primary mark (must succeed).
-    primary_mark = resolve_mark(
-        layer_mark=None,
-        entry_mark=entry.mark,
-        top_level_mark=spec.marks,
-        measure_name=entry.measure,
-    )
+    try:
+        primary_mark = resolve_mark(
+            layer_mark=None,
+            entry_mark=entry.mark,
+            top_level_mark=spec.marks,
+            measure_name=entry.measure,
+        )
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Entry {entry.measure!r}: {e}") from e
 
     # Step 2: Build the primary layer (entry's own measure).
     primary_color = resolve_property(None, entry.color, spec.color)
@@ -256,13 +259,16 @@ def compile_layer_entry(
 
     # Step 3: Build each secondary layer.
     secondaries = []
-    for layer in entry.layer:  # type: ignore[union-attr]
-        layer_mark = resolve_mark(
-            layer_mark=layer.mark,
-            entry_mark=entry.mark,
-            top_level_mark=spec.marks,
-            measure_name=layer.measure,
-        )
+    for i, layer in enumerate(entry.layer):  # type: ignore[union-attr]
+        try:
+            layer_mark = resolve_mark(
+                layer_mark=layer.mark,
+                entry_mark=entry.mark,
+                top_level_mark=spec.marks,
+                measure_name=layer.measure,
+            )
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Entry {entry.measure!r} layer {i}: {e}") from e
         layer_color = resolve_property(layer.color, entry.color, spec.color)
         layer_detail = _resolve_layer_detail(layer, entry, spec)
         layer_size = resolve_property(layer.size, entry.size, spec.size)

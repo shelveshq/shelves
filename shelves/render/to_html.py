@@ -10,13 +10,13 @@ Phase 6 replaces this with a web app component.
 
 from __future__ import annotations
 
-import json
 import html
+import json
 
 
 def render_html(spec: dict, title: str | None = None) -> str:
     """Generate a standalone HTML page embedding a Vega-Lite spec."""
-    spec_json = json.dumps(spec, indent=2)
+    spec_json = json.dumps(spec, indent=2).replace("</", r"<\/")
     page_title = title or spec.get("title", "Charter -- Chart Preview")
     page_title = html.escape(str(page_title), quote=True)
 

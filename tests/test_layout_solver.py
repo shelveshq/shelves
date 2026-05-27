@@ -17,7 +17,6 @@ from shelves.translator.layout_solver import (
     solve_layout,
 )
 
-
 # ─── Helpers ────────────────────────────────────────────────────────
 
 

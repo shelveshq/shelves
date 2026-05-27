@@ -8,6 +8,7 @@ project tree endpoint, and graceful shutdown.
 
 from __future__ import annotations
 
+import contextlib
 import signal
 import subprocess
 import sys
@@ -16,12 +17,11 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import FIXTURES_DIR, SubprocessOutputDrainer
-
 # ─── Imports under test ──────────────────────────────────────────
 # These will fail with ImportError until the module is created (expected red state).
 from shelves.studio.cli import build_parser
 from shelves.studio.server import create_app
+from tests.conftest import FIXTURES_DIR, SubprocessOutputDrainer
 
 # ─── Helpers ─────────────────────────────────────────────────────
 
@@ -316,10 +316,10 @@ marks: bar
 
     def test_compile_inline_model_missing_path_no_warning(self):
         """Inline model whose data file doesn't exist: silent skip, no warning."""
-        from starlette.testclient import TestClient
-
         # Point project_dir at a temp dir so data/orders.json won't be found
         import tempfile
+
+        from starlette.testclient import TestClient
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -691,11 +691,13 @@ class TestTerminalEndpoint:
 
         app = create_app(project_dir=PROJECT_DIR)
         client = TestClient(app)
-        with pytest.raises(WebSocketDisconnect):
-            with client.websocket_connect(
+        with (
+            pytest.raises(WebSocketDisconnect),
+            client.websocket_connect(
                 "/ws/terminal", headers={"origin": "https://evil.example.com"}
-            ) as ws:
-                ws.receive_text()
+            ) as ws,
+        ):
+            ws.receive_text()
 
     def test_terminal_ws_rejects_null_origin(self):
         """Sandboxed-iframe style 'Origin: null' is rejected."""
@@ -704,30 +706,30 @@ class TestTerminalEndpoint:
 
         app = create_app(project_dir=PROJECT_DIR)
         client = TestClient(app)
-        with pytest.raises(WebSocketDisconnect):
-            with client.websocket_connect("/ws/terminal", headers={"origin": "null"}) as ws:
-                ws.receive_text()
+        with (
+            pytest.raises(WebSocketDisconnect),
+            client.websocket_connect("/ws/terminal", headers={"origin": "null"}) as ws,
+        ):
+            ws.receive_text()
 
     def test_terminal_ws_rejects_bad_token(self):
         """Wrong auth token closes the connection before spawning a PTY."""
         from starlette.websockets import WebSocketDisconnect
 
         app, client = _terminal_app_client()
-        with pytest.raises(WebSocketDisconnect):
-            with _open_terminal_ws(app, client) as ws:
-                ws.send_json({"type": "auth", "token": "not-the-right-token"})
-                # Server should close; receive raises WebSocketDisconnect
-                ws.receive_text()
+        with pytest.raises(WebSocketDisconnect), _open_terminal_ws(app, client) as ws:
+            ws.send_json({"type": "auth", "token": "not-the-right-token"})
+            # Server should close; receive raises WebSocketDisconnect
+            ws.receive_text()
 
     def test_terminal_ws_rejects_missing_auth(self):
         """Sending a non-auth message first closes the connection."""
         from starlette.websockets import WebSocketDisconnect
 
         app, client = _terminal_app_client()
-        with pytest.raises(WebSocketDisconnect):
-            with _open_terminal_ws(app, client) as ws:
-                ws.send_json({"type": "input", "data": "echo hello\r"})
-                ws.receive_text()
+        with pytest.raises(WebSocketDisconnect), _open_terminal_ws(app, client) as ws:
+            ws.send_json({"type": "input", "data": "echo hello\r"})
+            ws.receive_text()
 
     def test_terminal_ws_connects(self):
         """WebSocket connection to /ws/terminal is accepted and can be closed cleanly."""
@@ -801,10 +803,8 @@ class TestPtyManagerCancellation:
                 # Let read() reach `await future` and register the reader.
                 await asyncio.sleep(0)
                 task.cancel()
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await task
-                except asyncio.CancelledError:
-                    pass
                 # remove_reader returns False when no reader is registered
                 # for the fd — i.e. read() already cleaned up.
                 assert loop.remove_reader(master) is False

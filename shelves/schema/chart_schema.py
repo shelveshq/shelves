@@ -17,15 +17,14 @@ Phase 1a activates:
 from __future__ import annotations
 
 import re
-from typing import Literal, Union
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = "0.5.2"  # minor: shared_axis on MeasureEntry (KAN-232) — hide repeating shared axes in stacked panels
+DSL_VERSION = "0.5.2"  # shared_axis on MeasureEntry (KAN-232)
 
 # ─── Primitives ────────────────────────────────────────────────────
 
@@ -76,7 +75,7 @@ class MarkObject(BaseModel):
 
 
 # marks can be a string shorthand ("bar") or an object ({ type, style, ... })
-MarkSpec = Union[MarkType, MarkObject]
+MarkSpec = MarkType | MarkObject
 
 
 # ─── Color Encoding ──────────────────────────────────────────────
@@ -89,7 +88,7 @@ class ColorFieldMapping(BaseModel):
     type: Literal["quantitative", "nominal", "ordinal", "temporal"] | None = None
 
 
-ColorSpec = Union[str, ColorFieldMapping]
+ColorSpec = str | ColorFieldMapping
 
 
 # ─── Tooltip ──────────────────────────────────────────────────────
@@ -100,10 +99,23 @@ class TooltipField(BaseModel):
     format: str | None = None
 
 
-TooltipSpec = Union[list[str], list[TooltipField]]
+TooltipSpec = list[str] | list[TooltipField]
 
 
 # ─── Filters ──────────────────────────────────────────────────────
+
+
+_OPERATOR_RULES: dict[str, tuple[str, list[str]]] = {
+    "in": ("values", ["value", "range"]),
+    "not_in": ("values", ["value", "range"]),
+    "between": ("range", ["value", "values"]),
+    "eq": ("value", ["values", "range"]),
+    "neq": ("value", ["values", "range"]),
+    "gt": ("value", ["values", "range"]),
+    "lt": ("value", ["values", "range"]),
+    "gte": ("value", ["values", "range"]),
+    "lte": ("value", ["values", "range"]),
+}
 
 
 class ShelfFilter(BaseModel):
@@ -114,45 +126,23 @@ class ShelfFilter(BaseModel):
     range: list[str | int | float] | None = Field(None, min_length=2, max_length=2)
 
     @model_validator(mode="after")
-    def _validate_operator_and_values(self) -> "ShelfFilter":
-        """
-        Enforce that each operator uses the correct value field:
+    def _validate_operator_and_values(self) -> ShelfFilter:
+        rule = _OPERATOR_RULES.get(self.operator)
+        if rule is None:
+            raise ValueError(f"Unknown filter operator: {self.operator!r}")
 
-        - in / not_in  -> requires `values`, forbids `value` and `range`
-        - between      -> requires `range`, forbids `value` and `values`
-        - eq / neq / gt / lt / gte / lte -> requires `value`,
-          forbids `values` and `range`
-        """
-        op = self.operator
-        has_value = self.value is not None
-        has_values = self.values is not None
-        has_range = self.range is not None
-
-        if op in ("in", "not_in"):
-            if not has_values:
-                raise ValueError("Filter operator 'in'/'not_in' requires 'values' to be set.")
-            if has_value or has_range:
+        required_field, forbidden_fields = rule
+        if getattr(self, required_field) is None:
+            raise ValueError(
+                f"Filter operator {self.operator!r} requires '{required_field}' to be set."
+            )
+        for forbidden in forbidden_fields:
+            if getattr(self, forbidden) is not None:
                 raise ValueError(
-                    "Filter operator 'in'/'not_in' only supports 'values'; 'value' and 'range' must be omitted."
+                    f"Filter {self.operator!r} only supports"
+                    f" '{required_field}';"
+                    f" '{forbidden}' must be omitted."
                 )
-
-        elif op == "between":
-            if not has_range:
-                raise ValueError("Filter operator 'between' requires 'range' to be set.")
-            if has_value or has_values:
-                raise ValueError(
-                    "Filter operator 'between' only supports 'range'; 'value' and 'values' must be omitted."
-                )
-
-        else:
-            # eq, neq, gt, lt, gte, lte
-            if not has_value:
-                raise ValueError(f"Filter operator '{op}' requires 'value' to be set.")
-            if has_values or has_range:
-                raise ValueError(
-                    f"Filter operator '{op}' only supports 'value'; 'values' and 'range' must be omitted."
-                )
-
         return self
 
 
@@ -175,7 +165,7 @@ class AxisSort(BaseModel):
     channel: Literal["x", "y"] = "x"
 
 
-SortSpec = Union[FieldSort, AxisSort]
+SortSpec = FieldSort | AxisSort
 
 
 # ─── Facet ────────────────────────────────────────────────────────
@@ -204,7 +194,7 @@ class WrapFacet(BaseModel):
     axis: ScaleResolve | None = None
 
 
-FacetSpec = Union[WrapFacet, RowColumnFacet]
+FacetSpec = WrapFacet | RowColumnFacet
 
 
 # ─── Axis Config ──────────────────────────────────────────────────
@@ -291,7 +281,7 @@ class MeasureEntry(BaseModel):
 
 
 # A shelf is either a single field name or a list of measure entries
-ShelfSpec = Union[str, list[MeasureEntry]]
+ShelfSpec = str | list[MeasureEntry]
 
 
 # ─── Top-Level Chart Spec ─────────────────────────────────────────
@@ -312,7 +302,7 @@ class ChartSpec(BaseModel):
 
     version: str | None = Field(
         None,
-        description="DSL version this spec targets (e.g. '0.1.0'). Optional; used for forwards-compatibility checks.",
+        description="DSL version this spec targets (e.g. '0.1.0').",
     )
 
     sheet: str = Field(min_length=1)

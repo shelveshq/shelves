@@ -11,10 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.conftest import DATA_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
-
 from shelves.compose.dashboard import compose_dashboard
 from shelves.theme.merge import load_theme
+from tests.conftest import DATA_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
 
 THEMES_DIR = Path(__file__).parent / "fixtures" / "themes"
 
@@ -164,7 +163,7 @@ root:
         dashboard_path = LAYOUT_DIR / "_tmp_missing.yaml"
         dashboard_path.write_text(yaml_str)
         try:
-            with pytest.raises(FileNotFoundError, match="does_not_exist.yaml"):
+            with pytest.raises(FileNotFoundError, match=r"does_not_exist\.yaml"):
                 compose_dashboard(
                     dashboard_path=dashboard_path,
                     chart_base_dir=YAML_DIR,

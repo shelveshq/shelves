@@ -13,7 +13,7 @@ Phase 1b adds: list of marks for dual axis (handled in patterns/dual_axis.py)
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
 
 from shelves.schema.chart_schema import MarkObject, MarkType
 
@@ -23,7 +23,7 @@ DASH_PATTERNS: dict[str, list[int]] = {
 }
 
 
-def build_mark(marks: Union[MarkType, MarkObject]) -> str | dict[str, Any]:
+def build_mark(marks: MarkType | MarkObject) -> str | dict[str, Any]:
     """Convert a DSL mark spec to a Vega-Lite mark value."""
 
     # String shorthand: "bar" → "bar"

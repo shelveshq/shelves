@@ -19,11 +19,11 @@ Single mark (Phase 1) or layer list (Phase 1b) — wrapping is identical.
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
 
 from shelves.schema.chart_schema import RowColumnFacet, WrapFacet
 
-FacetSpec = Union[WrapFacet, RowColumnFacet, None]
+FacetSpec = WrapFacet | RowColumnFacet | None
 VegaLiteSpec = dict[str, Any]
 
 

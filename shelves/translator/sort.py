@@ -16,12 +16,12 @@ Sort targets the x encoding by default. Set channel: y to sort the y axis.
 
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
 
-from shelves.schema.chart_schema import FieldSort, AxisSort
+from shelves.schema.chart_schema import AxisSort, FieldSort
 from shelves.schema.field_types import FieldTypeResolver
 
-SortSpec = Union[FieldSort, AxisSort, None]
+SortSpec = FieldSort | AxisSort | None
 
 
 def apply_sort(

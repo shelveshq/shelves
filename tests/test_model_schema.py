@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from shelves.models.loader import clear_model_cache, load_model
 from shelves.models.schema import (
     CubeSource,
     DataModel,
@@ -21,7 +22,6 @@ from shelves.models.schema import (
     NominalDimensionDefinition,
     TemporalDimensionDefinition,
 )
-from shelves.models.loader import load_model, clear_model_cache
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "models"
 

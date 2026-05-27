@@ -12,21 +12,21 @@ import httpx
 import pytest
 import respx
 
-from shelves.schema.chart_schema import parse_chart
-from shelves.models.loader import load_model, clear_model_cache
-from shelves.models.resolver import ModelResolver
 from shelves.data.cube_client import (
+    CubeAuthError,
     CubeConfig,
     CubeConfigError,
     CubeQueryError,
-    CubeAuthError,
     CubeServerError,
     CubeTimeoutError,
+    _collect_chart_fields,
+    _strip_prefix,
     build_cube_query,
     fetch_from_cube_model,
-    _strip_prefix,
-    _collect_chart_fields,
 )
+from shelves.models.loader import clear_model_cache, load_model
+from shelves.models.resolver import ModelResolver
+from shelves.schema.chart_schema import parse_chart
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "models"
 
@@ -277,8 +277,10 @@ class TestBuildCubeQuery:
 
     def test_filters_translate_in(self, cube_model, cube_resolver):
         spec = parse_chart(
-            'sheet: "Test"\ndata: cube_orders\ncols: category\nrows: net_sales\nmarks: bar\n'
-            'filters:\n  - field: category\n    operator: in\n    values: ["Furniture", "Technology"]\n'
+            'sheet: "Test"\ndata: cube_orders\ncols: category\n'
+            "rows: net_sales\nmarks: bar\n"
+            "filters:\n  - field: category\n    operator: in\n"
+            '    values: ["Furniture", "Technology"]\n'
         )
         query = build_cube_query("orders", spec, cube_resolver)
         assert query["filters"] == [

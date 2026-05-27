@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import secrets
 from urllib.parse import urlparse
 
@@ -102,10 +103,8 @@ async def ws_terminal(ws: WebSocket) -> None:
                 )
             # Shell exited
             code = mgr._proc.returncode if mgr._proc else 0
-            try:
+            with contextlib.suppress(Exception):
                 await ws.send_json({"type": "exit", "code": code or 0})
-            except Exception:
-                pass
         except Exception:
             pass
 
@@ -136,8 +135,6 @@ async def ws_terminal(ws: WebSocket) -> None:
         pass
     finally:
         read_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await read_task
-        except asyncio.CancelledError:
-            pass
         mgr.close()

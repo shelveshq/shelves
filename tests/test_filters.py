@@ -17,9 +17,8 @@ import pytest
 from pydantic import ValidationError
 
 from shelves.schema.chart_schema import parse_chart
-from tests.conftest import MODELS_DIR
 from shelves.translator.translate import translate_chart
-
+from tests.conftest import MODELS_DIR
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -464,3 +463,19 @@ filters:
         vl = _compile(BASE_YAML)
         transforms = vl.get("transform", [])
         assert len(transforms) == 0
+
+
+class TestFilterFieldGuard:
+    """Guard against resolver returning None for a filter field."""
+
+    def test_none_resolved_field_raises(self):
+        from shelves.schema.chart_schema import ShelfFilter
+        from shelves.translator.filters import _translate_filter
+
+        class _NoneResolver:
+            def resolve_base_field(self, field: str) -> None:
+                return None
+
+        f = ShelfFilter(field="nonexistent", operator="eq", value="x")
+        with pytest.raises(ValueError, match="Cannot resolve filter field"):
+            _translate_filter(f, _NoneResolver())

@@ -11,7 +11,6 @@ from shelves.schema.layout_schema import parse_dashboard
 from shelves.translator.layout_flatten import FlatNode, flatten_dashboard
 from shelves.translator.layout_solver import solve_layout
 
-
 # ─── Helpers ──────────────────────────────────────────────────────────
 
 

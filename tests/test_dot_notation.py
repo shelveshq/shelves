@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from shelves.models.loader import load_model, clear_model_cache
+from shelves.models.loader import clear_model_cache, load_model
 from shelves.models.resolver import ModelResolver
-from shelves.schema.chart_schema import AxisChannelConfig, ColorFieldMapping, ShelfFilter, FieldSort
-from shelves.translator.encodings import build_color, build_field_encoding, _auto_inject_from_model
+from shelves.schema.chart_schema import AxisChannelConfig, ColorFieldMapping, FieldSort, ShelfFilter
+from shelves.translator.encodings import _auto_inject_from_model, build_color, build_field_encoding
 from shelves.translator.filters import build_transforms
 from shelves.translator.sort import apply_sort
 

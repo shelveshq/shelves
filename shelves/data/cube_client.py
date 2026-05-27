@@ -16,19 +16,18 @@ from typing import Any, Protocol
 
 import httpx
 
+from shelves.models.schema import CubeSource, DataModel
 from shelves.schema.chart_schema import (
+    HEX_COLOR_RE,
     ChartSpec,
     ColorFieldMapping,
     FieldSort,
-    HEX_COLOR_RE,
     MeasureEntry,
     RowColumnFacet,
     ShelfFilter,
     WrapFacet,
 )
-from shelves.models.schema import CubeSource, DataModel
 from shelves.schema.field_types import FieldTypeResolver
-
 
 # ─── Errors ──────────────────────────────────────────────────────────
 

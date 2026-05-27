@@ -11,10 +11,9 @@ from pathlib import Path
 
 import pytest
 
+from shelves.models.loader import clear_model_cache
 from shelves.schema.chart_schema import parse_chart
 from shelves.translator.translate import translate_chart
-from shelves.models.loader import clear_model_cache
-
 from tests.conftest import load_yaml
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -30,7 +29,7 @@ def _clear_cache():
 
 class TestAutoInject:
     def test_axis_titles_from_model(self):
-        """Axis titles auto-injected from model labels; grid defaults applied; revenue format injected."""
+        """Axis titles auto-injected from model labels; grid defaults applied."""
         yaml_str = load_yaml("auto_inject_titles.yaml")
         spec = parse_chart(yaml_str)
         vl = translate_chart(spec, models_dir=MODELS_DIR)
@@ -117,7 +116,7 @@ class TestAutoInject:
         assert country_entry["title"] == "Country"
 
     def test_default_sort_from_measure(self):
-        """When no explicit sort and x-field has no sortOrder, y-axis measure's defaultSort applies."""
+        """y-axis measure's defaultSort applies when no explicit sort is set."""
         yaml_str = load_yaml("auto_inject_default_sort.yaml")
         spec = parse_chart(yaml_str)
         vl = translate_chart(spec, models_dir=MODELS_DIR)

@@ -21,7 +21,6 @@ from shelves.schema.layout_schema import (
 )
 from shelves.theme.theme_schema import ThemeSpec
 
-
 # ─── Button / Link Defaults ─────────────────────────────────────
 
 BUTTON_DEFAULTS: dict[str, str] = {
@@ -162,9 +161,8 @@ def resolve_styles(
         css["height"] = f"{resolved_height}px"
 
     # Step 3: Theme defaults (font-family for text-bearing components)
-    if isinstance(component, (TextComponent, ButtonComponent, LinkComponent)):
-        if not has_wrapper:
-            css["font-family"] = ctx.theme.layout.font.family.body
+    if isinstance(component, (TextComponent, ButtonComponent, LinkComponent)) and not has_wrapper:
+        css["font-family"] = ctx.theme.layout.font.family.body
 
     # Step 4: Type defaults
     if not has_wrapper:
@@ -238,7 +236,7 @@ def resolve_styles(
             css["overflow"] = "hidden"
 
     # Step 9: Serialize CSS dict
-    html_escape = component.html if not has_wrapper else component.html
+    html_escape = component.html
 
     parts = [f"{k}: {v}" for k, v in css.items()]
     result = "; ".join(parts)

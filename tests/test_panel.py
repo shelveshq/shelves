@@ -4,12 +4,12 @@ Panel Encoding Builder Tests
 Unit tests for translator/panel.py — shared panel encoding logic.
 """
 
-from shelves.schema.chart_schema import MeasureEntry, parse_chart
 from shelves.models.loader import load_model
 from shelves.models.resolver import ModelResolver
+from shelves.schema.chart_schema import MeasureEntry, parse_chart
 from shelves.translator.encodings import build_field_encoding
 from shelves.translator.panel import build_panel_encoding
-from tests.conftest import load_yaml, MODELS_DIR
+from tests.conftest import MODELS_DIR, load_yaml
 
 
 def _make_resolver() -> ModelResolver:

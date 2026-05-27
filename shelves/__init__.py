@@ -17,30 +17,30 @@ Typical pipeline:
     html   = render_html(bound)
 """
 
-from shelves.schema.chart_schema import parse_chart, ChartSpec, DSL_VERSION
-from shelves.schema.layout_schema import parse_dashboard, DashboardSpec
-from shelves.translator.translate import translate_chart
-from shelves.translator.layout import translate_dashboard
-from shelves.theme.merge import merge_theme, load_theme
-from shelves.data.bind import bind_data, resolve_data
-from shelves.render.to_html import render_html
 from shelves.compose.dashboard import compose_dashboard
+from shelves.data.bind import bind_data, resolve_data
 from shelves.pipeline import compile_chart, resolve_model_data
+from shelves.render.to_html import render_html
+from shelves.schema.chart_schema import DSL_VERSION, ChartSpec, parse_chart
+from shelves.schema.layout_schema import DashboardSpec, parse_dashboard
+from shelves.theme.merge import load_theme, merge_theme
+from shelves.translator.layout import translate_dashboard
+from shelves.translator.translate import translate_chart
 
 __all__ = [
-    "parse_chart",
-    "parse_dashboard",
-    "translate_chart",
-    "translate_dashboard",
-    "merge_theme",
-    "load_theme",
-    "bind_data",
-    "resolve_data",
-    "render_html",
+    "DSL_VERSION",
     "ChartSpec",
     "DashboardSpec",
-    "DSL_VERSION",
-    "compose_dashboard",
+    "bind_data",
     "compile_chart",
+    "compose_dashboard",
+    "load_theme",
+    "merge_theme",
+    "parse_chart",
+    "parse_dashboard",
+    "render_html",
+    "resolve_data",
     "resolve_model_data",
+    "translate_chart",
+    "translate_dashboard",
 ]

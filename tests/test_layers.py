@@ -10,9 +10,10 @@ Deferred tests (TestLayerStackingDeferred) are for additional assertions under K
 import textwrap
 
 import pytest
+
 from shelves.schema.chart_schema import parse_chart
 from shelves.translator.translate import translate_chart
-from tests.conftest import compile_fixture, load_yaml, MODELS_DIR
+from tests.conftest import MODELS_DIR, compile_fixture, load_yaml
 
 
 class TestLayerSchemaParsing:
@@ -382,3 +383,21 @@ class TestLayerStackingDeferred:
         assert len(inner["layer"]) == 2
         # Resolve propagates through facet wrapper (axis: independent on the entry)
         assert inner.get("resolve") == {"scale": {"y": "independent"}}
+
+
+class TestLayerErrors:
+    """Error messages from layer compilation should include entry context."""
+
+    def test_resolve_mark_error_includes_entry_context(self):
+        yaml_str = textwrap.dedent("""\
+            sheet: "Error Context Test"
+            data: orders
+            cols: week
+            rows:
+              - measure: revenue
+                layer:
+                  - measure: order_count
+        """)
+        with pytest.raises(ValueError, match="Entry 'revenue'"):
+            spec = parse_chart(yaml_str)
+            translate_chart(spec, models_dir=MODELS_DIR)

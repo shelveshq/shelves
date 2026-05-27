@@ -10,10 +10,10 @@ import httpx
 import pytest
 import respx
 
-from shelves.schema.chart_schema import parse_chart
-from shelves.translator.translate import translate_chart
 from shelves.data.bind import resolve_data
 from shelves.models.loader import clear_model_cache
+from shelves.schema.chart_schema import parse_chart
+from shelves.translator.translate import translate_chart
 from tests.conftest import load_yaml
 
 MODELS_DIR = Path(__file__).parent / "fixtures" / "models"
@@ -43,6 +43,7 @@ def test_unknown_source_raises():
 def test_unsupported_source_type_mentions_type(monkeypatch):
     """When a model has a source type with no registered adapter, the error should name it."""
     from unittest.mock import patch
+
     from shelves.data.errors import NoDataSourceError
     from shelves.models.schema import DataModel
 
@@ -63,9 +64,11 @@ def test_unsupported_source_type_mentions_type(monkeypatch):
     fake_source = type("FakeSource", (), {"type": "postgres"})()
     model.source = fake_source  # type: ignore[assignment]
 
-    with patch("shelves.models.loader.load_model", return_value=model):
-        with pytest.raises(NoDataSourceError, match="postgres"):
-            resolve_data(vl, spec, models_dir=MODELS_DIR)
+    with (
+        patch("shelves.models.loader.load_model", return_value=model),
+        pytest.raises(NoDataSourceError, match="postgres"),
+    ):
+        resolve_data(vl, spec, models_dir=MODELS_DIR)
 
 
 @respx.mock

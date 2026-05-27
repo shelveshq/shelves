@@ -11,15 +11,14 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-
 # ─── Size Type ─────────────────────────────────────────────────────
 
-SizeValue = Union[int, str, None]
+SizeValue = int | str | None
 
 _SIZE_RE = re.compile(r"^(\d+)(px|%)?$")
 
@@ -204,15 +203,15 @@ class RootComponent(BaseModel):
 
 # ─── Component Union ──────────────────────────────────────────────
 
-Component = Union[
-    ContainerComponent,
-    SheetComponent,
-    TextComponent,
-    ButtonComponent,
-    LinkComponent,
-    ImageComponent,
-    BlankComponent,
-]
+Component = (
+    ContainerComponent
+    | SheetComponent
+    | TextComponent
+    | ButtonComponent
+    | LinkComponent
+    | ImageComponent
+    | BlankComponent
+)
 
 
 # ─── Leaf Type Builders ──────────────────────────────────────────

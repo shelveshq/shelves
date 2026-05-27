@@ -11,6 +11,7 @@ Top-level orchestrator that composes a complete dashboard from a YAML file:
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 from shelves.schema.layout_schema import (
@@ -53,10 +54,7 @@ def compose_dashboard(
     """
     spec = load_dashboard(dashboard_path)
 
-    if not no_theme:
-        theme = theme or load_theme()
-    else:
-        theme = ThemeSpec()
+    theme = theme or load_theme() if not no_theme else ThemeSpec()
 
     sheets = _discover_sheets(spec)
 
@@ -139,9 +137,7 @@ def _compile_chart(
         models_dir=models_dir,
     )
 
-    try:
+    with contextlib.suppress(Exception):
         vl = resolve_model_data(vl, spec, models_dir=models_dir, data_base_dir=data_dir)
-    except Exception:
-        pass  # Data binding is best-effort at compose time
 
     return vl

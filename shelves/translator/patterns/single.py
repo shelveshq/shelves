@@ -13,10 +13,10 @@ from typing import Any
 
 from shelves.schema.chart_schema import ChartSpec
 from shelves.schema.field_types import FieldTypeResolver
-from shelves.translator.marks import build_mark
 from shelves.translator.encodings import build_encodings
 from shelves.translator.filters import build_transforms
-from shelves.translator.sort import apply_sort, apply_default_sort_from_model
+from shelves.translator.marks import build_mark
+from shelves.translator.sort import apply_default_sort_from_model, apply_sort
 
 VegaLiteSpec = dict[str, Any]
 
