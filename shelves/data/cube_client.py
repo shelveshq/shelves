@@ -206,9 +206,9 @@ def _collect_chart_fields(spec: ChartSpec) -> set[str]:
 
     # kpi
     if spec.kpi:
-        fields.add(spec.kpi.measure)
+        fields.add(spec.kpi.value)
         if spec.kpi.comparison:
-            fields.add(spec.kpi.comparison.measure)
+            fields.add(spec.kpi.comparison.field)
 
     # tooltip (two-pass — warn for fields not already referenced)
     # Snapshot the fields collected so far (everything EXCEPT tooltip).

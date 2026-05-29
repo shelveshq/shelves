@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, model_validator
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = "0.5.2"  # shared_axis on MeasureEntry (KAN-232)
+DSL_VERSION = "0.6.0"  # KPI block schema (KAN-258)
 
 # ─── Primitives ────────────────────────────────────────────────────
 
@@ -215,15 +215,43 @@ class AxisConfig(BaseModel):
 
 
 class KPIComparison(BaseModel):
-    measure: str
+    """Configuration for the comparison value displayed beneath the primary KPI metric."""
+
+    field: str
+    mode: Literal[
+        "delta_percent",
+        "delta_absolute",
+        "value",
+    ] = "delta_percent"
     format: str | None = None
-    type: Literal["percent_change", "absolute_change", "value"] | None = None
+    label: str | None = None
+    polarity: Literal[
+        "up_is_good",
+        "down_is_good",
+        "neutral",
+    ] = "up_is_good"
 
 
-class KPIConfig(BaseModel):
-    measure: str
-    format: str | None = None
+class KPIBlock(BaseModel):
+    """
+    Top-level kpi property on a chart spec.
+    When present, the translator routes to the KPI pattern compiler.
+    """
+
+    value: str
+    format: str = Field(min_length=1)
+    title: str | None = None
+    spacing: int | None = None
     comparison: KPIComparison | None = None
+
+    @model_validator(mode="after")
+    def value_differs_from_comparison_field(self) -> KPIBlock:
+        if self.comparison is not None and self.value == self.comparison.field:
+            raise ValueError(
+                "kpi.value and comparison.field must be different fields "
+                f"(both are '{self.value}')."
+            )
+        return self
 
 
 # ─── Multi-Measure Shelf Entries ──────────────────────────────────
@@ -333,7 +361,7 @@ class ChartSpec(BaseModel):
     axis: AxisConfig | None = None
 
     # KPI special pattern
-    kpi: KPIConfig | None = None
+    kpi: KPIBlock | None = None
 
     @model_validator(mode="after")
     def at_most_one_multi_measure_shelf(self):
@@ -356,6 +384,21 @@ class ChartSpec(BaseModel):
             raise ValueError(
                 "Top-level 'marks' is required for single-measure charts. "
                 "For multi-measure charts, set mark on each measure entry."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def kpi_excludes_shelf_properties(self) -> ChartSpec:
+        """When kpi is set, cols/rows/marks are ignored. Warn if present."""
+        if self.kpi is not None and (
+            self.cols is not None or self.rows is not None or self.marks is not None
+        ):
+            import warnings
+
+            warnings.warn(
+                "KPI spec has cols/rows/marks set — these are ignored when kpi is present.",
+                UserWarning,
+                stacklevel=2,
             )
         return self
 
