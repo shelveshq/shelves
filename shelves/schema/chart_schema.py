@@ -241,7 +241,7 @@ class KPIBlock(BaseModel):
     value: str
     format: str = Field(min_length=1)
     title: str | None = None
-    spacing: int | None = None
+    spacing: int | None = Field(None, ge=0)
     comparison: KPIComparison | None = None
 
     @model_validator(mode="after")

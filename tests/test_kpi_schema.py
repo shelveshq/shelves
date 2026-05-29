@@ -251,6 +251,18 @@ kpi:
         with pytest.raises(ValidationError):
             parse_chart(yaml_str)
 
+    def test_negative_spacing(self):
+        yaml_str = """\
+sheet: "Revenue"
+data: orders
+kpi:
+  value: revenue
+  format: "$,.0f"
+  spacing: -1
+"""
+        with pytest.raises(ValidationError):
+            parse_chart(yaml_str)
+
 
 # ===========================================================================
 # Theme — KPI tokens
