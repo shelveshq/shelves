@@ -821,7 +821,7 @@ kpi:
 | `kpi.value` | string | yes | — | Measure field name for the primary metric |
 | `kpi.format` | string | yes | — | d3-format string for the primary value (e.g. `"$,.0f"`, `"0.0%"`) |
 | `kpi.title` | string | no | `sheet` name | Display title shown above the big number |
-| `kpi.spacing` | integer | no | theme default (4) | Vertical gap in px between text rows |
+| `kpi.spacing` | integer (≥ 0) | no | theme default (4) | Vertical gap in px between text rows |
 
 ### Comparison properties
 
