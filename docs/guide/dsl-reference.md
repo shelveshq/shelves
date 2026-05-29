@@ -1,6 +1,6 @@
 # Shelves DSL Reference
 
-**DSL Version: 0.5.2**
+**DSL Version: 0.6.0**
 
 This document is the authoritative reference for the Shelves YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -36,6 +36,11 @@ facet: {...}
 axis:
   x: { title: "...", format: "...", grid: true }
   y: { title: "...", format: "...", grid: false }
+
+# KPI pattern (replaces cols/rows/marks when present)
+kpi:
+  value: revenue
+  format: "$,.0f"
 ```
 
 ---
@@ -743,6 +748,32 @@ facet:
   sort: descending
 ```
 
+### Simple KPI card
+
+```yaml
+sheet: "Total Revenue"
+data: orders
+kpi:
+  value: revenue
+  format: "$,.0f"
+```
+
+### KPI with comparison (percentage delta)
+
+```yaml
+sheet: "Revenue"
+data: orders
+kpi:
+  value: revenue
+  format: "$,.0f"
+  title: "Monthly Revenue"
+  comparison:
+    field: cost
+    mode: delta_percent
+    label: "vs. Cost"
+    polarity: up_is_good
+```
+
 ---
 
 ## Dashboards (Layout DSL)
@@ -753,23 +784,85 @@ See the **[Dashboards guide](./dashboards.md)** for the complete Layout DSL refe
 
 ---
 
-## Not yet supported
+## KPI Cards
 
-The following features are parsed and validated by the schema but **will raise `NotImplementedError` at compilation time**. They are planned for upcoming releases.
+KPI cards (Big Ass Numbers) are rendered via the `kpi` top-level property. When `kpi` is present, `cols`, `rows`, and `marks` are ignored — the `kpi` block fully describes the rendering intent.
 
-### KPI cards
+### Simple KPI
 
 ```yaml
+sheet: "Total Revenue"
+data: orders
 kpi:
-  measure: revenue
+  value: revenue
   format: "$,.0f"
-  comparison:
-    measure: revenue_prior_period
-    type: percent_change
-    format: "+.1%"
 ```
 
-**Status:** Schema validates. No translator support yet.
+### KPI with comparison
+
+```yaml
+sheet: "Revenue"
+data: orders
+kpi:
+  value: revenue
+  format: "$,.0f"
+  title: "Monthly Revenue"
+  comparison:
+    field: revenue_prior_month
+    mode: delta_percent
+    label: "vs. Prior Month"
+    polarity: up_is_good
+```
+
+### KPI properties
+
+| Property | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `kpi.value` | string | yes | — | Measure field name for the primary metric |
+| `kpi.format` | string | yes | — | d3-format string for the primary value (e.g. `"$,.0f"`, `"0.0%"`) |
+| `kpi.title` | string | no | `sheet` name | Display title shown above the big number |
+| `kpi.spacing` | integer (≥ 0) | no | theme default (4) | Vertical gap in px between text rows |
+
+### Comparison properties
+
+The `comparison` block is optional. When present, a comparison line is rendered below the big number.
+
+| Property | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `comparison.field` | string | yes | — | Measure field name for the comparison value |
+| `comparison.mode` | enum | no | `delta_percent` | `delta_percent`, `delta_absolute`, or `value` |
+| `comparison.format` | string | no | per mode | Override format for the comparison display |
+| `comparison.label` | string | no | — | Text label appended after the comparison value (e.g. `"vs. Prior Month"`) |
+| `comparison.polarity` | enum | no | `up_is_good` | `up_is_good`, `down_is_good`, or `neutral` — controls directional coloring |
+
+### Comparison modes
+
+| Mode | Behavior | Example display |
+|---|---|---|
+| `delta_percent` | `(value - field) / abs(field)` | ▲ 9.1% vs. Prior Month |
+| `delta_absolute` | `value - field` | ▲ $109,091 vs. Prior Month |
+| `value` | Show comparison field as-is | $3,000,000 Target |
+
+### Polarity
+
+| Polarity | Positive delta | Negative delta |
+|---|---|---|
+| `up_is_good` | Green | Red |
+| `down_is_good` | Red | Green |
+| `neutral` | Gray | Gray |
+
+### Validation rules
+
+- `kpi.value` and `comparison.field` must be different fields
+- `kpi.format` must be a non-empty string
+- If `kpi` is set alongside `cols`/`rows`/`marks`, a warning is emitted (the shelf properties are ignored)
+- Filters work normally alongside `kpi`
+
+---
+
+## Not yet supported
+
+All currently planned features are supported. See the DSL version history below for what shipped in each version.
 
 ---
 
@@ -777,7 +870,8 @@ kpi:
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.5.2** | Current | Shared axis hiding: stacked panels hide repeating shared axes by default. New `shared_axis` property on measure entries. |
+| **0.6.0** | Current | KPI block schema: new `kpi` top-level property with `value`, `format`, `title`, `spacing`, and `comparison` sub-block. Replaces placeholder `KPIConfig`. |
+| **0.5.2** | Previous | Shared axis hiding: stacked panels hide repeating shared axes by default. New `shared_axis` property on measure entries. |
 | **0.5.1** | Previous | Stacked layers: multi-entry shelves with mixed layered and standalone entries compile to `vconcat`/`hconcat`. |
 | **0.5.0** | Previous | Layer compilation (dual/triple axis): single-entry `layer` specs compile to Vega-Lite `layer` arrays with encoding inheritance, opacity merging, and axis scale resolution. Multi-entry layered shelves remain deferred. |
 | **0.4.0** | Previous | Unified `theme.yaml` with `chart` + `layout` sections, `--theme` CLI flag, partial theme overrides. |

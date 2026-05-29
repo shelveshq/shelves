@@ -1,0 +1,13 @@
+sheet: "Revenue"
+data: orders
+kpi:
+  value: revenue
+  format: "$,.0f"
+  title: "Monthly Revenue"
+  spacing: 8
+  comparison:
+    field: cost
+    mode: delta_percent
+    format: ".1%"
+    label: "vs. Prior Month"
+    polarity: up_is_good

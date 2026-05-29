@@ -50,6 +50,23 @@ chart:
   rect:
     cornerRadius: 2
   padding: 16
+  kpi:
+    title:
+      fontSize: 13
+      fontWeight: 500
+      color: "#666666"
+    value:
+      fontSize: 36
+      fontWeight: 600
+      color: "#1a1a1a"
+    comparison:
+      fontSize: 12
+      fontWeight: 400
+    semantic:
+      positive: "#16A34A"
+      negative: "#DC2626"
+      neutral: "#6B7280"
+    spacing: 4
 
 layout:
   text:

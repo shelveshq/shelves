@@ -1,0 +1,5 @@
+sheet: "Total Revenue"
+data: orders
+kpi:
+  value: revenue
+  format: "$,.0f"
