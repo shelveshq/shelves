@@ -24,6 +24,15 @@ class ChartTheme(BaseModel):
     axis: dict = Field(default_factory=dict)
     legend: dict = Field(default_factory=dict)
     range: dict = Field(default_factory=dict)
+    kpi: dict = Field(
+        default_factory=lambda: {
+            "title": {"fontSize": 13, "fontWeight": 500, "color": "#666666"},
+            "value": {"fontSize": 36, "fontWeight": 600, "color": "#1a1a1a"},
+            "comparison": {"fontSize": 12, "fontWeight": 400},
+            "semantic": {"positive": "#16A34A", "negative": "#DC2626", "neutral": "#6B7280"},
+            "spacing": 4,
+        }
+    )
 
 
 class LayoutTextColors(BaseModel):

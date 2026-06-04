@@ -120,7 +120,7 @@ def _collect_chart_fields(spec: ChartSpec) -> set[str]:
       - facet (RowColumnFacet.row, RowColumnFacet.column, WrapFacet.field)
       - sort (FieldSort.field — but NOT AxisSort, which references an axis not a field)
       - filters (ShelfFilter.field)
-      - kpi (KPIConfig.measure, KPIComparison.measure)
+      - kpi (KPIBlock.value, KPIComparison.field)
 
     Tooltip disaggregation warning:
       Tooltip fields not already referenced by other chart properties are still

@@ -22,6 +22,7 @@ from shelves.models.resolver import ModelResolver
 from shelves.schema.chart_schema import ChartSpec
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.translator.facet import apply_facet
+from shelves.translator.patterns.kpi import compile_kpi
 from shelves.translator.patterns.single import compile_single
 from shelves.translator.patterns.stacked import compile_stacked
 
@@ -58,6 +59,11 @@ def translate_chart(
     if resolver is None:
         model = load_model(spec.data, models_dir=models_dir)
         resolver = ModelResolver(model)
+
+    if spec.kpi is not None:
+        top_level = compile_kpi(spec, resolver)
+        top_level["$schema"] = VEGA_LITE_SCHEMA
+        return top_level
 
     inner = None
     for predicate, compiler in PATTERN_COMPILERS:
