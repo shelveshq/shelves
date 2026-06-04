@@ -774,6 +774,41 @@ kpi:
     polarity: up_is_good
 ```
 
+### KPI with comparison (absolute delta, cost metric)
+
+```yaml
+sheet: "Operating Cost"
+data: orders
+kpi:
+  value: cost
+  format: "$,.0f"
+  comparison:
+    field: revenue
+    mode: delta_absolute
+    label: "vs. Revenue"
+    polarity: down_is_good
+```
+
+Shows the absolute difference between cost and revenue. `down_is_good` inverts the color logic: a negative delta (cost below revenue) is green.
+
+### KPI with target value
+
+```yaml
+sheet: "Q1 Revenue"
+data: orders
+kpi:
+  value: revenue
+  format: "$,.0f"
+  comparison:
+    field: cost
+    mode: value
+    format: "$,.0f"
+    label: "Cost Basis"
+    polarity: neutral
+```
+
+Displays the comparison field as-is with a label. No delta computation, no ▲/▼ indicator. Always uses neutral (gray) color.
+
 ---
 
 ## Dashboards (Layout DSL)
