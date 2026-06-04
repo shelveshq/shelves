@@ -1,0 +1,6 @@
+sheet: "Revenue Sheet"
+data: orders
+kpi:
+  value: revenue
+  format: "$,.0f"
+  title: "Monthly Revenue"

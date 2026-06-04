@@ -1,0 +1,6 @@
+sheet: "Revenue"
+data: orders
+kpi:
+  value: revenue
+  format: "$,.0f"
+  spacing: 12

@@ -1,0 +1,10 @@
+sheet: "US Revenue"
+data: orders
+filters:
+  - field: country
+    operator: eq
+    value: "US"
+kpi:
+  value: revenue
+  format: "$,.0f"
+  title: "US Revenue"
