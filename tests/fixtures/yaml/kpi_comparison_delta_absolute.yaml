@@ -1,0 +1,10 @@
+sheet: "Operating Cost"
+data: orders
+kpi:
+  value: cost
+  format: "$,.0f"
+  comparison:
+    field: revenue
+    mode: delta_absolute
+    label: "vs. Revenue"
+    polarity: down_is_good

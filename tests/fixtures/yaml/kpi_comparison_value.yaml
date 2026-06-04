@@ -1,0 +1,11 @@
+sheet: "Q1 Revenue"
+data: orders
+kpi:
+  value: revenue
+  format: "$,.0f"
+  comparison:
+    field: cost
+    mode: value
+    format: "$,.0f"
+    label: "Cost Basis"
+    polarity: neutral
