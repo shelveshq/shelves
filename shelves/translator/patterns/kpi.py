@@ -1,4 +1,8 @@
-"""KPI / Big Number Pattern Compiler"""
+"""KPI / Big Number Pattern Compiler
+
+Typography tokens are injected via the ``kpi_tokens`` parameter — this module
+imports nothing from ``shelves.theme``.
+"""
 
 from __future__ import annotations
 
@@ -6,15 +10,9 @@ from typing import Any
 
 from shelves.schema.chart_schema import ChartSpec, KPIComparison
 from shelves.schema.field_types import FieldTypeResolver
-from shelves.theme.merge import load_theme
 from shelves.translator.filters import build_transforms
 
 VegaLiteSpec = dict[str, Any]
-
-
-def _load_kpi_theme() -> dict[str, Any]:
-    theme = load_theme()
-    return theme.chart.kpi
 
 
 def _text_mark(text_enc: dict, *, font_size, font_weight, color: str | None) -> dict:
@@ -127,7 +125,11 @@ def _build_comparison(
     return transforms, comp_row
 
 
-def compile_kpi(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpec:
+def compile_kpi(
+    spec: ChartSpec,
+    resolver: FieldTypeResolver,
+    kpi_tokens: dict[str, Any],
+) -> VegaLiteSpec:
     kpi = spec.kpi
     assert kpi is not None, "compile_kpi requires spec.kpi (routed by translate_chart)"
 
@@ -142,21 +144,20 @@ def compile_kpi(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpec:
             f" in the data model for spec {spec.sheet!r}."
         )
 
-    theme_kpi = _load_kpi_theme()
     title_text = kpi.title or spec.sheet
-    spacing = kpi.spacing if kpi.spacing is not None else theme_kpi["spacing"]
+    spacing = kpi.spacing if kpi.spacing is not None else kpi_tokens["spacing"]
 
     title_row = _text_mark(
         {"value": title_text},
-        font_size=theme_kpi["title"]["fontSize"],
-        font_weight=theme_kpi["title"]["fontWeight"],
-        color=theme_kpi["title"]["color"],
+        font_size=kpi_tokens["title"]["fontSize"],
+        font_weight=kpi_tokens["title"]["fontWeight"],
+        color=kpi_tokens["title"]["color"],
     )
     value_row = _text_mark(
         {"field": kpi.value, "type": "quantitative", "format": kpi.format},
-        font_size=theme_kpi["value"]["fontSize"],
-        font_weight=theme_kpi["value"]["fontWeight"],
-        color=theme_kpi["value"]["color"],
+        font_size=kpi_tokens["value"]["fontSize"],
+        font_weight=kpi_tokens["value"]["fontWeight"],
+        color=kpi_tokens["value"]["color"],
     )
 
     rows = [title_row, value_row]
@@ -164,7 +165,7 @@ def compile_kpi(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpec:
 
     if kpi.comparison is not None:
         comp_transforms, comp_row = _build_comparison(
-            kpi.value, kpi.comparison, kpi.format, theme_kpi
+            kpi.value, kpi.comparison, kpi.format, kpi_tokens
         )
         rows.append(comp_row)
 

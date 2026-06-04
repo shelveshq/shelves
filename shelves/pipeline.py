@@ -51,11 +51,14 @@ def compile_chart(
         FileNotFoundError: If theme_path doesn't exist.
     """
     spec = parse_chart(yaml_text)
-    vl_spec = translate_chart(spec, models_dir=models_dir)
+
+    if not no_theme and theme is None:
+        theme = load_theme(theme_path)
+
+    kpi_tokens = theme.chart.kpi if theme is not None else None
+    vl_spec = translate_chart(spec, models_dir=models_dir, kpi_tokens=kpi_tokens)
 
     if not no_theme:
-        if theme is None:
-            theme = load_theme(theme_path)
         vl_spec = merge_theme(vl_spec, theme)
 
     return vl_spec, spec
