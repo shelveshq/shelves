@@ -55,7 +55,7 @@ def compile_chart(
     if not no_theme and theme is None:
         theme = load_theme(theme_path)
 
-    kpi_tokens = theme.chart.kpi if theme is not None else None
+    kpi_tokens = theme.chart.kpi if theme is not None and not no_theme else None
     vl_spec = translate_chart(spec, models_dir=models_dir, kpi_tokens=kpi_tokens)
 
     if not no_theme:

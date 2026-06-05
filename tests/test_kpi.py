@@ -474,6 +474,24 @@ class TestKPIInjection:
         assert vl["vconcat"][0]["mark"]["fontSize"] == 13
         assert vl["vconcat"][1]["mark"]["color"] == "#1a1a1a"
 
+    def test_no_theme_suppresses_kpi_tokens(self, tmp_path):
+        theme_file = tmp_path / "custom.yaml"
+        theme_file.write_text(
+            textwrap.dedent("""
+            chart:
+              kpi:
+                value:
+                  fontSize: 64
+        """)
+        )
+        yaml_text = (YAML_DIR / "kpi_simple.yaml").read_text()
+        from shelves.theme.merge import load_theme
+
+        custom_theme = load_theme(theme_file)
+        vl, _ = compile_chart(yaml_text, theme=custom_theme, no_theme=True, models_dir=MODELS_DIR)
+
+        assert vl["vconcat"][1]["mark"]["fontSize"] == 36
+
     def test_load_kpi_tokens_default(self):
         tokens = load_kpi_tokens()
         assert tokens["title"]["fontSize"] == 13
