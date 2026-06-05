@@ -5,11 +5,18 @@ Tests for the KPI translator: simple KPI (title + value, 2-row vconcat)
 and comparison block (title + value + comparison, 3-row vconcat).
 """
 
+import textwrap
+
 import pytest
 
+from shelves.models.loader import load_model
+from shelves.models.resolver import ModelResolver
+from shelves.pipeline import compile_chart
 from shelves.schema.chart_schema import parse_chart
+from shelves.theme.kpi_tokens import load_kpi_tokens
+from shelves.translator.patterns.kpi import compile_kpi
 from shelves.translator.translate import translate_chart
-from tests.conftest import MODELS_DIR, compile_fixture
+from tests.conftest import MODELS_DIR, YAML_DIR, compile_fixture, load_yaml
 
 
 class TestSimpleKPI:
@@ -424,3 +431,70 @@ kpi:
         spec = parse_chart(yaml_str)
         with pytest.raises(ValueError, match="nonexistent_field"):
             translate_chart(spec, models_dir=MODELS_DIR)
+
+
+FAKE_TOKENS = {
+    "title": {"fontSize": 99, "fontWeight": 100, "color": "#abcdef"},
+    "value": {"fontSize": 77, "fontWeight": 200, "color": "#123456"},
+    "comparison": {"fontSize": 12, "fontWeight": 400},
+    "semantic": {"positive": "#0f0", "negative": "#f00", "neutral": "#999"},
+    "spacing": 21,
+}
+
+
+class TestKPIInjection:
+    def test_compile_kpi_uses_injected_tokens(self):
+        spec = parse_chart(load_yaml("kpi_simple.yaml"))
+        resolver = ModelResolver(load_model("orders", models_dir=MODELS_DIR))
+
+        vl = compile_kpi(spec, resolver, FAKE_TOKENS)
+
+        assert vl["vconcat"][0]["mark"]["fontSize"] == 99
+        assert vl["vconcat"][0]["mark"]["color"] == "#abcdef"
+        assert vl["vconcat"][1]["mark"]["fontSize"] == 77
+        assert vl["vconcat"][1]["mark"]["color"] == "#123456"
+        assert vl["spacing"] == 21
+        assert vl["config"]["concat"]["spacing"] == 21
+
+    def test_custom_theme_kpi_typography(self, tmp_path):
+        theme_file = tmp_path / "custom.yaml"
+        theme_file.write_text(
+            textwrap.dedent("""
+            chart:
+              kpi:
+                value:
+                  fontSize: 64
+        """)
+        )
+        yaml_text = (YAML_DIR / "kpi_simple.yaml").read_text()
+
+        vl, _ = compile_chart(yaml_text, theme_path=theme_file, models_dir=MODELS_DIR)
+
+        assert vl["vconcat"][1]["mark"]["fontSize"] == 64
+        assert vl["vconcat"][0]["mark"]["fontSize"] == 13
+        assert vl["vconcat"][1]["mark"]["color"] == "#1a1a1a"
+
+    def test_no_theme_suppresses_kpi_tokens(self, tmp_path):
+        theme_file = tmp_path / "custom.yaml"
+        theme_file.write_text(
+            textwrap.dedent("""
+            chart:
+              kpi:
+                value:
+                  fontSize: 64
+        """)
+        )
+        yaml_text = (YAML_DIR / "kpi_simple.yaml").read_text()
+        from shelves.theme.merge import load_theme
+
+        custom_theme = load_theme(theme_file)
+        vl, _ = compile_chart(yaml_text, theme=custom_theme, no_theme=True, models_dir=MODELS_DIR)
+
+        assert vl["vconcat"][1]["mark"]["fontSize"] == 36
+
+    def test_load_kpi_tokens_default(self):
+        tokens = load_kpi_tokens()
+        assert tokens["title"]["fontSize"] == 13
+        assert tokens["value"]["fontSize"] == 36
+        assert tokens["spacing"] == 4
+        assert tokens["semantic"]["positive"] == "#16A34A"

@@ -54,14 +54,25 @@ def translate_chart(
     spec: ChartSpec,
     models_dir: str | Path | None = None,
     resolver: FieldTypeResolver | None = None,
+    kpi_tokens: dict | None = None,
 ) -> VegaLiteSpec:
-    """Compile a validated ChartSpec into a Vega-Lite spec dict."""
+    """Compile a validated ChartSpec into a Vega-Lite spec dict.
+
+    kpi_tokens: the ``kpi`` theme token dict, injected by the caller (the
+    pipeline passes the loaded theme's tokens so custom themes are honored).
+    When None and the spec is a KPI, the built-in default tokens are loaded
+    lazily.
+    """
     if resolver is None:
         model = load_model(spec.data, models_dir=models_dir)
         resolver = ModelResolver(model)
 
     if spec.kpi is not None:
-        top_level = compile_kpi(spec, resolver)
+        if kpi_tokens is None:
+            from shelves.theme.kpi_tokens import load_kpi_tokens
+
+            kpi_tokens = load_kpi_tokens()
+        top_level = compile_kpi(spec, resolver, kpi_tokens)
         top_level["$schema"] = VEGA_LITE_SCHEMA
         return top_level
 
