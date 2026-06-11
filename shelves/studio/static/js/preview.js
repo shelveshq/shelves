@@ -92,7 +92,14 @@ export function showErrorOverlay(errors) {
 
   const count = errors.length;
   const items = errors
-    .map(e => `<li class="error-item">${String(e).replace(/</g, '&lt;')}</li>`)
+    .map(e => {
+      if (typeof e === 'object' && e.msg) {
+        const loc = e.loc ? e.loc.join('.') : '';
+        const pos = e.line ? ` (line ${e.line})` : '';
+        return `<li class="error-item">${loc}${pos}: ${String(e.msg).replace(/</g, '&lt;')}</li>`;
+      }
+      return `<li class="error-item">${String(e).replace(/</g, '&lt;')}</li>`;
+    })
     .join('');
 
   elErrorOverlay.innerHTML = `

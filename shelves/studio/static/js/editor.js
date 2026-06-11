@@ -35,6 +35,7 @@ export async function initEditor() {
 
   const settings = loadSettings();
   const monaco = await loader.init();
+  window._shelvesMonaco = monaco;
 
   let schema = null;
   try {
@@ -106,7 +107,56 @@ export async function initEditor() {
 
   initResizeHandle();
 
+  document.addEventListener('shelves:compile-result', (e) => {
+    applyCompileMarkers(e.detail);
+  });
+
   window.shelvesStudio = { openFile };
+}
+
+// ─── Compile Markers ──────────────────────────────────────
+export function applyCompileMarkers(result) {
+  if (!state.editor) return;
+  const model = state.editor.getModel();
+  if (!model) return;
+
+  const monaco = window._shelvesMonaco;
+  const markers = [];
+
+  for (const err of (result.errors ?? [])) {
+    if (typeof err === 'object' && err.line != null) {
+      markers.push({
+        severity: monaco.MarkerSeverity.Error,
+        message: err.msg,
+        startLineNumber: err.line,
+        startColumn: err.col ?? 1,
+        endLineNumber: err.line,
+        endColumn: err.col != null ? err.col + 1 : model.getLineMaxColumn(err.line),
+      });
+    } else if (typeof err === 'object' && err.msg) {
+      markers.push({
+        severity: monaco.MarkerSeverity.Error,
+        message: err.msg,
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: model.getLineMaxColumn(1),
+      });
+    }
+  }
+
+  for (const warn of (result.warnings ?? [])) {
+    markers.push({
+      severity: monaco.MarkerSeverity.Warning,
+      message: typeof warn === 'string' ? warn : String(warn),
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: model.getLineMaxColumn(1),
+    });
+  }
+
+  monaco.editor.setModelMarkers(model, 'shelves-compile', markers);
 }
 
 // ─── Compile ───────────────────────────────────────────────
@@ -119,6 +169,7 @@ export async function compileCurrentContent() {
       detail: { vega_lite_spec: null, errors: [], warnings: [], path: state.currentFile?.path ?? null },
     }));
     updateStatusBar([]);
+    applyCompileMarkers({ errors: [], warnings: [] });
     return;
   }
   try {
