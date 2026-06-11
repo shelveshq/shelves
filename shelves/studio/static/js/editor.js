@@ -35,6 +35,7 @@ export async function initEditor() {
 
   const settings = loadSettings();
   const monaco = await loader.init();
+  window._shelvesMonaco = monaco;
 
   let schema = null;
   try {
@@ -106,7 +107,88 @@ export async function initEditor() {
 
   initResizeHandle();
 
+  document.addEventListener('shelves:compile-result', (e) => {
+    // Ignore broadcasts for a file other than the one currently open —
+    // otherwise a watcher result for another file paints its markers
+    // (at its line numbers) onto the active editor.
+    const resultPath = e.detail.path ?? null;
+    if (resultPath && state.currentFile && resultPath !== state.currentFile.path) return;
+    applyCompileMarkers(e.detail);
+    syncMarkerCounts();
+    updateStatusBar();
+  });
+
+  monaco.editor.onDidChangeMarkers((uris) => {
+    const model = state.editor?.getModel();
+    if (!model) return;
+    if (!uris.some(u => u.toString() === model.uri.toString())) return;
+    if (state.compiling) return;
+    syncMarkerCounts();
+    updateStatusBar();
+  });
+
   window.shelvesStudio = { openFile };
+}
+
+// ─── Compile Markers ──────────────────────────────────────
+export function applyCompileMarkers(result) {
+  if (!state.editor) return;
+  const model = state.editor.getModel();
+  if (!model) return;
+
+  const monaco = window._shelvesMonaco;
+  const markers = [];
+
+  for (const err of (result.errors ?? [])) {
+    if (typeof err === 'object' && (err.friendly_msg || err.msg)) {
+      const displayLoc = err.display_loc ? err.display_loc.join('.') : '';
+      const body = err.friendly_msg ?? err.msg;
+      const tag = err.source === 'yaml' ? '[YAML] ' : err.source === 'dsl' ? '[DSL] ' : '';
+      const msg = displayLoc
+        ? `${tag}${displayLoc} — ${body}`
+        : `${tag}${body}`;
+      const line = err.line ?? 1;
+      markers.push({
+        severity: monaco.MarkerSeverity.Error,
+        message: msg,
+        startLineNumber: line,
+        startColumn: err.col ?? 1,
+        endLineNumber: line,
+        endColumn: err.col != null ? err.col + 1 : model.getLineMaxColumn(line),
+      });
+    }
+  }
+
+  for (const warn of (result.warnings ?? [])) {
+    markers.push({
+      severity: monaco.MarkerSeverity.Warning,
+      message: typeof warn === 'string' ? warn : String(warn),
+      startLineNumber: 1,
+      startColumn: 1,
+      endLineNumber: 1,
+      endColumn: model.getLineMaxColumn(1),
+    });
+  }
+
+  monaco.editor.setModelMarkers(model, 'shelves-compile', markers);
+}
+
+// ─── Marker Counts ────────────────────────────────────────
+function syncMarkerCounts() {
+  const monaco = window._shelvesMonaco;
+  const model = state.editor?.getModel();
+  if (!monaco || !model) {
+    state.markerErrors = 0;
+    state.markerWarnings = 0;
+    return;
+  }
+  const all = monaco.editor.getModelMarkers({ resource: model.uri });
+  state.markerErrors = 0;
+  state.markerWarnings = 0;
+  for (const m of all) {
+    if (m.severity === monaco.MarkerSeverity.Error) state.markerErrors++;
+    else if (m.severity === monaco.MarkerSeverity.Warning) state.markerWarnings++;
+  }
 }
 
 // ─── Compile ───────────────────────────────────────────────
@@ -118,7 +200,6 @@ export async function compileCurrentContent() {
     document.dispatchEvent(new CustomEvent('shelves:compile-result', {
       detail: { vega_lite_spec: null, errors: [], warnings: [], path: state.currentFile?.path ?? null },
     }));
-    updateStatusBar([]);
     return;
   }
   try {
@@ -132,7 +213,6 @@ export async function compileCurrentContent() {
     document.dispatchEvent(new CustomEvent('shelves:compile-result', {
       detail: { ...result, path: state.currentFile?.path ?? null },
     }));
-    updateStatusBar(result.errors ?? [], result.warnings ?? []);
   } catch (e) {
     if (seq !== compileSeq) return;
     state.compiling = false;

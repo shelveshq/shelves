@@ -245,6 +245,45 @@ class TestDefaultThemeInCompile:
         asyncio.run(_test())
 
 
+# ─── Watcher broadcasts structured YAML syntax errors ────────────
+
+
+class TestWatcherYamlSyntaxError:
+    """A YAML syntax error on the file-watch path must broadcast a
+    structured error dict (so the editor can place an inline marker),
+    matching the /compile route — not a bare string."""
+
+    def test_malformed_yaml_broadcasts_structured_error(self, tmp_path):
+        async def _test():
+            chart_path = tmp_path / "bad.yaml"
+            chart_path.write_text("sheet: test\n  bad: indent\n")
+
+            captured: list[dict] = []
+
+            class _Capture:
+                async def broadcast(self, msg: dict) -> None:
+                    captured.append(msg)
+
+            await _compile_file_and_broadcast(
+                chart_path,
+                "bad.yaml",
+                _Capture(),  # type: ignore[arg-type]
+                models_dir=MODELS_DIR,
+                theme_path=None,
+            )
+
+            assert captured, "No broadcast emitted"
+            errors = captured[-1]["errors"]
+            assert len(errors) == 1
+            err = errors[0]
+            assert isinstance(err, dict), f"Expected structured error, got {err!r}"
+            assert err["source"] == "yaml"
+            assert err["type"] == "yaml_syntax"
+            assert err["line"] == 2
+
+        asyncio.run(_test())
+
+
 # ─── Dashboard hot-reload project root resolution ────────────────
 
 

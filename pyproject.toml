@@ -26,6 +26,7 @@ dependencies = [
     "watchfiles>=1.0",
     "websockets>=14.0",
     "watchdog>=4.0",
+    "ruamel.yaml>=0.18",
 ]
 
 [project.optional-dependencies]
