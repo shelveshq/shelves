@@ -93,10 +93,16 @@ export function showErrorOverlay(errors) {
   const count = errors.length;
   const items = errors
     .map(e => {
-      if (typeof e === 'object' && e.msg) {
-        const loc = e.loc ? e.loc.join('.') : '';
+      if (typeof e === 'object' && (e.friendly_msg || e.msg)) {
+        const loc = e.display_loc ? e.display_loc.join('.') : '';
+        const body = String(e.friendly_msg ?? e.msg).replace(/</g, '&lt;');
         const pos = e.line ? ` (line ${e.line})` : '';
-        return `<li class="error-item">${loc}${pos}: ${String(e.msg).replace(/</g, '&lt;')}</li>`;
+        const badge = e.source === 'yaml'
+          ? '<span style="color:#BA7517;font-weight:600">YAML</span> '
+          : e.source === 'dsl'
+          ? '<span style="color:#E24B4A;font-weight:600">DSL</span> '
+          : '';
+        return `<li class="error-item">${badge}${loc}${pos}: ${body}</li>`;
       }
       return `<li class="error-item">${String(e).replace(/</g, '&lt;')}</li>`;
     })

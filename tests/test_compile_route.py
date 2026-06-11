@@ -88,7 +88,7 @@ class TestCompileRoute:
         assert err["line"] == 6
         assert err["col"] == 3
 
-    def test_non_pydantic_error_plain_string(self, tmp_path: Path):
+    def test_non_pydantic_error_structured(self, tmp_path: Path):
         client = _make_client(tmp_path)
         yaml_body = "sheet: [\ninvalid yaml"
         resp = client.post("/compile", content=yaml_body)
@@ -96,7 +96,9 @@ class TestCompileRoute:
 
         assert data["vega_lite_spec"] is None
         assert len(data["errors"]) >= 1
-        assert isinstance(data["errors"][0], str)
+        err = data["errors"][0]
+        assert isinstance(err, dict)
+        assert err["source"] == "yaml"
 
     def test_empty_body(self, tmp_path: Path):
         client = _make_client(tmp_path)
@@ -108,3 +110,118 @@ class TestCompileRoute:
             "errors": ["Empty YAML body"],
             "warnings": [],
         }
+
+
+class TestFriendlyErrors:
+    """Tests for friendly error messages and source tagging (KAN-266-B)."""
+
+    def test_dsl_error_friendly_msg_literal(self, tmp_path: Path):
+        client = _make_client(tmp_path)
+        yaml_body = "sheet: test\ndata: orders\ncols: week\nrows: revenue\nmarks: 12345\n"
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        errs = [e for e in data["errors"] if e["type"] == "literal_error"]
+        assert len(errs) >= 1
+        err = errs[0]
+        assert err["source"] == "dsl"
+        assert err["friendly_msg"].startswith("Invalid value")
+        assert "bar" in err["friendly_msg"]
+
+    def test_dsl_error_friendly_msg_missing(self, tmp_path: Path):
+        client = _make_client(tmp_path)
+        yaml_body = "sheet: test\ncols: week\nrows: revenue\nmarks: bar\n"
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        err = data["errors"][0]
+        assert err["source"] == "dsl"
+        assert err["type"] == "missing"
+        assert err["friendly_msg"] == "Required field"
+
+    def test_dsl_error_friendly_msg_model_type(self, tmp_path: Path):
+        client = _make_client(tmp_path)
+        yaml_body = "sheet: test\ndata: orders\ncols: week\nrows: revenue\nmarks: 12345\n"
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        errs = [e for e in data["errors"] if e["type"] == "model_type"]
+        assert len(errs) >= 1
+        err = errs[0]
+        assert err["source"] == "dsl"
+        assert "Expected" in err["friendly_msg"]
+        assert "MarkObject" not in err["friendly_msg"]
+
+    def test_dsl_error_clean_loc(self, tmp_path: Path):
+        client = _make_client(tmp_path)
+        yaml_body = "sheet: test\ndata: orders\ncols: week\nrows: revenue\nmarks: 12345\n"
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        for err in data["errors"]:
+            assert "display_loc" in err
+            for seg in err["display_loc"]:
+                if isinstance(seg, str):
+                    assert not seg.startswith("literal[")
+                    assert not (seg[0:1].isupper() and seg.isidentifier())
+                    assert not seg.startswith("list[")
+
+        literal_err = next(e for e in data["errors"] if e["type"] == "literal_error")
+        assert literal_err["display_loc"] == ["marks"]
+
+    def test_yaml_error_structured(self, tmp_path: Path):
+        client = _make_client(tmp_path)
+        yaml_body = "sheet: [\ninvalid yaml"
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        assert len(data["errors"]) == 1
+        err = data["errors"][0]
+        assert isinstance(err, dict)
+        assert err["source"] == "yaml"
+        assert err["type"] == "yaml_syntax"
+        assert err["line"] == 2
+        assert err["col"] is not None
+        assert "friendly_msg" in err
+        assert "msg" in err
+
+    def test_yaml_error_friendly_msg(self, tmp_path: Path):
+        client = _make_client(tmp_path)
+        yaml_body = "sheet: [\ninvalid yaml"
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        err = data["errors"][0]
+        assert "expected" in err["friendly_msg"].lower() or "Expected" in err["friendly_msg"]
+        assert "\n" not in err["friendly_msg"]
+
+    def test_yaml_mapping_error(self, tmp_path: Path):
+        client = _make_client(tmp_path)
+        yaml_body = "sheet: test\n  bad: indent\n"
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        assert len(data["errors"]) >= 1
+        err = data["errors"][0]
+        assert isinstance(err, dict)
+        assert err["source"] == "yaml"
+        assert err["line"] == 2
+        assert "friendly_msg" in err
+
+    def test_runtime_error_structured(self, tmp_path: Path):
+        models = tmp_path / "models"
+        models.mkdir(exist_ok=True)
+        app = create_app(project_dir=tmp_path, models_dir=models)
+        client = TestClient(app, raise_server_exceptions=False)
+        yaml_body = "sheet: test\ndata: nonexistent_model\ncols: x\nrows: y\nmarks: bar\n"
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        assert data["vega_lite_spec"] is None
+        assert len(data["errors"]) >= 1
+        err = data["errors"][0]
+        assert isinstance(err, dict)
+        assert err["source"] == "runtime"
+        assert err["type"] == "runtime_error"
+        assert err["friendly_msg"] == err["msg"]
+        assert err["line"] is None

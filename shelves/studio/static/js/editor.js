@@ -135,9 +135,13 @@ export function applyCompileMarkers(result) {
   const markers = [];
 
   for (const err of (result.errors ?? [])) {
-    if (typeof err === 'object' && err.msg) {
-      const loc = err.loc ? err.loc.join('.') : '';
-      const msg = loc ? `${loc}: ${err.msg}` : err.msg;
+    if (typeof err === 'object' && (err.friendly_msg || err.msg)) {
+      const displayLoc = err.display_loc ? err.display_loc.join('.') : '';
+      const body = err.friendly_msg ?? err.msg;
+      const tag = err.source === 'yaml' ? '[YAML] ' : err.source === 'dsl' ? '[DSL] ' : '';
+      const msg = displayLoc
+        ? `${tag}${displayLoc} — ${body}`
+        : `${tag}${body}`;
       const line = err.line ?? 1;
       markers.push({
         severity: monaco.MarkerSeverity.Error,
