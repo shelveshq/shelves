@@ -68,6 +68,7 @@ async def compile_file_and_broadcast(
 ) -> None:
     """Read a YAML file, compile it, and broadcast the result."""
     import yaml as _yaml
+    from pydantic import ValidationError as _ValidationError
 
     from shelves.pipeline import compile_chart, resolve_model_data
 
@@ -127,6 +128,18 @@ async def compile_file_and_broadcast(
                 "vega_lite_spec": vl_spec,
                 "errors": [],
                 "warnings": warnings,
+            }
+        )
+    except _ValidationError as e:
+        from shelves.studio.routes.compile import _format_validation_errors
+
+        await manager.broadcast(
+            {
+                "type": "compile_result",
+                "path": rel,
+                "vega_lite_spec": None,
+                "errors": _format_validation_errors(e, content),
+                "warnings": [],
             }
         )
     except Exception as e:

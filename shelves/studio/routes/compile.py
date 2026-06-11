@@ -4,6 +4,30 @@ from pathlib import Path
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+
+from shelves.studio.yaml_position import yaml_loc_to_position
+
+
+def _format_validation_errors(
+    exc: ValidationError,
+    yaml_text: str,
+) -> list[dict]:
+    """Convert a Pydantic ValidationError into structured error dicts with line/col."""
+    result = []
+    for err in exc.errors():
+        loc = err["loc"]
+        pos = yaml_loc_to_position(yaml_text, loc)
+        result.append(
+            {
+                "loc": list(loc),
+                "msg": err["msg"],
+                "type": err["type"],
+                "line": pos[0] if pos else None,
+                "col": pos[1] if pos else None,
+            }
+        )
+    return result
 
 
 async def compile_yaml(request: Request) -> JSONResponse:
@@ -33,6 +57,14 @@ async def compile_yaml(request: Request) -> JSONResponse:
             yaml_body,
             theme_path=theme_path,
             models_dir=models_dir if models_dir.exists() else None,
+        )
+    except ValidationError as e:
+        return JSONResponse(
+            {
+                "vega_lite_spec": None,
+                "errors": _format_validation_errors(e, yaml_body),
+                "warnings": [],
+            }
         )
     except Exception as e:
         return JSONResponse({"vega_lite_spec": None, "errors": [str(e)], "warnings": []})
