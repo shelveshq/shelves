@@ -8,7 +8,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from shelves.studio.yaml_position import yaml_loc_to_position
+from shelves.studio.yaml_position import resolve_locs
 
 _FRIENDLY_MESSAGES: dict[str, str | Callable[[str], str]] = {
     "missing": "Required field",
@@ -37,20 +37,6 @@ def _friendly_msg(err_type: str, raw_msg: str) -> str:
             return f"Invalid value. Expected: {values}"
 
     return raw_msg
-
-
-def _clean_loc(loc: list) -> list:
-    cleaned = []
-    for seg in loc:
-        if isinstance(seg, str):
-            if seg.startswith("literal["):
-                continue
-            if seg[0:1].isupper() and seg.isidentifier():
-                continue
-            if re.match(r"^(list|dict|set)\[", seg):
-                continue
-        cleaned.append(seg)
-    return cleaned
 
 
 def _format_yaml_error(exc: Exception) -> dict:
@@ -86,14 +72,15 @@ def _format_validation_errors(
     yaml_text: str,
 ) -> list[dict]:
     """Convert a Pydantic ValidationError into structured error dicts with line/col."""
+    errors = exc.errors()
+    resolved = resolve_locs(yaml_text, [err["loc"] for err in errors])
     result = []
-    for err in exc.errors():
-        loc = err["loc"]
-        pos = yaml_loc_to_position(yaml_text, loc)
+    for err, info in zip(errors, resolved, strict=True):
+        pos = info["position"]
         result.append(
             {
-                "loc": list(loc),
-                "display_loc": _clean_loc(list(loc)),
+                "loc": list(err["loc"]),
+                "display_loc": info["display_loc"],
                 "msg": err["msg"],
                 "friendly_msg": _friendly_msg(err["type"], err["msg"]),
                 "source": "dsl",

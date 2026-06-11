@@ -142,6 +142,18 @@ async def compile_file_and_broadcast(
                 "warnings": [],
             }
         )
+    except _yaml.YAMLError as e:
+        from shelves.studio.routes.compile import _format_yaml_error
+
+        await manager.broadcast(
+            {
+                "type": "compile_result",
+                "path": rel,
+                "vega_lite_spec": None,
+                "errors": [_format_yaml_error(e)],
+                "warnings": [],
+            }
+        )
     except Exception as e:
         await manager.broadcast(
             {

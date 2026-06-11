@@ -108,6 +108,11 @@ export async function initEditor() {
   initResizeHandle();
 
   document.addEventListener('shelves:compile-result', (e) => {
+    // Ignore broadcasts for a file other than the one currently open —
+    // otherwise a watcher result for another file paints its markers
+    // (at its line numbers) onto the active editor.
+    const resultPath = e.detail.path ?? null;
+    if (resultPath && state.currentFile && resultPath !== state.currentFile.path) return;
     applyCompileMarkers(e.detail);
     syncMarkerCounts();
     updateStatusBar();
