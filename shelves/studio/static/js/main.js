@@ -32,7 +32,7 @@ function compileDashboardOrChart() {
         path: state.currentFile?.path ?? null,
       },
     }));
-    updateStatusBar([]);
+    updateStatusBar();
     return;
   }
   state.compiling = true;

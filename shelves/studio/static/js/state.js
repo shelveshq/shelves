@@ -9,6 +9,8 @@ export const state = {
   dashboardMode: false,
   lastCompileTimeMs: null,
   compiling: false,
+  markerErrors: 0,
+  markerWarnings: 0,
 };
 
 // ─── Constants ─────────────────────────────────────────────
@@ -18,7 +20,7 @@ export const STORAGE_KEY_SETTINGS = 'shelves-studio-settings';
 export const STORAGE_KEY_PANE_WIDTH = 'shelves-studio-pane-width';
 
 // ─── Status Bar ───────────────────────────────────────────
-export function updateStatusBar(errors, warnings) {
+export function updateStatusBar() {
   const dot = document.querySelector('#statusbar .sh-status-dot');
   const msg = document.querySelector('#statusbar .sh-status-msg');
   if (!dot || !msg) return;
@@ -29,12 +31,19 @@ export function updateStatusBar(errors, warnings) {
     return;
   }
 
-  if (errors && errors.length > 0) {
+  const ec = state.markerErrors ?? 0;
+  const wc = state.markerWarnings ?? 0;
+
+  if (ec > 0 && wc > 0) {
     dot.className = 'sh-status-dot error';
-    msg.textContent = `${errors.length} error${errors.length > 1 ? 's' : ''}`;
-  } else if (warnings && warnings.length > 0) {
+    msg.textContent =
+      `${ec} error${ec !== 1 ? 's' : ''}, ${wc} warning${wc !== 1 ? 's' : ''}`;
+  } else if (ec > 0) {
+    dot.className = 'sh-status-dot error';
+    msg.textContent = `${ec} error${ec !== 1 ? 's' : ''}`;
+  } else if (wc > 0) {
     dot.className = 'sh-status-dot warn';
-    msg.textContent = `${warnings.length} warning${warnings.length > 1 ? 's' : ''}`;
+    msg.textContent = `${wc} warning${wc !== 1 ? 's' : ''}`;
   } else {
     dot.className = 'sh-status-dot';
     const timeStr = state.lastCompileTimeMs != null

@@ -109,6 +109,17 @@ export async function initEditor() {
 
   document.addEventListener('shelves:compile-result', (e) => {
     applyCompileMarkers(e.detail);
+    syncMarkerCounts();
+    updateStatusBar();
+  });
+
+  monaco.editor.onDidChangeMarkers((uris) => {
+    const model = state.editor?.getModel();
+    if (!model) return;
+    if (!uris.some(u => u.toString() === model.uri.toString())) return;
+    if (state.compiling) return;
+    syncMarkerCounts();
+    updateStatusBar();
   });
 
   window.shelvesStudio = { openFile };
@@ -153,6 +164,24 @@ export function applyCompileMarkers(result) {
   monaco.editor.setModelMarkers(model, 'shelves-compile', markers);
 }
 
+// ─── Marker Counts ────────────────────────────────────────
+function syncMarkerCounts() {
+  const monaco = window._shelvesMonaco;
+  const model = state.editor?.getModel();
+  if (!monaco || !model) {
+    state.markerErrors = 0;
+    state.markerWarnings = 0;
+    return;
+  }
+  const all = monaco.editor.getModelMarkers({ resource: model.uri });
+  state.markerErrors = 0;
+  state.markerWarnings = 0;
+  for (const m of all) {
+    if (m.severity === monaco.MarkerSeverity.Error) state.markerErrors++;
+    else if (m.severity === monaco.MarkerSeverity.Warning) state.markerWarnings++;
+  }
+}
+
 // ─── Compile ───────────────────────────────────────────────
 export async function compileCurrentContent() {
   const seq = ++compileSeq;
@@ -162,8 +191,6 @@ export async function compileCurrentContent() {
     document.dispatchEvent(new CustomEvent('shelves:compile-result', {
       detail: { vega_lite_spec: null, errors: [], warnings: [], path: state.currentFile?.path ?? null },
     }));
-    updateStatusBar([]);
-    applyCompileMarkers({ errors: [], warnings: [] });
     return;
   }
   try {
@@ -177,7 +204,6 @@ export async function compileCurrentContent() {
     document.dispatchEvent(new CustomEvent('shelves:compile-result', {
       detail: { ...result, path: state.currentFile?.path ?? null },
     }));
-    updateStatusBar(result.errors ?? [], result.warnings ?? []);
   } catch (e) {
     if (seq !== compileSeq) return;
     state.compiling = false;
