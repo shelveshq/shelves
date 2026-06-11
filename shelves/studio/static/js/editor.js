@@ -124,23 +124,17 @@ export function applyCompileMarkers(result) {
   const markers = [];
 
   for (const err of (result.errors ?? [])) {
-    if (typeof err === 'object' && err.line != null) {
+    if (typeof err === 'object' && err.msg) {
+      const loc = err.loc ? err.loc.join('.') : '';
+      const msg = loc ? `${loc}: ${err.msg}` : err.msg;
+      const line = err.line ?? 1;
       markers.push({
         severity: monaco.MarkerSeverity.Error,
-        message: err.msg,
-        startLineNumber: err.line,
+        message: msg,
+        startLineNumber: line,
         startColumn: err.col ?? 1,
-        endLineNumber: err.line,
-        endColumn: err.col != null ? err.col + 1 : model.getLineMaxColumn(err.line),
-      });
-    } else if (typeof err === 'object' && err.msg) {
-      markers.push({
-        severity: monaco.MarkerSeverity.Error,
-        message: err.msg,
-        startLineNumber: 1,
-        startColumn: 1,
-        endLineNumber: 1,
-        endColumn: model.getLineMaxColumn(1),
+        endLineNumber: line,
+        endColumn: err.col != null ? err.col + 1 : model.getLineMaxColumn(line),
       });
     }
   }
