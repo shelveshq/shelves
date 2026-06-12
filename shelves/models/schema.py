@@ -10,12 +10,17 @@ This is the equivalent of Tableau's Data pane expressed as version-controlled YA
 
 from __future__ import annotations
 
-from typing import Literal, Union
+import re
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 TimeGrain = Literal["day", "week", "month", "quarter", "year"]
 SortOrder = Literal["ascending", "descending"]
+Aggregation = Literal["sum", "count", "avg", "min", "max", "count_distinct"]
+JoinType = Literal["left", "inner"]
+
+_CALC_REF_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
 
 class MeasureDefinition(BaseModel):
@@ -29,19 +34,20 @@ class MeasureDefinition(BaseModel):
     """
 
     label: str = Field(min_length=1)
-    """Human-readable name used for axis titles, legend, and tooltips. e.g. "Revenue"."""
-
     format: str | None = None
-    """D3 format string. Auto-applied to axes, tooltips, and labels. e.g. "$,.0f"."""
-
     description: str | None = None
-    """For documentation and LLM context when generating charts."""
-
     defaultSort: SortOrder | None = None
-    """Applied when this measure is on an axis and no explicit sort is set."""
+    aggregation: Aggregation | None = None
+    column: str | None = None
+    calculation: str | None = None
 
-    aggregation: str | None = None
-    """Informational only (sum, avg, count, min, max). Actual aggregation is the semantic layer's job."""
+    @model_validator(mode="after")
+    def column_calculation_exclusive(self) -> MeasureDefinition:
+        if self.column is not None and self.calculation is not None:
+            raise ValueError(
+                "'column' and 'calculation' are mutually exclusive — use one or the other"
+            )
+        return self
 
 
 class NominalDimensionDefinition(BaseModel):
@@ -57,19 +63,20 @@ class NominalDimensionDefinition(BaseModel):
     """
 
     type: Literal["nominal", "ordinal"] = "nominal"
-    """Vega-Lite field type. Defaults to "nominal" when omitted."""
-
     label: str = Field(min_length=1)
-    """Human-readable name."""
-
     description: str | None = None
-    """Documentation / LLM context."""
-
     defaultSort: SortOrder | None = None
-    """Default sort when this field is on an axis."""
-
     sortOrder: list[str] | None = None
-    """Explicit category order. Overrides defaultSort. Translates to VL encoding.sort array."""
+    column: str | None = None
+    calculation: str | None = None
+
+    @model_validator(mode="after")
+    def column_calculation_exclusive(self) -> NominalDimensionDefinition:
+        if self.column is not None and self.calculation is not None:
+            raise ValueError(
+                "'column' and 'calculation' are mutually exclusive — use one or the other"
+            )
+        return self
 
 
 class TemporalDimensionDefinition(BaseModel):
@@ -88,33 +95,22 @@ class TemporalDimensionDefinition(BaseModel):
     """
 
     type: Literal["temporal"]
-    """Discriminator — must be "temporal" to route to this model."""
-
     label: str = Field(min_length=1)
-    """Human-readable name."""
-
     description: str | None = None
-    """Documentation / LLM context."""
-
     grains: list[TimeGrain] = Field(default=["day", "week", "month", "quarter", "year"])
-    """Supported granularities. Defaults to all five when omitted."""
-
     defaultGrain: TimeGrain
-    """Required. Used when the chart references this field without a grain suffix."""
-
     format: dict[str, str] | None = None
-    """Per-grain D3 format strings. Keys must be valid TimeGrain values."""
+    column: str | None = None
+    calculation: str | None = None
 
     @model_validator(mode="after")
-    def default_grain_in_grains(self) -> "TemporalDimensionDefinition":
-        """defaultGrain must be one of the declared supported grains."""
+    def default_grain_in_grains(self) -> TemporalDimensionDefinition:
         if self.defaultGrain not in self.grains:
             raise ValueError(f"defaultGrain '{self.defaultGrain}' is not in grains {self.grains}")
         return self
 
     @model_validator(mode="after")
-    def format_keys_are_valid_grains(self) -> "TemporalDimensionDefinition":
-        """If format is set, all keys must be valid TimeGrain values."""
+    def format_keys_are_valid_grains(self) -> TemporalDimensionDefinition:
         if self.format:
             valid = {"day", "week", "month", "quarter", "year"}
             invalid = set(self.format.keys()) - valid
@@ -124,21 +120,28 @@ class TemporalDimensionDefinition(BaseModel):
                 )
         return self
 
+    @model_validator(mode="after")
+    def column_calculation_exclusive(self) -> TemporalDimensionDefinition:
+        if self.column is not None and self.calculation is not None:
+            raise ValueError(
+                "'column' and 'calculation' are mutually exclusive — use one or the other"
+            )
+        return self
+
 
 # Discriminated union on the `type` field.
 # When `type` is "temporal" → TemporalDimensionDefinition.
 # When `type` is "nominal", "ordinal", or omitted → NominalDimensionDefinition.
 # Pydantic v2 tries TemporalDimensionDefinition first (Literal["temporal"] is a
 # stronger discriminant), then falls back to NominalDimensionDefinition.
-DimensionDefinition = Union[TemporalDimensionDefinition, NominalDimensionDefinition]
+DimensionDefinition = TemporalDimensionDefinition | NominalDimensionDefinition
 
 
 class InlineSource(BaseModel):
-    """Data source pointing to a local JSON file."""
+    """Data source pointing to a local JSON file (deprecated — use FileSource)."""
 
     type: Literal["inline"]
     path: str = Field(min_length=1)
-    """Relative path to the JSON data file from the project root."""
 
 
 class CubeSource(BaseModel):
@@ -146,10 +149,24 @@ class CubeSource(BaseModel):
 
     type: Literal["cube"]
     cube: str = Field(min_length=1)
-    """Cube name in the Cube.dev schema (e.g. "Orders")."""
 
 
-ModelSource = Union[InlineSource, CubeSource]
+class FileSource(BaseModel):
+    """Data source pointing to a local flat file (CSV, Parquet, JSON)."""
+
+    type: Literal["file"]
+    path: str = Field(min_length=1)
+
+
+class JoinDefinition(BaseModel):
+    """A declared join from this model to another model."""
+
+    model: str = Field(min_length=1)
+    type: JoinType
+    on: str = Field(min_length=1)
+
+
+ModelSource = FileSource | CubeSource | InlineSource
 
 
 class DataModel(BaseModel):
@@ -178,14 +195,39 @@ class DataModel(BaseModel):
     """Data source configuration. Optional — charts can override data binding."""
 
     measures: dict[str, MeasureDefinition]
-    """Dict of measure field name → MeasureDefinition. At least one required."""
-
     dimensions: dict[str, DimensionDefinition]
-    """Dict of dimension field name → DimensionDefinition (nominal or temporal)."""
+    joins: dict[str, JoinDefinition] | None = None
 
     @model_validator(mode="after")
-    def measures_not_empty(self) -> "DataModel":
-        """A data model must define at least one measure."""
+    def measures_not_empty(self) -> DataModel:
         if not self.measures:
             raise ValueError("A data model must have at least one measure")
+        return self
+
+    @model_validator(mode="after")
+    def validate_calculation_refs(self) -> DataModel:
+        from graphlib import CycleError, TopologicalSorter
+
+        graph: dict[str, set[str]] = {}
+        for name, measure in self.measures.items():
+            if measure.calculation is None:
+                continue
+            refs = set(_CALC_REF_RE.findall(measure.calculation))
+            for ref in refs:
+                if ref not in self.measures:
+                    raise ValueError(
+                        f"Measure '{name}' calculation references '{{{{ {ref} }}}}' "
+                        f"which is not a defined measure. "
+                        f"Available measures: {sorted(self.measures.keys())}"
+                    )
+            if refs:
+                graph[name] = refs
+
+        if graph:
+            try:
+                ts = TopologicalSorter(graph)
+                list(ts.static_order())
+            except CycleError as e:
+                raise ValueError(f"Cyclic calculation dependency detected: {e}") from None
+
         return self

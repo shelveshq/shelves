@@ -219,6 +219,27 @@ A string referencing a data model file (`models/orders.yaml`). The model defines
 
 Field type resolution: measures → `quantitative`, dimensions → `nominal`, fields with `type: temporal` in the model (including dot-notation grains like `order_date.month`) → `temporal`.
 
+### Data model source types
+
+The model's `source` block tells Shelves where data lives:
+
+- `type: cube` — queries a Cube.dev semantic layer (production path)
+- `type: file` — queries a local CSV/Parquet file via DuckDB (exploration path)
+
+```yaml
+# Cube source (production)
+source:
+  type: cube
+  cube: orders
+
+# File source (exploration)
+source:
+  type: file
+  path: data/orders.csv
+```
+
+Both source types use the same model schema — dimensions, measures, labels, formats, and joins are defined identically. A model can graduate from `file` to `cube` by changing the `source` block; chart specs remain untouched.
+
 ---
 
 ## Color
