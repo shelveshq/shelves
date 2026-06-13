@@ -242,13 +242,13 @@ Both source types use the same model schema — dimensions, measures, labels, an
 
 ### Auto-generating models from files
 
-Use `shelves import` to auto-generate a model from a CSV, Parquet, or JSON file:
+Use `shelves-import` to auto-generate a model from a CSV, Parquet, or JSON file:
 
 ```bash
-shelves import sales.csv
+shelves-import sales.csv
 ```
 
-This creates `models/sales.yaml` with columns mapped to dimensions and measures. See the [Getting Started guide](./getting-started.md#import-a-csv) for details.
+This creates `models/sales.yaml` with columns mapped to dimensions and measures. See the [Getting Started guide](./getting-started.md#import-a-file) for details.
 
 ---
 

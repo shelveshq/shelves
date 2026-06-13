@@ -1,5 +1,12 @@
 # Getting Started
 
+Shelves charts read from a **semantic model** — a reusable YAML file that defines your measures, dimensions, labels, and formats. A model can be backed two ways:
+
+- **A flat file** (CSV, Parquet, or JSON), queried locally with [DuckDB](https://duckdb.org). No infrastructure — the fastest way to a first chart.
+- **A [Cube.dev](https://cube.dev) semantic layer**, for shared governed definitions across a team.
+
+Both paths use the same model and chart schema. Start with a file and graduate to Cube later by changing only the model's `source` block — your charts stay untouched.
+
 ## Installation
 
 Requires Python 3.11+.
@@ -8,18 +15,87 @@ Requires Python 3.11+.
 pip install shelves-bi
 ```
 
-## Connect to Cube
+For the flat-file path (CSV/Parquet/JSON via DuckDB), install the optional extra:
 
-Shelves connects to [Cube.dev](https://cube.dev) for data. Set your credentials in a `.env` file or as environment variables:
+```bash
+pip install 'shelves-bi[duckdb]'
+```
+
+## Path A — Start with a flat file
+
+### Import a file
+
+Generate a model from a CSV instead of writing one by hand:
+
+```bash
+shelves-import sales.csv
+```
+
+This creates `models/sales.yaml` with dimensions and measures auto-inferred from the file schema:
+- String columns → dimensions
+- Numeric columns → measures (with `sum` aggregation)
+- Date/datetime columns → temporal dimensions
+- Boolean columns → dimensions
+
+The generated model points at your file and is a starting point — edit it to add formats, change aggregation types, remove irrelevant fields, or add calculated measures:
+
+```yaml
+# models/sales.yaml
+model: sales
+label: Sales
+
+source:
+  type: file
+  path: sales.csv
+
+measures:
+  revenue:
+    column: Revenue
+    aggregation: sum
+    label: Revenue
+    format: "$,.0f"
+
+dimensions:
+  category:
+    column: Category
+    label: Category
+  order_date:
+    column: Order Date
+    type: temporal
+    label: Order Date
+    defaultGrain: month
+```
+
+#### Options
+
+```bash
+# Custom model name
+shelves-import sales.csv --name orders
+
+# Custom output directory
+shelves-import sales.csv --models-dir path/to/models/
+
+# Overwrite existing model
+shelves-import sales.csv --overwrite
+```
+
+Parquet and JSON files are also supported:
+
+```bash
+shelves-import data.parquet
+shelves-import records.json
+```
+
+## Path B — Connect to Cube
+
+When you want a governed semantic layer, point the model's `source` at a [Cube.dev](https://cube.dev) instance instead. Set your credentials in a `.env` file or as environment variables:
 
 ```bash
 CUBE_API_URL=http://localhost:4000
 CUBE_API_TOKEN=your-cube-api-token
 ```
 
-## Define a model
-
-Models map your Cube cubes to the measures and dimensions your charts can use. Define them once, reference from any chart:
+The model maps your Cube cubes to the measures and dimensions your charts can use. Only the `source` block differs from a file model — everything else is declared the same way:
 
 ```yaml
 # models/orders.yaml
@@ -45,42 +121,6 @@ dimensions:
     format:
       week: "%b %d"
       month: "%b %Y"
-```
-
-## Import a CSV
-
-Instead of writing a model by hand, generate one from a CSV:
-
-```bash
-shelves import sales.csv
-```
-
-This creates `models/sales.yaml` with dimensions and measures auto-inferred from the CSV schema:
-- String columns → dimensions
-- Numeric columns → measures (with `sum` aggregation)
-- Date/datetime columns → temporal dimensions
-- Boolean columns → dimensions
-
-The generated model is a starting point. Edit it to add formats, change aggregation types, remove irrelevant fields, or add calculated measures.
-
-### Options
-
-```bash
-# Custom model name
-shelves import sales.csv --name orders
-
-# Custom output directory
-shelves import sales.csv --models-dir path/to/models/
-
-# Overwrite existing model
-shelves import sales.csv --overwrite
-```
-
-Parquet and JSON files are also supported:
-
-```bash
-shelves import data.parquet
-shelves import records.json
 ```
 
 ## Write a chart

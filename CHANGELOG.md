@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-06-13
+
+### Data
+
+- **Flat-file data sources** — models can now point a `source.type: file` block at a local CSV, Parquet, or JSON file, queried directly with DuckDB. No Cube.dev instance required to render a chart.
+- **DuckDB query adapter** — file-backed models compile to DuckDB SQL with `{{ ref }}` measure substitution, filter push-down, and aggregation/group-by assembly. Install via the optional `shelves-bi[duckdb]` extra.
+- **`shelves-import` CLI** — auto-generate a ready-to-use model from a CSV, Parquet, or JSON file. String columns become dimensions, numeric columns become `sum` measures, and date columns become temporal dimensions. Supports `--name`, `--models-dir`, and `--overwrite`.
+
+### Docs
+
+- README and Getting Started rewritten around the two data paths: start with a flat file, or connect to a Cube.dev semantic layer. Both paths share the same model and chart schema.
+
 ## [0.2.1] - 2026-04-21
 
 ### Packaging

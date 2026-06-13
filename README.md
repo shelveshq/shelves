@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/shelveshq/shelves/main/assets/logo/lockup-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/shelveshq/shelves/main/assets/logo/lockup-light.svg">
-    <img src="https://raw.githubusercontent.com/shelveshq/shelves/main/assets/logo/lockup-light.svg" alt="shelves" width="280">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/shelveshq/shelves/main/assets/lockup-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/shelveshq/shelves/main/assets/lockup.svg">
+    <img src="https://raw.githubusercontent.com/shelveshq/shelves/main/assets/lockup.svg" alt="shelves" width="280">
   </picture>
 </p>
 
@@ -11,9 +11,12 @@
   Write charts and dashboards in YAML, render to Vega-Lite.
 </p>
 
-Shelves connects to your [Cube.dev](https://cube.dev) semantic layer, so your charts inherit consistent definitions for measures, dimensions, formats, and aggregations — no copy-pasting field logic across dashboards.
+Shelves charts read from a **semantic model** — measures, dimensions, formats, and aggregations defined once and reused everywhere, so you never copy-paste field logic across dashboards. You can back that model two ways:
 
-> More connectors are planned. For now, Shelves requires a Cube.dev instance as its data backend.
+- **Start with a flat file.** Point a model at a local CSV, Parquet, or JSON file and Shelves queries it directly with [DuckDB](https://duckdb.org). `shelves-import` can even generate the model for you. Zero infrastructure — go from a raw file to a chart in seconds.
+- **Grow into a semantic layer.** Point the same model at a [Cube.dev](https://cube.dev) instance when you want shared governed definitions across a team. Only the model's `source` block changes; your charts stay untouched.
+
+The two paths use the identical model and chart schema, so a project can graduate from file to Cube without rewriting a single chart.
 
 ## Install
 
@@ -21,36 +24,83 @@ Shelves connects to your [Cube.dev](https://cube.dev) semantic layer, so your ch
 pip install shelves-bi
 ```
 
+For the flat-file path, install the optional DuckDB extra:
+
+```bash
+pip install 'shelves-bi[duckdb]'
+```
+
 Requires Python 3.11+.
 
-## Project structure
+## Quick start (flat file)
 
-A typical Shelves project looks like this:
+Generate a model from a CSV — string columns become dimensions, numeric columns become measures, dates become temporal dimensions:
 
+```bash
+shelves-import sales.csv          # writes models/sales.yaml
 ```
-my-project/
-  models/
-    orders.yaml          # semantic model definitions
-  charts/
-    revenue_by_country.yaml
-    sales_over_time.yaml
-  dashboards/
-    overview.yaml
-  .env                   # CUBE_API_URL and CUBE_API_TOKEN
+
+The generated model points at your file:
+
+```yaml
+# models/sales.yaml
+model: sales
+label: Sales
+
+source:
+  type: file
+  path: sales.csv
+
+measures:
+  revenue:
+    column: Revenue
+    aggregation: sum
+    label: Revenue
+    format: "$,.0f"
+
+dimensions:
+  category:
+    column: Category
+    label: Category
+  order_date:
+    column: Order Date
+    type: temporal
+    label: Order Date
+    defaultGrain: month
 ```
+
+Write a chart that references the model by name, then render:
+
+```yaml
+# charts/revenue_by_category.yaml
+sheet: "Revenue by Category"
+data: sales
+
+cols: category
+rows: revenue
+marks: bar
+color: category
+sort:
+  field: revenue
+  order: descending
+```
+
+```bash
+shelves-render charts/revenue_by_category.yaml --models-dir models/
+```
+
+Output goes to `output/<sheet-name-slug>.html` by default. Use `--out` to override.
 
 ## Connect to Cube
 
-Set your Cube.dev credentials in a `.env` file or as environment variables:
+When you're ready for a governed semantic layer, point the model's `source` at a Cube.dev instance instead. Set your credentials in a `.env` file or as environment variables:
 
 ```bash
 CUBE_API_URL=http://localhost:4000
 CUBE_API_TOKEN=your-cube-api-token
 ```
 
-## Define a model
-
-Models map your Cube cubes to the measures and dimensions your charts can use:
+Only the `source` block changes — measures, dimensions, labels, and formats are declared the same way as the file model above:
 
 ```yaml
 # models/orders.yaml
@@ -78,38 +128,23 @@ dimensions:
       month: "%b %Y"
 ```
 
-## Write a chart
+Your existing charts keep working unchanged.
 
-Charts reference a model by name. Measures, dimensions, formats, and sort orders are resolved from the model:
+## Project structure
 
-```yaml
-# charts/sales_by_category.yaml
-sheet: "Net Sales by Category"
-data: orders
+A typical Shelves project looks like this:
 
-cols: category
-rows: net_sales
-marks: bar
-color: category
-sort:
-  field: net_sales
-  order: descending
 ```
-
-## Render
-
-```bash
-# Single chart
-shelves-render charts/sales_by_category.yaml --models-dir models/
-
-# Dashboard (charts and models resolved from directories)
-shelves-render dashboards/overview.yaml --chart-dir charts/ --models-dir models/
-
-# Dev server with live reload
-shelves-dev charts/sales_by_category.yaml --models-dir models/
+my-project/
+  models/
+    sales.yaml           # semantic model definitions (file or cube source)
+  charts/
+    revenue_by_category.yaml
+    sales_over_time.yaml
+  dashboards/
+    overview.yaml
+  .env                   # CUBE_API_URL / CUBE_API_TOKEN (only for the Cube path)
 ```
-
-Output goes to `output/<sheet-name-slug>.html` by default. Use `--out` to override.
 
 ## Dashboards
 
@@ -127,10 +162,18 @@ root:
       preset: title
     - horizontal:
         contains:
-          - sheet: "charts/sales_by_category.yaml"
+          - sheet: "charts/revenue_by_category.yaml"
             width: "60%"
           - sheet: "charts/sales_over_time.yaml"
             width: "40%"
+```
+
+```bash
+# Dashboard (charts and models resolved from directories)
+shelves-render dashboards/overview.yaml --chart-dir charts/ --models-dir models/
+
+# Dev server with live reload
+shelves-dev charts/revenue_by_category.yaml --models-dir models/
 ```
 
 ## Python API
@@ -142,7 +185,7 @@ from shelves.data.bind import resolve_data
 spec   = parse_chart(yaml_string)          # YAML -> ChartSpec
 vl     = translate_chart(spec)             # ChartSpec -> Vega-Lite dict
 themed = merge_theme(vl)                   # apply default theme
-final  = resolve_data(themed, spec)        # fetch from Cube and bind
+final  = resolve_data(themed, spec)        # query the model's source and bind
 html   = render_html(final)                # standalone HTML with vegaEmbed
 ```
 
