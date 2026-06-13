@@ -240,6 +240,16 @@ source:
 
 Both source types use the same model schema — dimensions, measures, labels, formats, and joins are defined identically. A model can graduate from `file` to `cube` by changing the `source` block; chart specs remain untouched.
 
+### Auto-generating models from files
+
+Use `shelves import` to auto-generate a model from a CSV, Parquet, or JSON file:
+
+```bash
+shelves import sales.csv
+```
+
+This creates `models/sales.yaml` with columns mapped to dimensions and measures. See the [Getting Started guide](./getting-started.md#import-a-csv) for details.
+
 ---
 
 ## Color

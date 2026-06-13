@@ -53,6 +53,7 @@ Repository = "https://github.com/shelveshq/shelves"
 shelves-render = "shelves.cli.render:main"
 shelves-dev = "shelves.cli.dev:main"
 shelves-studio = "shelves.studio.cli:main"
+shelves-import = "shelves.cli.import_cmd:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
