@@ -18,7 +18,9 @@ from pydantic import BaseModel, Field, model_validator
 TimeGrain = Literal["day", "week", "month", "quarter", "year"]
 SortOrder = Literal["ascending", "descending"]
 Aggregation = Literal["sum", "count", "avg", "min", "max", "count_distinct"]
-_CALC_REF_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
+
+CALC_REF_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
+"""Matches a ``{{ measure_name }}`` calculation cross-reference, capturing the name."""
 
 
 class MeasureDefinition(BaseModel):
@@ -201,7 +203,7 @@ class DataModel(BaseModel):
         for name, measure in self.measures.items():
             if measure.calculation is None:
                 continue
-            refs = set(_CALC_REF_RE.findall(measure.calculation))
+            refs = set(CALC_REF_RE.findall(measure.calculation))
             for ref in refs:
                 if ref not in self.measures:
                     raise ValueError(

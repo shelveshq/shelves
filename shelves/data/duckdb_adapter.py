@@ -22,6 +22,7 @@ from typing import Any
 
 from shelves.data.fields import collect_chart_fields
 from shelves.models.schema import (
+    CALC_REF_RE,
     DataModel,
     FileSource,
 )
@@ -32,8 +33,6 @@ from shelves.schema.field_types import FieldTypeResolver
 class DuckDBQueryError(Exception):
     """Error building or executing a DuckDB query."""
 
-
-_CALC_REF_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
 _FILE_READERS: dict[str, str] = {
     ".csv": "read_csv_auto",
@@ -102,7 +101,7 @@ def resolve_measure_expressions(model: DataModel) -> dict[str, str]:
             else:
                 exprs[name] = f"{agg}({col})"
         elif measure.calculation is not None:
-            refs = set(_CALC_REF_RE.findall(measure.calculation))
+            refs = set(CALC_REF_RE.findall(measure.calculation))
             calc_graph[name] = refs
         elif measure.column is not None:
             exprs[name] = _quote_identifier(measure.column)
@@ -121,7 +120,7 @@ def resolve_measure_expressions(model: DataModel) -> dict[str, str]:
                     "calculation."
                 )
             resolved = measure.calculation
-            for ref in _CALC_REF_RE.findall(measure.calculation):
+            for ref in CALC_REF_RE.findall(measure.calculation):
                 resolved = re.sub(
                     r"\{\{\s*" + re.escape(ref) + r"\s*\}\}",
                     f"({exprs[ref]})",
