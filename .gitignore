@@ -10,9 +10,10 @@ build/
 docs/plans/
 /model
 .coverage
-models/
-charts/
-dashboards/
+/models/
+/charts/
+/dashboards/
 .env
-output/
-themes/
+/output/
+/themes/
+/data/

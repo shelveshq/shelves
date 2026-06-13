@@ -47,6 +47,42 @@ dimensions:
       month: "%b %Y"
 ```
 
+## Import a CSV
+
+Instead of writing a model by hand, generate one from a CSV:
+
+```bash
+shelves import sales.csv
+```
+
+This creates `models/sales.yaml` with dimensions and measures auto-inferred from the CSV schema:
+- String columns → dimensions
+- Numeric columns → measures (with `sum` aggregation)
+- Date/datetime columns → temporal dimensions
+- Boolean columns → dimensions
+
+The generated model is a starting point. Edit it to add formats, change aggregation types, remove irrelevant fields, or add calculated measures.
+
+### Options
+
+```bash
+# Custom model name
+shelves import sales.csv --name orders
+
+# Custom output directory
+shelves import sales.csv --models-dir path/to/models/
+
+# Overwrite existing model
+shelves import sales.csv --overwrite
+```
+
+Parquet and JSON files are also supported:
+
+```bash
+shelves import data.parquet
+shelves import records.json
+```
+
 ## Write a chart
 
 Charts reference a model by name. Measures, dimensions, formats, and sort orders are all resolved from the model:

@@ -1,0 +1,4 @@
+region,product,order_date,revenue,quantity,is_returned
+NA,Widget,2024-01-15,45000.50,320,false
+EU,Gadget,2024-02-20,32000.75,210,true
+APAC,Widget,2024-03-10,28000.00,180,false

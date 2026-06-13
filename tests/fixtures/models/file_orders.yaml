@@ -1,0 +1,42 @@
+model: file_orders
+label: File Orders
+description: Orders from a CSV file
+
+source:
+  type: file
+  path: data/orders.csv
+
+dimensions:
+  region:
+    column: region
+    label: Region
+  order_date:
+    column: "Order Date"
+    type: temporal
+    label: Order Date
+    defaultGrain: month
+    format:
+      month: "%b %Y"
+  fiscal_year:
+    calculation: "EXTRACT(YEAR FROM order_date)"
+    label: Fiscal Year
+
+measures:
+  revenue:
+    column: revenue
+    aggregation: sum
+    label: Revenue
+    format: "$,.0f"
+  cost:
+    column: cost
+    aggregation: sum
+    label: Cost
+    format: "$,.0f"
+  profit:
+    calculation: "{{ revenue }} - {{ cost }}"
+    label: Profit
+    format: "$,.0f"
+  margin:
+    calculation: "{{ profit }} / {{ revenue }}"
+    label: Margin
+    format: ".1%"

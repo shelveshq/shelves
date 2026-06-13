@@ -17,6 +17,7 @@ from shelves.models.loader import clear_model_cache, load_model
 from shelves.models.schema import (
     CubeSource,
     DataModel,
+    FileSource,
     InlineSource,
     MeasureDefinition,
     NominalDimensionDefinition,
@@ -256,3 +257,265 @@ class TestLoader:
         assert len(model.measures) == 1
         assert "m1" in model.measures
         assert model.source is None
+
+
+# ─── Schema Extension Tests (KAN-219) ───────────────────────────────────────
+
+
+class TestModelSchemaExtensions:
+    # ── Happy path ──────────────────────────────────────────────────────────
+
+    def test_file_source_parses(self):
+        model = load_model("file_orders", models_dir=FIXTURES_DIR)
+
+        assert model.model == "file_orders"
+        assert isinstance(model.source, FileSource)
+        assert model.source.type == "file"
+        assert model.source.path == "data/orders.csv"
+
+        # Measure with column
+        rev = model.measures["revenue"]
+        assert rev.column == "revenue"
+        assert rev.aggregation == "sum"
+        assert rev.calculation is None
+
+        # Measure with calculation + nested refs
+        profit = model.measures["profit"]
+        assert profit.column is None
+        assert profit.aggregation is None
+        assert profit.calculation == "{{ revenue }} - {{ cost }}"
+
+        margin = model.measures["margin"]
+        assert margin.calculation == "{{ profit }} / {{ revenue }}"
+
+        # Dimension with column (special chars)
+        od = model.dimensions["order_date"]
+        assert isinstance(od, TemporalDimensionDefinition)
+        assert od.column == "Order Date"
+
+        # Dimension with calculation
+        fy = model.dimensions["fiscal_year"]
+        assert isinstance(fy, NominalDimensionDefinition)
+        assert fy.calculation == "EXTRACT(YEAR FROM order_date)"
+        assert fy.column is None
+
+        # Dimension with simple column
+        region = model.dimensions["region"]
+        assert region.column == "region"
+        assert region.calculation is None
+
+    def test_backward_compat_cube_model(self):
+        model = load_model("cube_orders", models_dir=FIXTURES_DIR)
+        assert isinstance(model.source, CubeSource)
+
+        ns = model.measures["net_sales"]
+        assert ns.column is None
+        assert ns.calculation is None
+        assert ns.aggregation == "sum"
+
+        cat = model.dimensions["category"]
+        assert cat.column is None
+        assert cat.calculation is None
+
+    def test_backward_compat_minimal(self):
+        model = load_model("minimal", models_dir=FIXTURES_DIR)
+        m1 = model.measures["m1"]
+        assert m1.column is None
+        assert m1.calculation is None
+
+    def test_measure_column_only(self):
+        m = MeasureDefinition(label="Revenue", column="revenue", aggregation="sum")
+        assert m.column == "revenue"
+        assert m.aggregation == "sum"
+        assert m.calculation is None
+
+    def test_measure_calculation_only(self):
+        m = MeasureDefinition(label="Profit", calculation="{{ revenue }} - {{ cost }}")
+        assert m.calculation == "{{ revenue }} - {{ cost }}"
+        assert m.column is None
+        assert m.aggregation is None
+
+    def test_calculation_raw_sql(self):
+        model = DataModel.model_validate(
+            {
+                "model": "test",
+                "label": "Test",
+                "measures": {
+                    "complex": {
+                        "label": "Complex",
+                        "calculation": "SUM(price * quantity)",
+                    }
+                },
+                "dimensions": {"d1": {"label": "D1"}},
+            }
+        )
+        assert model.measures["complex"].calculation == "SUM(price * quantity)"
+
+    def test_nested_calculation_three_levels(self):
+        model = DataModel.model_validate(
+            {
+                "model": "test",
+                "label": "Test",
+                "measures": {
+                    "revenue": {"label": "Revenue", "column": "revenue", "aggregation": "sum"},
+                    "cost": {"label": "Cost", "column": "cost", "aggregation": "sum"},
+                    "profit": {"label": "Profit", "calculation": "{{ revenue }} - {{ cost }}"},
+                    "margin": {"label": "Margin", "calculation": "{{ profit }} / {{ revenue }}"},
+                },
+                "dimensions": {"d1": {"label": "D1"}},
+            }
+        )
+        assert model.measures["margin"].calculation == "{{ profit }} / {{ revenue }}"
+
+    def test_aggregation_literals(self):
+        for agg in ["sum", "count", "avg", "min", "max", "count_distinct"]:
+            m = MeasureDefinition(label="X", aggregation=agg)
+            assert m.aggregation == agg
+
+    def test_nominal_dimension_column(self):
+        d = NominalDimensionDefinition(label="Region", column="sales_region")
+        assert d.column == "sales_region"
+        assert d.calculation is None
+        assert d.type == "nominal"
+
+    def test_nominal_dimension_calculation(self):
+        d = NominalDimensionDefinition(
+            label="Fiscal Year", calculation="EXTRACT(YEAR FROM order_date)"
+        )
+        assert d.calculation == "EXTRACT(YEAR FROM order_date)"
+        assert d.column is None
+
+    def test_temporal_dimension_column(self):
+        d = TemporalDimensionDefinition(
+            type="temporal", label="Order Date", defaultGrain="month", column="Order Date"
+        )
+        assert d.column == "Order Date"
+        assert d.calculation is None
+
+    def test_column_special_chars(self):
+        model = DataModel.model_validate(
+            {
+                "model": "test",
+                "label": "Test",
+                "measures": {
+                    "rev": {"label": "Revenue", "column": "Revenue ($)", "aggregation": "sum"},
+                },
+                "dimensions": {
+                    "region": {"label": "Region", "column": "Sales Region"},
+                    "date": {
+                        "type": "temporal",
+                        "label": "Date",
+                        "column": "Order Date",
+                        "defaultGrain": "day",
+                    },
+                },
+            }
+        )
+        assert model.measures["rev"].column == "Revenue ($)"
+        assert model.dimensions["region"].column == "Sales Region"
+        assert model.dimensions["date"].column == "Order Date"
+
+    # ── Edge cases ──────────────────────────────────────────────────────────
+
+    def test_calculation_extra_whitespace_in_refs(self):
+        model = DataModel.model_validate(
+            {
+                "model": "test",
+                "label": "Test",
+                "measures": {
+                    "revenue": {"label": "Revenue", "column": "revenue", "aggregation": "sum"},
+                    "cost": {"label": "Cost", "column": "cost", "aggregation": "sum"},
+                    "profit": {
+                        "label": "Profit",
+                        "calculation": "{{ revenue  }} - {{cost}}",
+                    },
+                },
+                "dimensions": {"d1": {"label": "D1"}},
+            }
+        )
+        assert model.measures["profit"].calculation == "{{ revenue  }} - {{cost}}"
+
+    def test_measure_neither_column_nor_calculation(self):
+        m = MeasureDefinition(label="Revenue")
+        assert m.column is None
+        assert m.calculation is None
+
+    def test_aggregation_omitted_with_column(self):
+        m = MeasureDefinition(label="X", column="x")
+        assert m.column == "x"
+        assert m.aggregation is None
+
+    def test_file_source_relative_path(self):
+        source = FileSource(type="file", path="../data/orders.csv")
+        assert source.path == "../data/orders.csv"
+
+    # ── Error cases ─────────────────────────────────────────────────────────
+
+    def test_measure_column_calc_exclusive(self):
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            MeasureDefinition(label="X", column="revenue", calculation="SUM(revenue)")
+
+    def test_dimension_column_calc_exclusive(self):
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            NominalDimensionDefinition(label="X", column="region", calculation="UPPER(region)")
+
+    def test_temporal_dimension_column_calc_exclusive(self):
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            TemporalDimensionDefinition(
+                type="temporal",
+                label="X",
+                defaultGrain="month",
+                column="order_date",
+                calculation="DATE_TRUNC('month', order_date)",
+            )
+
+    def test_calculation_ref_nonexistent(self):
+        with pytest.raises(ValidationError, match="not a defined measure"):
+            DataModel.model_validate(
+                {
+                    "model": "test",
+                    "label": "Test",
+                    "measures": {
+                        "profit": {
+                            "label": "Profit",
+                            "calculation": "{{ revenue }} - {{ cost }}",
+                        },
+                    },
+                    "dimensions": {"d1": {"label": "D1"}},
+                }
+            )
+
+    def test_calculation_cyclic(self):
+        with pytest.raises(ValidationError, match=r"[Cc]ycl"):
+            DataModel.model_validate(
+                {
+                    "model": "test",
+                    "label": "Test",
+                    "measures": {
+                        "a": {"label": "A", "calculation": "{{ b }} + 1"},
+                        "b": {"label": "B", "calculation": "{{ a }} + 1"},
+                    },
+                    "dimensions": {"d1": {"label": "D1"}},
+                }
+            )
+
+    def test_calculation_self_reference(self):
+        with pytest.raises(ValidationError, match=r"[Cc]ycl"):
+            DataModel.model_validate(
+                {
+                    "model": "test",
+                    "label": "Test",
+                    "measures": {
+                        "a": {"label": "A", "calculation": "{{ a }} + 1"},
+                    },
+                    "dimensions": {"d1": {"label": "D1"}},
+                }
+            )
+
+    def test_aggregation_invalid(self):
+        with pytest.raises(ValidationError):
+            MeasureDefinition(label="X", aggregation="median")
+
+    def test_file_source_empty_path(self):
+        with pytest.raises(ValidationError):
+            FileSource(type="file", path="")

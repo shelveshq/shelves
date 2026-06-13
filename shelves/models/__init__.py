@@ -12,29 +12,31 @@ Typical usage:
     week_def = model.dimensions["week"]   # TemporalDimensionDefinition
 """
 
+from shelves.models.loader import clear_model_cache, load_model
+from shelves.models.resolver import ModelResolver
 from shelves.models.schema import (
     CubeSource,
     DataModel,
     DimensionDefinition,
+    FileSource,
     InlineSource,
     MeasureDefinition,
     ModelSource,
     NominalDimensionDefinition,
     TemporalDimensionDefinition,
 )
-from shelves.models.loader import load_model, clear_model_cache
-from shelves.models.resolver import ModelResolver
 
 __all__ = [
+    "CubeSource",
     "DataModel",
+    "DimensionDefinition",
+    "FileSource",
+    "InlineSource",
     "MeasureDefinition",
+    "ModelResolver",
+    "ModelSource",
     "NominalDimensionDefinition",
     "TemporalDimensionDefinition",
-    "DimensionDefinition",
-    "InlineSource",
-    "CubeSource",
-    "ModelSource",
-    "load_model",
     "clear_model_cache",
-    "ModelResolver",
+    "load_model",
 ]
