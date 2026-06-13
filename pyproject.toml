@@ -1,6 +1,6 @@
 [project]
 name = "shelves-bi"
-version = "0.3.0"
+version = "0.3.1"
 description = "AI-native declarative visual analytics — YAML DSL to Vega-Lite translator"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
@@ -65,6 +65,7 @@ include = ["shelves*"]
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
+"shelves.theme" = ["*.yaml"]
 "shelves.studio" = [
     "static/*.html",
     "static/*.css",
