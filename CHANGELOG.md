@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-06-14
+
+### Packaging
+
+- Fixed missing `default_theme.yaml` in package data — installed environments (Studio, pip installs) would crash with `FileNotFoundError`
+
 ## [0.3.0] - 2026-06-13
 
 ### Data
