@@ -113,7 +113,13 @@ def resolve_measure_expressions(model: DataModel) -> dict[str, str]:
             if name in exprs:
                 continue
             measure = model.measures[name]
-            assert measure.calculation is not None
+            if measure.calculation is None:
+                raise DuckDBQueryError(
+                    f"Measure '{name}' is referenced in a calculation but has no "
+                    "column or calculation of its own, so it cannot be resolved to "
+                    "SQL. File source measures require a column+aggregation or a "
+                    "calculation."
+                )
             resolved = measure.calculation
             for ref in _CALC_REF_RE.findall(measure.calculation):
                 resolved = re.sub(
@@ -139,6 +145,28 @@ def build_sql(
     select_parts: list[str] = []
     group_by_parts: list[str] = []
     has_measures = False
+    # base field name → the SQL expression already selected under that alias.
+    # Two field refs that resolve to the same base must share one expression;
+    # differing expressions (e.g. two grains of one temporal field) would
+    # collide on the output alias and silently drop a column when rows are
+    # zipped into dicts, so they are rejected.
+    selected_exprs: dict[str, str] = {}
+
+    def _select(base: str, expr: str) -> bool:
+        """Register a SELECT column for `base`. Returns True if newly added."""
+        existing = selected_exprs.get(base)
+        if existing is not None:
+            if existing != expr:
+                raise DuckDBQueryError(
+                    f"Field '{base}' is referenced with two different expressions "
+                    f"in the same chart ({existing!r} vs {expr!r}) — likely two "
+                    "different grains of the same temporal field. Use a single "
+                    "grain per field within a chart."
+                )
+            return False
+        selected_exprs[base] = expr
+        select_parts.append(f"{expr} AS {_quote_identifier(base)}")
+        return True
 
     for field in sorted(fields):
         base = resolver.resolve_base_field(field)
@@ -150,7 +178,7 @@ def build_sql(
                     f"Cannot query measure '{base}': no column or calculation defined. "
                     "File source measures require a column+aggregation or a calculation."
                 )
-            select_parts.append(f"{measure_exprs[base]} AS {_quote_identifier(base)}")
+            _select(base, measure_exprs[base])
         else:
             dim_def = model.dimensions.get(base)
             grain = resolver.resolve_grain(field)
@@ -166,8 +194,8 @@ def build_sql(
                 else:
                     dim_sql = col_quoted
 
-            select_parts.append(f"{dim_sql} AS {_quote_identifier(base)}")
-            group_by_parts.append(dim_sql)
+            if _select(base, dim_sql):
+                group_by_parts.append(dim_sql)
 
     reader = _file_reader_fn(file_path)
     escaped_path = file_path.replace("'", "''")
@@ -211,6 +239,12 @@ def _build_filter_conditions(
             measure = model.measures.get(base)
             if measure is not None and measure.column is not None:
                 col_ref = _quote_identifier(measure.column)
+            elif measure is not None:
+                raise DuckDBQueryError(
+                    f"Cannot filter on measure '{base}': it has no underlying column "
+                    "(it is a calculation or metadata-only measure). Filters on file "
+                    "sources must reference a column-backed dimension or measure."
+                )
             else:
                 col_ref = _quote_identifier(base)
 

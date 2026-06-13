@@ -141,6 +141,25 @@ class TestResolveMeasureExpressions:
         exprs = resolve_measure_expressions(model)
         assert exprs["rev"] == '"revenue"'
 
+    def test_calc_references_metadata_only_measure(self):
+        # `base` has no column and no calculation — it cannot produce a SQL
+        # expression, yet a calc references it. Schema validation allows this
+        # (it only checks the ref names a defined measure), so the adapter must
+        # raise a clean DuckDBQueryError rather than crashing on an assert.
+        model = DataModel.model_validate(
+            {
+                "model": "t",
+                "label": "T",
+                "measures": {
+                    "base": {"label": "Base"},
+                    "derived": {"label": "Derived", "calculation": "{{ base }} * 2"},
+                },
+                "dimensions": {"d": {"label": "D"}},
+            }
+        )
+        with pytest.raises(DuckDBQueryError, match="base"):
+            resolve_measure_expressions(model)
+
 
 # ─── build_sql ────────────────────────────────────────────────────────
 
@@ -285,6 +304,39 @@ class TestBuildSql:
         )
         sql = build_sql("/data/orders.csv", duckdb_model, spec, duckdb_resolver)
         assert 'WHERE "country" = \'US\' AND "revenue" >= 40000' in sql
+
+    def test_filter_on_calculation_measure_raises(self, duckdb_model, duckdb_resolver):
+        # `profit` is a calculation measure with no underlying column. Pushing a
+        # filter on it would emit `WHERE "profit" ...` referencing a column that
+        # does not exist in the file → DuckDB Binder Error. Reject it up front.
+        spec = parse_chart(
+            'sheet: "Test"\ndata: duckdb_orders\ncols: region\nrows: revenue\nmarks: bar\n'
+            "filters:\n  - field: profit\n    operator: gt\n    value: 5\n"
+        )
+        with pytest.raises(DuckDBQueryError, match="profit"):
+            build_sql("/data/orders.csv", duckdb_model, spec, duckdb_resolver)
+
+    def test_conflicting_grains_same_field_raises(self, duckdb_model, duckdb_resolver):
+        # Two grains of the same temporal field both alias `AS "order_date"`,
+        # which would silently collapse to one column when rows are zipped into
+        # dicts. The conflict must be rejected.
+        spec = parse_chart(
+            'sheet: "Test"\ndata: duckdb_orders\ncols: order_date.month\n'
+            "color: order_date.year\nrows: revenue\nmarks: line\n"
+        )
+        with pytest.raises(DuckDBQueryError, match="grain"):
+            build_sql("/data/orders.csv", duckdb_model, spec, duckdb_resolver)
+
+    def test_same_field_same_grain_deduped(self, duckdb_model, duckdb_resolver):
+        # The same field at the same effective grain — once via implicit
+        # defaultGrain (`order_date`) and once explicit (`order_date.month`) —
+        # resolves to identical SQL and must produce exactly one SELECT column.
+        spec = parse_chart(
+            'sheet: "Test"\ndata: duckdb_orders\ncols: order_date\n'
+            "rows: revenue\nmarks: line\ntooltip:\n  - order_date.month\n"
+        )
+        sql = build_sql("/data/orders.csv", duckdb_model, spec, duckdb_resolver)
+        assert sql.count('AS "order_date"') == 1
 
     def test_parquet_reader(self, duckdb_model, duckdb_resolver):
         spec = parse_chart(
