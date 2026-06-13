@@ -1,6 +1,6 @@
 # Shelves DSL Reference
 
-**DSL Version: 0.5.2**
+**DSL Version: 0.6.0**
 
 This document is the authoritative reference for the Shelves YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -254,6 +254,84 @@ size: revenue
 # Static value (pixels)
 size: 100
 ```
+
+---
+
+## Labels
+
+Add data labels to marks. Labels compile to an implicit text-mark layer — the user writes `label: true` and the compiler handles the rest.
+
+### Boolean shorthand
+
+```yaml
+label: true       # label each mark with its measure value
+label: false      # suppress labels (useful to override inherited labels)
+```
+
+### Config object
+
+```yaml
+label:
+  field: revenue       # which field to display (defaults to the measure)
+  position: top        # top | bottom | left | right | inside-top | inside-right
+  color: "#333333"     # text color (hex)
+  size: 12             # font size in pixels
+  format: "$,.0f"      # D3 format string (auto-resolved from model if omitted)
+```
+
+### Position presets
+
+Position defaults are determined by chart orientation:
+
+| Orientation | Default position | Behavior |
+|---|---|---|
+| Vertical (measure on rows) | `top` | Text above the mark |
+| Horizontal (measure on cols) | `right` | Text to the right of the mark |
+
+All position presets:
+
+| Position | Vertical effect | Horizontal effect |
+|---|---|---|
+| `top` | Above mark | Above mark |
+| `bottom` | Below mark | Below mark |
+| `left` | Left of mark | Left of mark |
+| `right` | Right of mark | Right of mark |
+| `inside-top` | Inside mark, at top edge | Inside mark, at top edge |
+| `inside-right` | Inside mark, at right edge | Inside mark, at right edge |
+
+### Inheritance
+
+Labels cascade top-level → entry → layer, matching the same pattern as `color`, `detail`, and `size`:
+
+```yaml
+# Top-level applies to all panels/layers
+label: true
+
+rows:
+  - measure: revenue
+    label: false         # suppress: this panel has no labels
+  - measure: order_count
+                         # inherits: this panel gets labels from top-level
+```
+
+On layer entries:
+
+```yaml
+rows:
+  - measure: revenue
+    mark: bar
+    label: true           # label the bars
+    layer:
+      - measure: arpu
+        mark: line
+        label: false      # no labels on the line layer
+```
+
+### Auto-injection from model
+
+When `format` is not set, the label format is auto-resolved from the data model's field `format` string. For example, a revenue field with `format: "$,.0f"` in the model will display labels like `$1,234`.
+
+When `field` is not set, the label field defaults to the measure being charted (e.g., the field on the y-axis for vertical charts, x-axis for horizontal).
 
 ---
 
@@ -579,6 +657,23 @@ sort:
 tooltip: [country, revenue]
 ```
 
+### Bar chart with labels
+
+```yaml
+sheet: "Revenue by Country"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+label: true
+sort:
+  field: revenue
+  order: descending
+tooltip: [country, revenue]
+```
+
+Bar chart with data labels above each bar. Label values and formats are auto-resolved from the data model.
+
 ### Line chart with time
 
 ```yaml
@@ -777,7 +872,8 @@ kpi:
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.5.2** | Current | Shared axis hiding: stacked panels hide repeating shared axes by default. New `shared_axis` property on measure entries. |
+| **0.6.0** | Current | Data labels: `label` property on charts, measure entries, and layer entries. Boolean shorthand or config object with position, color, size, format, field. Compiles to implicit text-mark layer. |
+| **0.5.2** | Previous | Shared axis hiding: stacked panels hide repeating shared axes by default. New `shared_axis` property on measure entries. |
 | **0.5.1** | Previous | Stacked layers: multi-entry shelves with mixed layered and standalone entries compile to `vconcat`/`hconcat`. |
 | **0.5.0** | Previous | Layer compilation (dual/triple axis): single-entry `layer` specs compile to Vega-Lite `layer` arrays with encoding inheritance, opacity merging, and axis scale resolution. Multi-entry layered shelves remain deferred. |
 | **0.4.0** | Previous | Unified `theme.yaml` with `chart` + `layout` sections, `--theme` CLI flag, partial theme overrides. |

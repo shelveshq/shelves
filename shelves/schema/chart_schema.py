@@ -25,9 +25,7 @@ from pydantic import BaseModel, Field, model_validator
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = (
-    "0.5.2"  # minor: show_axis on MeasureEntry — hide repeating shared axes in stacked panels
-)
+DSL_VERSION = "0.6.0"  # minor: label property for data labels as implicit text-mark layers
 
 # ─── Primitives ────────────────────────────────────────────────────
 
@@ -209,6 +207,24 @@ class WrapFacet(BaseModel):
 FacetSpec = Union[WrapFacet, RowColumnFacet]
 
 
+# ─── Label ────────────────────────────────────────────────────────
+
+LabelPosition = Literal["top", "bottom", "left", "right", "inside-top", "inside-right"]
+
+
+class LabelConfig(BaseModel):
+    """Label configuration for data labels on marks."""
+
+    field: str | None = None
+    position: LabelPosition | None = None
+    color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{3,8}$")
+    size: int | float | None = Field(None, gt=0)
+    format: str | None = None
+
+
+LabelSpec = Union[bool, LabelConfig]
+
+
 # ─── Axis Config ──────────────────────────────────────────────────
 
 
@@ -256,6 +272,7 @@ class LayerEntry(BaseModel):
     detail: str | None = None
     size: str | int | float | None = None
     opacity: float | None = Field(None, ge=0.0, le=1.0)
+    label: LabelSpec | None = None
 
 
 class MeasureEntry(BaseModel):
@@ -276,6 +293,7 @@ class MeasureEntry(BaseModel):
     detail: str | None = None
     size: str | int | float | None = None
     opacity: float | None = Field(None, ge=0.0, le=1.0)
+    label: LabelSpec | None = None
 
     # Phase 1a: layers overlaid on this measure
     layer: list[LayerEntry] | None = None
@@ -333,6 +351,7 @@ class ChartSpec(BaseModel):
     detail: str | None = None
     size: str | int | float | None = None
     tooltip: TooltipSpec | None = None
+    label: LabelSpec | None = None
 
     # Interactions
     filters: list[ShelfFilter] | None = None

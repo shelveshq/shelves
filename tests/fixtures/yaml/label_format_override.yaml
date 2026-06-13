@@ -1,0 +1,7 @@
+sheet: "Revenue by Country (Short Format)"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+label:
+  format: "$.0s"

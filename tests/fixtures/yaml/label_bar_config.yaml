@@ -1,0 +1,9 @@
+sheet: "Revenue by Country (Inside Labels)"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+label:
+  position: inside-top
+  color: "#ffffff"
+  size: 10

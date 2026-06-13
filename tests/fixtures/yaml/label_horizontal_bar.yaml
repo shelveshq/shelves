@@ -1,0 +1,6 @@
+sheet: "Revenue by Country (Horizontal)"
+data: orders
+cols: revenue
+rows: country
+marks: bar
+label: true

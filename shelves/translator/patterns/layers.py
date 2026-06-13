@@ -97,6 +97,12 @@ from shelves.translator.encodings import (
 from shelves.translator.filters import build_transforms
 from shelves.translator.marks import build_mark
 from shelves.translator.sort import apply_sort
+from shelves.translator.labels import (
+    build_label_layer,
+    get_mark_type,
+    resolve_label_cascade,
+    resolve_label_spec,
+)
 
 
 def compile_stacked_with_layers(
@@ -283,14 +289,68 @@ def compile_layer_entry(
         )
         secondaries.append(secondary)
 
-    # Step 4: Assemble.
-    result: dict[str, Any] = {"layer": [primary, *secondaries]}
+    # Step 4: Build final layer list: each mark followed immediately by its text label.
+    orientation = "vertical" if measure_axis == "y" else "horizontal"
+    all_layers: list[dict[str, Any]] = []
 
-    # Step 5: Resolve only for explicit independent.
+    # Primary: mark then optional label
+    all_layers.append(primary)
+    primary_label_spec = resolve_label_cascade(None, entry.label, spec.label)
+    primary_label_config = resolve_label_spec(primary_label_spec)
+    if primary_label_config and get_mark_type(primary_mark) != "text":
+        primary_color_enc = primary["encoding"].get("color")
+        if primary_color_enc and "field" not in primary_color_enc:
+            primary_color_enc = None
+        primary_label_layer = build_label_layer(
+            measure_field=entry.measure,
+            base_x_enc=primary["encoding"][shared_axis],
+            base_y_enc=primary["encoding"][measure_axis],
+            label_config=primary_label_config,
+            mark_type=get_mark_type(primary_mark),
+            orientation=orientation,
+            resolver=resolver,
+            color_enc=primary_color_enc,
+            detail_enc=primary["encoding"].get("detail"),
+        )
+        all_layers.append(primary_label_layer)
+
+    # Secondaries: each mark then its optional label
+    for layer, secondary in zip(entry.layer, secondaries):  # type: ignore[union-attr]
+        all_layers.append(secondary)
+        # Secondary labels — layer.label or spec.label only; entry.label applies to the primary
+        layer_label_spec = resolve_label_cascade(layer.label, None, spec.label)
+        layer_label_config = resolve_label_spec(layer_label_spec)
+        layer_mark = _resolve_mark(
+            layer_mark=layer.mark,
+            entry_mark=entry.mark,
+            top_level_mark=spec.marks,
+            measure_name=layer.measure,
+        )
+        if layer_label_config and get_mark_type(layer_mark) != "text":
+            sec_color_enc = secondary["encoding"].get("color")
+            if sec_color_enc and "field" not in sec_color_enc:
+                sec_color_enc = None
+            sec_label_layer = build_label_layer(
+                measure_field=layer.measure,
+                base_x_enc=secondary["encoding"][shared_axis],
+                base_y_enc=secondary["encoding"][measure_axis],
+                label_config=layer_label_config,
+                mark_type=get_mark_type(layer_mark),
+                orientation=orientation,
+                resolver=resolver,
+                color_enc=sec_color_enc,
+                detail_enc=secondary["encoding"].get("detail"),
+            )
+            all_layers.append(sec_label_layer)
+
+    # Step 5: Assemble.
+    result: dict[str, Any] = {"layer": all_layers}
+
+    # Step 6: Resolve only for explicit independent.
     if entry.axis == "independent":
         result["resolve"] = {"scale": {measure_axis: "independent"}}
 
-    # Step 6: Transforms at the layer-group level.
+    # Step 7: Transforms at the layer-group level.
     transforms = build_transforms(spec.filters, resolver)
     if transforms:
         result["transform"] = transforms
