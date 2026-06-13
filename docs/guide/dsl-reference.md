@@ -238,7 +238,7 @@ source:
   path: data/orders.csv
 ```
 
-Both source types use the same model schema — dimensions, measures, labels, formats, and joins are defined identically. A model can graduate from `file` to `cube` by changing the `source` block; chart specs remain untouched.
+Both source types use the same model schema — dimensions, measures, labels, and formats are defined identically. A model can graduate from `file` to `cube` by changing the `source` block; chart specs remain untouched.
 
 ### Auto-generating models from files
 

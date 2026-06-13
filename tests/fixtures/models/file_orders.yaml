@@ -40,9 +40,3 @@ measures:
     calculation: "{{ profit }} / {{ revenue }}"
     label: Margin
     format: ".1%"
-
-joins:
-  customers:
-    model: customers
-    type: left
-    "on": "file_orders.customer_id = customers.customer_id"

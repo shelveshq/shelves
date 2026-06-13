@@ -19,7 +19,6 @@ from shelves.models.schema import (
     DataModel,
     FileSource,
     InlineSource,
-    JoinDefinition,
     MeasureDefinition,
     NominalDimensionDefinition,
     TemporalDimensionDefinition,
@@ -305,13 +304,6 @@ class TestModelSchemaExtensions:
         assert region.column == "region"
         assert region.calculation is None
 
-        # Joins
-        assert "customers" in model.joins
-        j = model.joins["customers"]
-        assert j.model == "customers"
-        assert j.type == "left"
-        assert j.on == "file_orders.customer_id = customers.customer_id"
-
     def test_backward_compat_cube_model(self):
         model = load_model("cube_orders", models_dir=FIXTURES_DIR)
         assert isinstance(model.source, CubeSource)
@@ -325,12 +317,8 @@ class TestModelSchemaExtensions:
         assert cat.column is None
         assert cat.calculation is None
 
-        assert model.joins is None
-
     def test_backward_compat_minimal(self):
         model = load_model("minimal", models_dir=FIXTURES_DIR)
-        assert model.source is None
-        assert model.joins is None
         m1 = model.measures["m1"]
         assert m1.column is None
         assert m1.calculation is None
@@ -427,56 +415,7 @@ class TestModelSchemaExtensions:
         assert model.dimensions["region"].column == "Sales Region"
         assert model.dimensions["date"].column == "Order Date"
 
-    def test_join_definition(self):
-        model = DataModel.model_validate(
-            {
-                "model": "test",
-                "label": "Test",
-                "measures": {"m1": {"label": "M1"}},
-                "dimensions": {"d1": {"label": "D1"}},
-                "joins": {
-                    "customers": {
-                        "model": "customers",
-                        "type": "left",
-                        "on": "test.customer_id = customers.id",
-                    },
-                    "products": {
-                        "model": "products",
-                        "type": "inner",
-                        "on": "test.product_id = products.id",
-                    },
-                },
-            }
-        )
-        assert len(model.joins) == 2
-        assert model.joins["customers"].model == "customers"
-        assert model.joins["customers"].type == "left"
-        assert model.joins["products"].type == "inner"
-
-    def test_joins_omitted(self):
-        model = DataModel.model_validate(
-            {
-                "model": "test",
-                "label": "Test",
-                "measures": {"m1": {"label": "M1"}},
-                "dimensions": {"d1": {"label": "D1"}},
-            }
-        )
-        assert model.joins is None
-
     # ── Edge cases ──────────────────────────────────────────────────────────
-
-    def test_joins_empty_dict(self):
-        model = DataModel.model_validate(
-            {
-                "model": "test",
-                "label": "Test",
-                "measures": {"m1": {"label": "M1"}},
-                "dimensions": {"d1": {"label": "D1"}},
-                "joins": {},
-            }
-        )
-        assert model.joins == {}
 
     def test_calculation_extra_whitespace_in_refs(self):
         model = DataModel.model_validate(
@@ -580,7 +519,3 @@ class TestModelSchemaExtensions:
     def test_file_source_empty_path(self):
         with pytest.raises(ValidationError):
             FileSource(type="file", path="")
-
-    def test_join_invalid_type(self):
-        with pytest.raises(ValidationError):
-            JoinDefinition(model="x", type="outer", on="a = b")

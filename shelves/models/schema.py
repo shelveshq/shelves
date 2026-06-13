@@ -18,8 +18,6 @@ from pydantic import BaseModel, Field, model_validator
 TimeGrain = Literal["day", "week", "month", "quarter", "year"]
 SortOrder = Literal["ascending", "descending"]
 Aggregation = Literal["sum", "count", "avg", "min", "max", "count_distinct"]
-JoinType = Literal["left", "inner"]
-
 _CALC_REF_RE = re.compile(r"\{\{\s*(\w+)\s*\}\}")
 
 
@@ -158,14 +156,6 @@ class FileSource(BaseModel):
     path: str = Field(min_length=1)
 
 
-class JoinDefinition(BaseModel):
-    """A declared join from this model to another model."""
-
-    model: str = Field(min_length=1)
-    type: JoinType
-    on: str = Field(min_length=1)
-
-
 ModelSource = FileSource | CubeSource | InlineSource
 
 
@@ -196,7 +186,6 @@ class DataModel(BaseModel):
 
     measures: dict[str, MeasureDefinition]
     dimensions: dict[str, DimensionDefinition]
-    joins: dict[str, JoinDefinition] | None = None
 
     @model_validator(mode="after")
     def measures_not_empty(self) -> DataModel:
