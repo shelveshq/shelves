@@ -17,3 +17,6 @@ docs/plans/
 /output/
 /themes/
 /data/
+
+# Design system source bundle (not shipped)
+assets/Shelves Design System.zip

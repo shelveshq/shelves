@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 28" width="160" height="28" fill="none">
+
+  <rect x="4" y="4" width="14" height="4" rx="2" fill="#FAF8F3"></rect>
+  <rect x="2" y="11" width="8" height="4" rx="2" fill="#B8531C"></rect>
+  <rect x="0" y="18" width="12" height="4" rx="2" fill="#FAF8F3"></rect>
+
+  <text x="28" y="20" font-family="&#39;JetBrains Mono&#39;, ui-monospace, monospace" font-size="17" font-weight="600" fill="#FAF8F3" letter-spacing="-0.5">Shelves<tspan fill="#B8531C">.</tspan></text>
+</svg>
