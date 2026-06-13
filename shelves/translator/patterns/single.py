@@ -18,11 +18,15 @@ from shelves.translator.encodings import build_encodings
 from shelves.translator.filters import build_transforms
 from shelves.translator.sort import apply_sort, apply_default_sort_from_model
 from shelves.translator.labels import (
+    apply_label_headroom,
     build_label_layer,
+    compute_label_headroom,
     detect_orientation,
     get_mark_type,
     resolve_label_spec,
     wrap_spec_with_label,
+    DEFAULT_LABEL_POSITION,
+    _POSITION_TO_AXIS,
 )
 
 VegaLiteSpec = dict[str, Any]
@@ -79,5 +83,19 @@ def compile_single(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpec
                 detail_enc=detail_enc,
             )
             inner = wrap_spec_with_label(inner, label_layer)
+
+            # KAN-234: compute and apply headroom to prevent label clipping
+            position = label_config.position or DEFAULT_LABEL_POSITION[orientation]
+            if position in _POSITION_TO_AXIS:
+                extending_axis, _side = _POSITION_TO_AXIS[position]
+                axis_type = inner["layer"][0]["encoding"][extending_axis]["type"]
+                headroom = compute_label_headroom(
+                    position, axis_type, extending_axis, measure_field
+                )
+                if headroom is not None:
+                    view_padding: dict[str, int] = {}
+                    apply_label_headroom(headroom, inner["layer"], view_padding)
+                    if view_padding:
+                        inner["_padding"] = view_padding
 
     return inner

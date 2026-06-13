@@ -333,6 +333,16 @@ When `format` is not set, the label format is auto-resolved from the data model'
 
 When `field` is not set, the label field defaults to the measure being charted (e.g., the field on the y-axis for vertical charts, x-axis for horizontal).
 
+### Automatic view headroom
+
+When labels are positioned outside the mark (the default for most chart types), the translator automatically adjusts the chart to prevent label clipping. No user configuration is needed.
+
+**For numerical axes** (quantitative, temporal): the axis scale is extended with extra padding so labels sit inside the plot area.
+
+**For categorical axes** (nominal, ordinal): view-level padding is added around the chart since categorical domains cannot be expanded.
+
+Inside-positioned labels (`inside-top`, `inside-right`) do not add headroom since they render within the mark boundary.
+
 ---
 
 ## Tooltip

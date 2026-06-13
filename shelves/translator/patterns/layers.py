@@ -98,10 +98,14 @@ from shelves.translator.filters import build_transforms
 from shelves.translator.marks import build_mark
 from shelves.translator.sort import apply_sort
 from shelves.translator.labels import (
+    apply_label_headroom,
     build_label_layer,
+    compute_label_headroom,
     get_mark_type,
     resolve_label_cascade,
     resolve_label_spec,
+    DEFAULT_LABEL_POSITION,
+    _POSITION_TO_AXIS,
 )
 
 
@@ -358,6 +362,44 @@ def compile_layer_entry(
     transforms = build_transforms(spec.filters, resolver)
     if transforms:
         result["transform"] = transforms
+
+    # Step 8: KAN-234 — compute headroom for primary label
+    view_padding: dict[str, int] = {}
+
+    if primary_label_config and get_mark_type(primary_mark) != "text":
+        position = primary_label_config.position or DEFAULT_LABEL_POSITION[orientation]
+        if position in _POSITION_TO_AXIS:
+            extending_axis, _side = _POSITION_TO_AXIS[position]
+            axis_type = primary["encoding"][extending_axis]["type"]
+            headroom = compute_label_headroom(
+                position, axis_type, extending_axis, entry.measure
+            )
+            if headroom is not None:
+                apply_label_headroom(headroom, result["layer"], view_padding)
+
+    # Headroom for each secondary label
+    for layer, secondary in zip(entry.layer, secondaries):  # type: ignore[union-attr]
+        layer_label_spec2 = resolve_label_cascade(layer.label, None, spec.label)
+        layer_label_config2 = resolve_label_spec(layer_label_spec2)
+        layer_mark2 = _resolve_mark(
+            layer_mark=layer.mark,
+            entry_mark=entry.mark,
+            top_level_mark=spec.marks,
+            measure_name=layer.measure,
+        )
+        if layer_label_config2 and get_mark_type(layer_mark2) != "text":
+            position2 = layer_label_config2.position or DEFAULT_LABEL_POSITION[orientation]
+            if position2 in _POSITION_TO_AXIS:
+                extending_axis2, _side2 = _POSITION_TO_AXIS[position2]
+                axis_type2 = secondary["encoding"][extending_axis2]["type"]
+                headroom2 = compute_label_headroom(
+                    position2, axis_type2, extending_axis2, layer.measure
+                )
+                if headroom2 is not None:
+                    apply_label_headroom(headroom2, result["layer"], view_padding)
+
+    if view_padding:
+        result["_padding"] = view_padding
 
     return result
 

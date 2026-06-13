@@ -1,5 +1,5 @@
 """
-Label Layer Builder (KAN-223)
+Label Layer Builder (KAN-223 / KAN-234)
 
 Builds implicit text-mark layers for data labels. Called by single.py,
 stacked.py, and layers.py after constructing the primary mark spec.
@@ -7,6 +7,7 @@ stacked.py, and layers.py after constructing the primary mark spec.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from shelves.schema.chart_schema import LabelConfig, LabelSpec, MarkSpec
@@ -189,6 +190,120 @@ def wrap_spec_with_label(
     if transforms:
         result["transform"] = transforms
 
+    return result
+
+
+_POSITION_TO_AXIS: dict[str, tuple[str, str]] = {
+    "top": ("y", "top"),
+    "bottom": ("y", "bottom"),
+    "left": ("x", "left"),
+    "right": ("x", "right"),
+}
+
+HEADROOM_PCT = 0.05
+
+_CATEGORICAL_HEADROOM_PX: dict[str, int] = {
+    "top": 20,
+    "bottom": 20,
+    "left": 40,
+    "right": 40,
+}
+
+
+@dataclass
+class LabelHeadroom:
+    """Describes headroom needed for an outside-positioned label."""
+
+    axis: str  # "x" or "y"
+    axis_type: str  # "quantitative", "temporal", "nominal", "ordinal"
+    side: str  # "top", "bottom", "left", "right"
+    measure_field: str
+
+
+def compute_label_headroom(
+    position: str,
+    axis_type: str,
+    extending_axis: str,
+    measure_field: str,
+) -> LabelHeadroom | None:
+    """
+    Compute headroom info for an outside-positioned label.
+
+    Returns None for inside positions.
+    """
+    if position.startswith("inside"):
+        return None
+
+    if position not in _POSITION_TO_AXIS:
+        return None
+
+    return LabelHeadroom(
+        axis=extending_axis,
+        axis_type=axis_type,
+        side=position,
+        measure_field=measure_field,
+    )
+
+
+def apply_label_headroom(
+    headroom: LabelHeadroom,
+    layer_list: list[dict[str, Any]],
+    view_padding: dict[str, int],
+) -> None:
+    """
+    Apply headroom for outside-positioned labels.
+
+    - Quantitative axes: appends an invisible layer that extends the domain
+      by 5%, so the axis grows naturally on the label side.
+    - Categorical/temporal axes: adds directional view-level padding.
+    """
+    if headroom.axis_type == "quantitative":
+        layer_list.append(
+            _build_headroom_layer(headroom.measure_field, headroom.axis, headroom.side)
+        )
+    else:
+        px = _CATEGORICAL_HEADROOM_PX.get(headroom.side, 20)
+        view_padding[headroom.side] = max(view_padding.get(headroom.side, 0), px)
+
+
+def _build_headroom_layer(
+    measure_field: str,
+    measure_axis: str,
+    side: str,
+) -> dict[str, Any]:
+    """Build an invisible layer that extends the measure domain by HEADROOM_PCT."""
+    if side in ("top", "right"):
+        agg_op = "max"
+        factor = 1 + HEADROOM_PCT
+    else:
+        agg_op = "min"
+        factor = 1 - HEADROOM_PCT
+
+    return {
+        "mark": {"type": "tick", "opacity": 0, "size": 0},
+        "transform": [
+            {
+                "aggregate": [
+                    {"op": agg_op, "field": measure_field, "as": "_hroom_agg"}
+                ],
+                "groupby": [],
+            },
+            {"calculate": f"datum._hroom_agg * {factor}", "as": "_hroom"},
+        ],
+        "encoding": {
+            measure_axis: {"field": "_hroom", "type": "quantitative"},
+        },
+    }
+
+
+def merge_view_padding(
+    accumulated: dict[str, int],
+    new: dict[str, int],
+) -> dict[str, int]:
+    """Merge a new view-padding contribution into an accumulator (per-side max)."""
+    result = {**accumulated}
+    for side, px in new.items():
+        result[side] = max(result.get(side, 0), px)
     return result
 
 

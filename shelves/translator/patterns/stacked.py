@@ -27,11 +27,16 @@ from shelves.translator.encodings import (
 from shelves.translator.filters import build_transforms
 from shelves.translator.sort import apply_sort
 from shelves.translator.labels import (
+    apply_label_headroom,
     build_label_layer,
+    compute_label_headroom,
     get_mark_type,
+    merge_view_padding,
     resolve_label_cascade,
     resolve_label_spec,
     wrap_spec_with_label,
+    DEFAULT_LABEL_POSITION,
+    _POSITION_TO_AXIS,
 )
 
 VegaLiteSpec = dict[str, Any]
@@ -289,18 +294,33 @@ def _compile_concat(
             if color_enc and "field" not in color_enc:
                 color_enc = None
             detail_enc = panel_encoding.get("detail")
+            orientation = "vertical" if measure_axis == "y" else "horizontal"
             label_layer = build_label_layer(
                 measure_field=entry.measure,
                 base_x_enc=panel_encoding["x"],
                 base_y_enc=panel_encoding["y"],
                 label_config=label_config,
                 mark_type=get_mark_type(mark),
-                orientation="vertical" if measure_axis == "y" else "horizontal",
+                orientation=orientation,
                 resolver=resolver,
                 color_enc=color_enc,
                 detail_enc=detail_enc,
             )
             panel = wrap_spec_with_label(panel, label_layer)
+
+            # KAN-234: compute and apply headroom
+            position = label_config.position or DEFAULT_LABEL_POSITION[orientation]
+            if position in _POSITION_TO_AXIS:
+                extending_axis, _side = _POSITION_TO_AXIS[position]
+                axis_type = panel["layer"][0]["encoding"][extending_axis]["type"]
+                headroom = compute_label_headroom(
+                    position, axis_type, extending_axis, entry.measure
+                )
+                if headroom is not None:
+                    panel_vp: dict[str, int] = {}
+                    apply_label_headroom(headroom, panel["layer"], panel_vp)
+                    if panel_vp:
+                        panel["_padding"] = panel_vp
 
         # KAN-232: suppress shared axis on non-edge panels
         # Panel may now be a layer spec after label wrapping
@@ -313,4 +333,13 @@ def _compile_concat(
 
         panels.append(panel)
 
-    return {concat_key: panels, "spacing": 10}
+    # KAN-234: accumulate view-level padding from panels (scale padding is already in encodings)
+    accumulated_vp: dict[str, int] = {}
+    for panel in panels:
+        panel_vp = panel.pop("_padding", {})
+        accumulated_vp = merge_view_padding(accumulated_vp, panel_vp)
+
+    result: VegaLiteSpec = {concat_key: panels, "spacing": 10}
+    if accumulated_vp:
+        result["_padding"] = accumulated_vp
+    return result

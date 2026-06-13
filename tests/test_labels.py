@@ -509,3 +509,129 @@ class TestLabelCompilation:
         assert "transform" in vl
         for child in vl["layer"]:
             assert "transform" not in child
+
+
+def _find_headroom_layer(layers: list) -> dict | None:
+    """Find the invisible headroom layer (tick with opacity 0) in a layer list."""
+    for layer in layers:
+        mark = layer.get("mark", {})
+        if isinstance(mark, dict) and mark.get("type") == "tick" and mark.get("opacity") == 0:
+            return layer
+    return None
+
+
+def _headroom_extends(headroom_layer: dict, axis: str, field: str, agg_op: str) -> bool:
+    """Check that a headroom layer aggregates the expected field on the expected axis."""
+    transforms = headroom_layer.get("transform", [])
+    if len(transforms) < 2:
+        return False
+    agg = transforms[0].get("aggregate", [{}])[0]
+    if agg.get("op") != agg_op or agg.get("field") != field:
+        return False
+    enc = headroom_layer.get("encoding", {})
+    return axis in enc and enc[axis].get("field") == "_hroom"
+
+
+class TestLabelHeadroom:
+    """Headroom injection tests: outside-positioned labels extend the axis domain."""
+
+    def test_bar_label_headroom_top(self):
+        """Vertical bar with label: true → headroom layer extends y via max."""
+        vl = compile_fixture("label_bar_simple.yaml")
+        assert "layer" in vl
+        hroom = _find_headroom_layer(vl["layer"])
+        assert hroom is not None
+        assert _headroom_extends(hroom, "y", "revenue", "max")
+        assert "padding" not in vl
+
+    def test_horizontal_bar_label_headroom_right(self):
+        """Horizontal bar with label: true → headroom layer extends x via max."""
+        vl = compile_fixture("label_horizontal_bar.yaml")
+        assert "layer" in vl
+        hroom = _find_headroom_layer(vl["layer"])
+        assert hroom is not None
+        assert _headroom_extends(hroom, "x", "revenue", "max")
+        assert "padding" not in vl
+
+    def test_line_label_headroom_top(self):
+        """Line chart with label: true → headroom layer extends y via max."""
+        vl = compile_fixture("label_line.yaml")
+        assert "layer" in vl
+        hroom = _find_headroom_layer(vl["layer"])
+        assert hroom is not None
+        assert _headroom_extends(hroom, "y", "revenue", "max")
+        assert "padding" not in vl
+
+    def test_stacked_label_headroom(self):
+        """Stacked bar panels with labels → each panel has a headroom layer."""
+        vl = compile_fixture("label_stacked.yaml")
+        assert "vconcat" in vl
+        for panel in vl["vconcat"]:
+            hroom = _find_headroom_layer(panel["layer"])
+            assert hroom is not None
+        assert "padding" not in vl
+
+    def test_layered_label_headroom(self):
+        """Layered chart: primary bar with label → headroom layer extends y."""
+        vl = compile_fixture("label_layered.yaml")
+        assert "layer" in vl
+        hroom = _find_headroom_layer(vl["layer"])
+        assert hroom is not None
+        assert _headroom_extends(hroom, "y", "revenue", "max")
+        assert "padding" not in vl
+
+    def test_layered_both_labels_headroom(self):
+        """Dual-axis with both labels → headroom layers present."""
+        vl = compile_fixture("label_layered_both.yaml")
+        assert "layer" in vl
+        headroom_layers = [
+            l for l in vl["layer"]
+            if isinstance(l.get("mark"), dict) and l["mark"].get("opacity") == 0
+        ]
+        assert len(headroom_layers) >= 1
+        assert "padding" not in vl
+
+    def test_layered_horizontal_label_headroom(self):
+        """Horizontal layered chart: both labels → headroom layers on x."""
+        vl = compile_fixture("label_layered_horizontal.yaml")
+        assert "layer" in vl
+        headroom_layers = [
+            l for l in vl["layer"]
+            if isinstance(l.get("mark"), dict) and l["mark"].get("opacity") == 0
+        ]
+        assert len(headroom_layers) >= 1
+        assert "padding" not in vl
+
+    def test_scatter_label_headroom(self):
+        """Circle mark with label: true → headroom layer extends y."""
+        vl = compile_fixture("label_scatter.yaml")
+        assert "layer" in vl
+        hroom = _find_headroom_layer(vl["layer"])
+        assert hroom is not None
+        assert _headroom_extends(hroom, "y", "order_count", "max")
+        assert "padding" not in vl
+
+    def test_label_inside_position_no_headroom(self):
+        """Inside-positioned label → no headroom layer, no view padding."""
+        vl = compile_fixture("label_bar_config.yaml")
+        assert "layer" in vl
+        hroom = _find_headroom_layer(vl["layer"])
+        assert hroom is None
+        assert "padding" not in vl
+
+    def test_label_categorical_axis_view_padding(self):
+        """Label extending along x (nominal) → view-level padding.left: 40."""
+        vl = compile_fixture("label_left.yaml")
+        assert "layer" in vl
+        assert vl.get("padding") == {"left": 40}
+        hroom = _find_headroom_layer(vl["layer"])
+        assert hroom is None
+
+    def test_label_bottom_headroom(self):
+        """Position bottom on vertical bar → headroom layer extends y via min."""
+        vl = compile_fixture("label_bottom.yaml")
+        assert "layer" in vl
+        hroom = _find_headroom_layer(vl["layer"])
+        assert hroom is not None
+        assert _headroom_extends(hroom, "y", "revenue", "min")
+        assert "padding" not in vl

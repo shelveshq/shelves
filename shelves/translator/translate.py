@@ -62,8 +62,11 @@ def translate_chart(
         # Single-measure: simple chart
         inner = compile_single(spec, resolver)
 
-    # Facet wrapping — applies uniformly to any inner spec shape
+    # Pop _padding (view-level) before facet wrapping, then apply to top-level
+    view_padding = inner.pop("_padding", None)
     top_level = apply_facet(inner, spec.facet)
+    if view_padding:
+        top_level["padding"] = view_padding
     top_level["$schema"] = VEGA_LITE_SCHEMA
 
     # Inject title from spec.sheet; subtitle from spec.description when present
