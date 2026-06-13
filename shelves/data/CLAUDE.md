@@ -8,7 +8,8 @@ This module handles **data binding** — attaching data to translated Vega-Lite 
 - `bind.py` — `bind_data(spec, rows)`: inline JSON rows (Phase 1, tests, offline use), plus `resolve_data(spec, chart_spec)`: top-level entry point that chooses between inline binding and adapter-based fetching.
 - `cube_client.py` — Cube REST API client: query builder, filter translation, response transformer. Exports `fetch_from_cube_model(...)` used by the Cube adapter when rows are not provided.
 - `errors.py` — `NoDataSourceError(ValueError)`: raised when no data source is available.
-- `sources.py` — `DataSourceAdapter` protocol and registry. `CubeDataSourceAdapter` registers itself at import time.
+- `duckdb_adapter.py` — DuckDB query adapter for file-backed data sources. Three layers: `resolve_measure_expressions()` ({{ ref }} substitution via topological sort), `build_sql()` (SELECT/FROM/WHERE/GROUP BY assembly), `DuckDBAdapter.fetch()` (DuckDB execution). Registered as `"file"` source type. DuckDB imported lazily so the module works without duckdb installed.
+- `sources.py` — `DataSourceAdapter` protocol and registry. `CubeDataSourceAdapter` and `DuckDBAdapter` register themselves at import time.
 
 ## Key Design Decisions
 

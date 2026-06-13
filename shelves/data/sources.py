@@ -64,3 +64,12 @@ class CubeDataSourceAdapter:
 
 
 register("cube", CubeDataSourceAdapter())
+
+
+def _register_file_adapter() -> None:
+    from shelves.data.duckdb_adapter import DuckDBAdapter
+
+    register("file", DuckDBAdapter())
+
+
+_register_file_adapter()
