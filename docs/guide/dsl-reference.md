@@ -525,6 +525,42 @@ When the chart has a field-based `color` encoding (e.g., `color: country`), labe
 
 Static hex colors (e.g., `color: "#4A90D9"`) are NOT inherited — they don't create data grouping.
 
+### Labels on layered charts
+
+When `label: true` is set on a chart with layers (dual/multi-axis), labels are injected for bar-mark layers only. Non-bar layers (line, area, etc.) are silently skipped.
+
+```yaml
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    color: country
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+        color: "#666666"
+    axis: independent
+label: true
+```
+
+Revenue bars get data labels; the ARPU line is not labeled.
+
+The three-level cascade applies per layer: `label: false` on a `layer` entry suppresses labels on that specific layer, even if the chart or entry level sets `label: true`.
+
+```yaml
+rows:
+  - measure: revenue
+    mark: bar
+    layer:
+      - measure: order_count
+        mark: bar
+        label: false      # suppresses label on this bar layer only
+    axis: independent
+label: true
+```
+
 ---
 
 ## Title and subtitle
