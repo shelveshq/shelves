@@ -1,0 +1,12 @@
+sheet: "Revenue and Orders"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    color: country
+  - measure: order_count
+    mark: line
+    color: country
+label: true
+tooltip: [week, country]

@@ -83,7 +83,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from shelves.schema.chart_schema import ChartSpec, ColorSpec, LayerEntry, MarkSpec, MeasureEntry
+from shelves.schema.chart_schema import (
+    ChartSpec,
+    ColorSpec,
+    LabelSpec,
+    LayerEntry,
+    MarkSpec,
+    MeasureEntry,
+)
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.translator.encodings import (
     _auto_inject_from_model,
@@ -94,6 +101,13 @@ from shelves.translator.encodings import (
     build_tooltip,
 )
 from shelves.translator.filters import build_transforms
+from shelves.translator.labels import (
+    build_label_layer,
+    is_bar_mark,
+    maybe_wrap_with_label,
+    resolve_label_cascade,
+    resolve_label_spec,
+)
 from shelves.translator.marks import build_mark
 from shelves.translator.panel import build_panel_encoding
 from shelves.translator.patterns.stacked import _resolve_shared_axis, _suppress_shared_axis
@@ -259,6 +273,7 @@ def compile_layer_entry(
 
     # Step 3: Build each secondary layer.
     secondaries = []
+    secondary_marks: list[MarkSpec] = []
     for i, layer in enumerate(entry.layer):  # type: ignore[union-attr]
         try:
             layer_mark = resolve_mark(
@@ -269,6 +284,7 @@ def compile_layer_entry(
             )
         except (ValueError, TypeError) as e:
             raise ValueError(f"Entry {entry.measure!r} layer {i}: {e}") from e
+        secondary_marks.append(layer_mark)
         layer_color = resolve_property(layer.color, entry.color, spec.color)
         layer_detail = _resolve_layer_detail(layer, entry, spec)
         layer_size = resolve_property(layer.size, entry.size, spec.size)
@@ -292,7 +308,21 @@ def compile_layer_entry(
         secondaries.append(secondary)
 
     # Step 4: Assemble.
-    result: dict[str, Any] = {"layer": [primary, *secondaries]}
+    all_layer_specs = [primary, *secondaries]
+
+    # Step 4b: Inject label layers for bar-mark children.
+    all_layer_specs = _inject_label_layers(
+        layer_specs=all_layer_specs,
+        layer_marks=[primary_mark, *secondary_marks],
+        layer_measures=[entry.measure] + [le.measure for le in entry.layer],  # type: ignore[union-attr]
+        layer_entries=[None, *list(entry.layer)],  # type: ignore[union-attr]
+        entry_label=entry.label,
+        top_label=spec.label,
+        measure_axis=measure_axis,
+        resolver=resolver,
+    )
+
+    result: dict[str, Any] = {"layer": all_layer_specs}
 
     # Step 5: Resolve only for explicit independent.
     if entry.axis == "independent":
@@ -302,6 +332,51 @@ def compile_layer_entry(
     transforms = build_transforms(spec.filters, resolver)
     if transforms:
         result["transform"] = transforms
+
+    return result
+
+
+def _inject_label_layers(
+    layer_specs: list[dict[str, Any]],
+    layer_marks: list[MarkSpec],
+    layer_measures: list[str],
+    layer_entries: list[LayerEntry | None],
+    entry_label: LabelSpec | None,
+    top_label: LabelSpec | None,
+    measure_axis: str,
+    resolver: FieldTypeResolver,
+) -> list[dict[str, Any]]:
+    orientation = "vertical" if measure_axis == "y" else "horizontal"
+
+    result: list[dict[str, Any]] = []
+    for spec_dict, mark, measure, layer_entry in zip(
+        layer_specs, layer_marks, layer_measures, layer_entries, strict=True
+    ):
+        result.append(spec_dict)
+
+        layer_label = layer_entry.label if layer_entry is not None else None
+        resolved = resolve_label_cascade(layer_label, entry_label, top_label)
+        label_config = resolve_label_spec(resolved)
+
+        if label_config is None:
+            continue
+        if not is_bar_mark(mark):
+            continue
+
+        text_layer = build_label_layer(
+            measure_field=measure,
+            base_x_enc=spec_dict["encoding"]["x"],
+            base_y_enc=spec_dict["encoding"]["y"],
+            label_config=label_config,
+            orientation=orientation,
+            resolver=resolver,
+            color_enc=spec_dict["encoding"].get("color"),
+            detail_enc=spec_dict["encoding"].get("detail"),
+        )
+        # Suppress measure-axis axis to prevent duplicates under independent resolution.
+        # Shared axis is left as-is (popped by _strip_axis_metadata) so dimension labels render.
+        text_layer["encoding"][measure_axis]["axis"] = None
+        result.append(text_layer)
 
     return result
 
@@ -337,6 +412,17 @@ def _build_simple_panel(
     transforms = build_transforms(spec.filters, resolver)
     if transforms:
         panel["transform"] = transforms
+
+    resolved_label = resolve_label_cascade(None, entry.label, spec.label)
+    orientation = "vertical" if measure_axis == "y" else "horizontal"
+    panel = maybe_wrap_with_label(
+        panel=panel,
+        mark=mark,
+        label=resolved_label,
+        measure_field=entry.measure,
+        orientation=orientation,
+        resolver=resolver,
+    )
 
     return panel
 
