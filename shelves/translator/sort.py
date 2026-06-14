@@ -11,7 +11,8 @@ Three modes:
   3. Custom order: {field: country, order: [US, UK, FR]}
      → encoding.x.sort = [US, UK, FR]
 
-Sort targets the x encoding by default. Set channel: y to sort the y axis.
+When channel is omitted, auto-detects the dimension axis (nominal/ordinal) as the
+sort target. Falls back to "x" if both axes are the same type.
 """
 
 from __future__ import annotations
@@ -22,6 +23,17 @@ from shelves.schema.chart_schema import AxisSort, FieldSort
 from shelves.schema.field_types import FieldTypeResolver
 
 SortSpec = FieldSort | AxisSort | None
+
+_DIMENSION_TYPES = {"nominal", "ordinal"}
+
+
+def _detect_sort_channel(encoding: dict[str, Any]) -> str:
+    """Pick the dimension axis as the sort target."""
+    x_type = encoding.get("x", {}).get("type")
+    y_type = encoding.get("y", {}).get("type")
+    if y_type in _DIMENSION_TYPES and x_type not in _DIMENSION_TYPES:
+        return "y"
+    return "x"
 
 
 def apply_sort(
@@ -34,7 +46,8 @@ def apply_sort(
     if sort is None:
         return
 
-    target = encoding.get(sort.channel)
+    channel = sort.channel or _detect_sort_channel(encoding)
+    target = encoding.get(channel)
     if target is None:
         return
 

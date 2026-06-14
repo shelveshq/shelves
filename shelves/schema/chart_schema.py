@@ -154,7 +154,7 @@ class FieldSort(BaseModel):
 
     field: str
     order: SortOrder | list[str]
-    channel: Literal["x", "y"] = "x"
+    channel: Literal["x", "y"] | None = None
 
 
 class AxisSort(BaseModel):
@@ -162,7 +162,7 @@ class AxisSort(BaseModel):
 
     axis: Literal["x", "y"]
     order: SortOrder
-    channel: Literal["x", "y"] = "x"
+    channel: Literal["x", "y"] | None = None
 
 
 SortSpec = FieldSort | AxisSort
