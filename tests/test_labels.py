@@ -241,6 +241,36 @@ class TestLabelCompilation:
         # Tooltip NOT on text layer
         assert "tooltip" not in text_layer["encoding"]
 
+    def test_stacked_bar_label_has_stack(self):
+        vl = compile_fixture("label_grouped_bar.yaml")
+        text_layer = vl["layer"][1]
+        # Text marks don't auto-stack — must match the bar's stack: zero
+        assert text_layer["encoding"]["y"]["stack"] == "zero"
+
+    def test_unstacked_bar_label_no_stack(self):
+        vl = compile_fixture("label_bar_simple.yaml")
+        text_layer = vl["layer"][1]
+        # No color grouping → bar isn't stacked → label shouldn't stack
+        assert "stack" not in text_layer["encoding"]["y"]
+
+    def test_hex_color_bar_label_no_stack(self):
+        yaml = """\
+sheet: "Test"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+color: "#4A90D9"
+label: true
+"""
+        spec = parse_chart(yaml)
+        from shelves.translator.translate import translate_chart
+
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+        text_layer = vl["layer"][1]
+        # Hex color → value encoding, no stacking
+        assert "stack" not in text_layer["encoding"]["y"]
+
     def test_filter_hoisted_to_layer_group(self):
         vl = compile_fixture("label_bar_filtered.yaml")
         assert "layer" in vl

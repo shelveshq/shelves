@@ -161,6 +161,23 @@ sort:
         assert "sort" in vl["encoding"]["x"]
         assert "sort" not in vl["encoding"]["y"]
 
+    def test_default_sort_auto_detects_dimension_for_horizontal(self):
+        from shelves.schema.chart_schema import parse_chart
+        from shelves.translator.translate import translate_chart
+
+        yaml = """\
+sheet: "Test"
+data: orders
+cols: revenue
+rows: country
+marks: bar
+"""
+        spec = parse_chart(yaml)
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+        # country has sortOrder in model → should land on y (the dimension axis)
+        assert "sort" in vl["encoding"]["y"]
+        assert "sort" not in vl["encoding"]["x"]
+
 
 class TestSchemaPresent:
     def test_has_vega_lite_schema(self):

@@ -111,15 +111,21 @@ def build_label_layer(
         text_enc["format"] = fmt
     encoding["text"] = text_enc
 
+    stacked = False
     details: list[dict[str, Any]] = []
     if color_enc is not None and "field" in color_enc:
         details.append({"field": color_enc["field"], "type": color_enc.get("type", "nominal")})
+        stacked = True
     if detail_enc is not None:
         details.append({**detail_enc})
     if len(details) == 1:
         encoding["detail"] = details[0]
     elif len(details) > 1:
         encoding["detail"] = details
+
+    if stacked:
+        measure_key = "y" if orientation == "vertical" else "x"
+        encoding[measure_key]["stack"] = "zero"
 
     return {"mark": mark_props, "encoding": encoding}
 
