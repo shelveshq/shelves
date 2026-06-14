@@ -1,0 +1,10 @@
+sheet: "Key Metrics"
+data: orders
+cols: week
+marks: bar
+rows:
+  - measure: revenue
+    shared_axis: true
+  - measure: order_count
+    shared_axis: true
+label: true

@@ -1,6 +1,6 @@
 # Shelves DSL Reference
 
-**DSL Version: 0.6.0**
+**DSL Version: 0.7.0**
 
 This document is the authoritative reference for the Shelves YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -36,6 +36,9 @@ facet: {...}
 axis:
   x: { title: "...", format: "...", grid: true }
   y: { title: "...", format: "...", grid: false }
+
+# Optional data labels
+label: true                  # or false, or {field, position, color, size, format}
 
 # KPI pattern (replaces cols/rows/marks when present)
 kpi:
@@ -467,6 +470,63 @@ tooltip: [country, revenue]
 
 ---
 
+## Labels
+
+Data labels display values directly on chart marks. Labels are rendered as Vega-Lite text-mark layers — they share the chart's scales and automatically align with the data.
+
+### Basic usage
+
+```yaml
+sheet: "Revenue by Country"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+label: true
+```
+
+`label: true` displays the measure value inside each bar end, formatted per the model's format string.
+
+### Label configuration
+
+```yaml
+label:
+  field: order_count          # which field to display (default: the measure)
+  position: top               # positioning preset (default: inside-end)
+  color: "#333333"            # text color (hex)
+  size: 10                    # font size in pixels
+  format: ",.0f"              # D3 format string (overrides model format)
+```
+
+### Positions
+
+| Position | Vertical bars | Horizontal bars |
+|---|---|---|
+| `inside-top` / `inside-right` | Inside bar, near top edge (default for vertical) | Inside bar, near right edge (default for horizontal) |
+| `inside-bottom` / `inside-left` | Inside bar, near bottom edge | Inside bar, near left edge |
+| `top` / `right` | Above bar | Right of bar |
+| `bottom` / `left` | Below bar | Left of bar |
+
+The default position is `inside-top` for vertical bars and `inside-right` for horizontal bars.
+
+### Suppressing labels
+
+```yaml
+label: false    # explicitly suppress — useful to override inherited labels
+```
+
+### Format auto-resolution
+
+When no `format` is specified, the label format is automatically resolved from the data model. For example, if the model defines `revenue` with `format: "$,.0f"`, then `label: true` on a revenue chart displays labels as `$1,234`.
+
+### Color grouping
+
+When the chart has a field-based `color` encoding (e.g., `color: country`), labels inherit the color grouping so each group's label positions correctly. The label layer uses `legend: null` to avoid duplicating the legend entry.
+
+Static hex colors (e.g., `color: "#4A90D9"`) are NOT inherited — they don't create data grouping.
+
+---
+
 ## Title and subtitle
 
 Every chart automatically renders its `sheet` name as the Vega-Lite title. The optional `description` field renders as the subtitle:
@@ -614,6 +674,23 @@ sort:
   order: descending
 tooltip: [country, revenue]
 ```
+
+### Simple bar chart with labels
+
+```yaml
+sheet: "Revenue by Country"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+color: country
+label: true
+sort:
+  field: revenue
+  order: descending
+```
+
+Revenue values are displayed inside each bar, formatted per the model's format string (`$1,234`).
 
 ### Line chart with time
 
@@ -936,7 +1013,8 @@ All currently planned features are supported. See the DSL version history below 
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.6.0** | Current | KPI block schema: new `kpi` top-level property with `value`, `format`, `title`, `spacing`, and `comparison` sub-block. Replaces placeholder `KPIConfig`. |
+| **0.7.0** | Current | Labels v2: `label` property on charts (`true`, `false`, or config object). Implicit text-mark layers on bar/column charts with inside-end default positioning. Three-level cascade (chart → entry → layer). |
+| **0.6.0** | Previous | KPI block schema: new `kpi` top-level property with `value`, `format`, `title`, `spacing`, and `comparison` sub-block. Replaces placeholder `KPIConfig`. |
 | **0.5.2** | Previous | Shared axis hiding: stacked panels hide repeating shared axes by default. New `shared_axis` property on measure entries. |
 | **0.5.1** | Previous | Stacked layers: multi-entry shelves with mixed layered and standalone entries compile to `vconcat`/`hconcat`. |
 | **0.5.0** | Previous | Layer compilation (dual/triple axis): single-entry `layer` specs compile to Vega-Lite `layer` arrays with encoding inheritance, opacity merging, and axis scale resolution. Multi-entry layered shelves remain deferred. |

@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, model_validator
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = "0.6.0"  # KPI block schema (KAN-258)
+DSL_VERSION = "0.7.0"  # Labels v2 — data labels on bar/column charts (KAN-269)
 
 # ─── Primitives ────────────────────────────────────────────────────
 
@@ -211,6 +211,39 @@ class AxisConfig(BaseModel):
     y: AxisChannelConfig | None = None
 
 
+# ─── Label Config ────────────────────────────────────────────────
+
+LabelPosition = Literal[
+    "top",
+    "bottom",
+    "left",
+    "right",
+    "inside-top",
+    "inside-bottom",
+    "inside-left",
+    "inside-right",
+]
+
+
+class LabelConfig(BaseModel):
+    field: str | None = None
+    position: LabelPosition | None = None
+    color: str | None = None
+    size: int | float | None = Field(default=None, gt=0)
+    format: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_color_hex(self) -> LabelConfig:
+        if self.color is not None and not HEX_COLOR_RE.match(self.color):
+            raise ValueError(
+                f"Label color must be a hex color string (e.g. '#333333'), got {self.color!r}"
+            )
+        return self
+
+
+LabelSpec = bool | LabelConfig
+
+
 # ─── KPI (special pattern) ────────────────────────────────────────
 
 
@@ -272,6 +305,7 @@ class LayerEntry(BaseModel):
     detail: str | None = None
     size: str | int | float | None = None
     opacity: float | None = Field(None, ge=0.0, le=1.0)
+    label: LabelSpec | None = None
 
 
 class MeasureEntry(BaseModel):
@@ -295,6 +329,8 @@ class MeasureEntry(BaseModel):
 
     # Phase 1a: layers overlaid on this measure
     layer: list[LayerEntry] | None = None
+
+    label: LabelSpec | None = None
 
     # Phase 1a: axis scale resolution for layers
     # "independent" = each measure gets its own axis scale
@@ -359,6 +395,9 @@ class ChartSpec(BaseModel):
 
     # Axis config (for single-measure charts)
     axis: AxisConfig | None = None
+
+    # Data labels
+    label: LabelSpec | None = None
 
     # KPI special pattern
     kpi: KPIBlock | None = None
