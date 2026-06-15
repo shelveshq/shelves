@@ -43,9 +43,18 @@ def render_html(spec: dict, title: str | None = None) -> str:
 <body>
   <div id="chart"></div>
   <script>
+    function charterPatch(vgSpec) {{
+      const labels = vgSpec.usermeta?.charter?.labels;
+      if (!labels || labels.length === 0) {{
+        return vgSpec;
+      }}
+      return vgSpec;
+    }}
+
     const spec = {spec_json};
     vegaEmbed('#chart', spec, {{
       renderer: 'canvas',
+      patch: charterPatch,
       actions: {{ export: true, source: true, compiled: false, editor: true }}
     }}).catch(console.error);
   </script>

@@ -60,6 +60,17 @@ class TestRenderHTML:
         json_area = result.split("const spec = ")[1].split("vegaEmbed")[0]
         assert "</script>" not in json_area
 
+    def test_patch_callback_in_output(self):
+        spec = {"mark": "bar", "encoding": {}}
+        html = render_html(spec)
+        assert "function charterPatch(vgSpec)" in html
+        assert "patch: charterPatch" in html
+
+    def test_patch_function_returns_spec(self):
+        spec = {"mark": "bar", "encoding": {}}
+        html = render_html(spec)
+        assert "return vgSpec;" in html
+
 
 # ─── Theme Merge ─────────────────────────────────────────────────
 
