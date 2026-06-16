@@ -92,6 +92,26 @@ class TestRenderHTML:
         html = render_html({"mark": "bar"})
         assert "!== 'rect'" in html
 
+    def test_inlines_canonical_patch_source(self):
+        # The standalone page must inline the canonical charter_patch.js
+        # verbatim — never a stale copy. This guards against drift with the
+        # studio pipeline, which serves the same file.
+        from shelves.render.to_html import CHARTER_PATCH_JS, PATCH_JS_PATH
+
+        source = PATCH_JS_PATH.read_text(encoding="utf-8")
+        assert source == CHARTER_PATCH_JS
+        assert CHARTER_PATCH_JS in render_html({"mark": "bar"})
+
+    def test_centers_labels_on_band(self):
+        # Regression: labels must center on the band (band: 0.5), not its
+        # leading edge. The previous `if ('band' in ref)` guard never fired
+        # because compiled Vega carries band width on a separate signal.
+        from shelves.render.to_html import CHARTER_PATCH_JS
+
+        assert "textEnc.x.band = 0.5" in CHARTER_PATCH_JS
+        assert "textEnc.y.band = 0.5" in CHARTER_PATCH_JS
+        assert "if ('band' in" not in CHARTER_PATCH_JS
+
 
 # ─── Theme Merge ─────────────────────────────────────────────────
 
