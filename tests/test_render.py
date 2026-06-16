@@ -71,6 +71,27 @@ class TestRenderHTML:
         html = render_html(spec)
         assert "return vgSpec;" in html
 
+    def test_patch_finds_named_marks(self):
+        html = render_html({"mark": "bar"})
+        assert "findNamedMark" in html
+        assert "insertAfterMark" in html
+
+    def test_patch_creates_text_marks(self):
+        html = render_html({"mark": "bar"})
+        assert "type: 'text'" in html
+
+    def test_patch_formats_with_d3(self):
+        html = render_html({"mark": "bar"})
+        assert "format(datum[" in html
+
+    def test_patch_handles_match_color(self):
+        html = render_html({"mark": "bar"})
+        assert "'match'" in html
+
+    def test_patch_skips_non_rect(self):
+        html = render_html({"mark": "bar"})
+        assert "!== 'rect'" in html
+
 
 # ─── Theme Merge ─────────────────────────────────────────────────
 
