@@ -94,6 +94,11 @@ from shelves.translator.encodings import (
     build_tooltip,
 )
 from shelves.translator.filters import build_transforms
+from shelves.translator.labels import (
+    build_label_intent,
+    resolve_label_cascade,
+    resolve_label_spec,
+)
 from shelves.translator.marks import build_mark
 from shelves.translator.panel import build_panel_encoding
 from shelves.translator.patterns.stacked import _resolve_shared_axis, _suppress_shared_axis
@@ -144,14 +149,15 @@ def compile_stacked_with_layers(
             measure_axis=measure_axis,
             spec=spec,
             resolver=resolver,
+            mark_counter=0,
         )
 
     # Multi-entry branch (KAN-112): vconcat/hconcat of layer + simple panels.
-    # Transforms go per-panel (vconcat/hconcat children are independent unit specs).
-    # compile_layer_entry already adds transforms at the layer-group level;
-    # _build_simple_panel adds them to its own output.
     is_hconcat = concat_key == "hconcat"
     panels: list[dict[str, Any]] = []
+    all_label_intents: list[dict[str, Any]] = []
+    mark_counter = 0
+
     for i, entry in enumerate(entries):
         if entry.layer:
             panel = compile_layer_entry(
@@ -162,7 +168,9 @@ def compile_stacked_with_layers(
                 measure_axis=measure_axis,
                 spec=spec,
                 resolver=resolver,
+                mark_counter=mark_counter,
             )
+            num_marks = 1 + len(entry.layer)
         else:
             panel = _build_simple_panel(
                 entry=entry,
@@ -173,6 +181,19 @@ def compile_stacked_with_layers(
                 spec=spec,
                 resolver=resolver,
             )
+            num_marks = 1
+
+            resolved_label = resolve_label_cascade(None, entry.label, spec.label)
+            label_config = resolve_label_spec(resolved_label)
+            if label_config is not None:
+                mark_name = f"mark_{mark_counter}"
+                panel["name"] = mark_name
+                all_label_intents.append(
+                    build_label_intent(mark_name, entry.measure, label_config, resolver)
+                )
+
+        panel_intents = panel.pop("_label_intents", [])
+        all_label_intents.extend(panel_intents)
 
         # KAN-232: suppress shared axis on non-edge panels
         if not _resolve_shared_axis(entries, i, is_hconcat):
@@ -183,8 +204,12 @@ def compile_stacked_with_layers(
                 _suppress_shared_axis(panel["encoding"], shared_axis)
 
         panels.append(panel)
+        mark_counter += num_marks
 
-    return {concat_key: panels, "spacing": 10}
+    result: dict[str, Any] = {concat_key: panels, "spacing": 10}
+    if all_label_intents:
+        result["_label_intents"] = all_label_intents
+    return result
 
 
 def compile_layer_entry(
@@ -195,6 +220,7 @@ def compile_layer_entry(
     measure_axis: str,
     spec: ChartSpec,
     resolver: FieldTypeResolver,
+    mark_counter: int = 0,
 ) -> dict[str, Any]:
     """
     Compile a single MeasureEntry with a `layer` list into a Vega-Lite layer spec.
@@ -291,17 +317,42 @@ def compile_layer_entry(
         )
         secondaries.append(secondary)
 
-    # Step 4: Assemble.
+    # Step 4: Mark naming + label intents.
+    label_intents: list[dict[str, Any]] = []
+
+    primary_name = f"mark_{mark_counter}"
+    primary["name"] = primary_name
+    resolved_label = resolve_label_cascade(None, entry.label, spec.label)
+    label_config = resolve_label_spec(resolved_label)
+    if label_config is not None:
+        label_intents.append(
+            build_label_intent(primary_name, entry.measure, label_config, resolver)
+        )
+
+    for j, (secondary, layer_entry) in enumerate(zip(secondaries, entry.layer, strict=False)):  # type: ignore[union-attr]
+        layer_name = f"mark_{mark_counter + 1 + j}"
+        secondary["name"] = layer_name
+        layer_label = resolve_label_cascade(layer_entry.label, entry.label, spec.label)
+        layer_config = resolve_label_spec(layer_label)
+        if layer_config is not None:
+            label_intents.append(
+                build_label_intent(layer_name, layer_entry.measure, layer_config, resolver)
+            )
+
+    # Step 5: Assemble.
     result: dict[str, Any] = {"layer": [primary, *secondaries]}
 
-    # Step 5: Resolve only for explicit independent.
+    # Step 6: Resolve only for explicit independent.
     if entry.axis == "independent":
         result["resolve"] = {"scale": {measure_axis: "independent"}}
 
-    # Step 6: Transforms at the layer-group level.
+    # Step 7: Transforms at the layer-group level.
     transforms = build_transforms(spec.filters, resolver)
     if transforms:
         result["transform"] = transforms
+
+    if label_intents:
+        result["_label_intents"] = label_intents
 
     return result
 

@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, model_validator
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = "0.6.0"  # KPI block schema (KAN-258)
+DSL_VERSION = "0.7.0"  # Labels: label property on charts (KAN-281)
 
 # ─── Primitives ────────────────────────────────────────────────────
 
@@ -211,6 +211,34 @@ class AxisConfig(BaseModel):
     y: AxisChannelConfig | None = None
 
 
+# ─── Label Configuration ─────────────────────────────────────────
+
+LabelHorizontal = Literal["left", "center", "right"]
+LabelVertical = Literal["top", "center", "bottom"]
+
+
+class LabelConfig(BaseModel):
+    """Configuration for data labels on a mark."""
+
+    field: str | None = None
+    horizontal: LabelHorizontal | None = None
+    vertical: LabelVertical | None = None
+    color: str | None = None
+    size: int | float | None = Field(default=None, gt=0)
+    format: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_color(self) -> LabelConfig:
+        if self.color is not None and self.color != "match" and not HEX_COLOR_RE.match(self.color):
+            raise ValueError(
+                f"Label color must be a hex color (e.g. '#333333') or 'match', got {self.color!r}"
+            )
+        return self
+
+
+LabelSpec = bool | LabelConfig
+
+
 # ─── KPI (special pattern) ────────────────────────────────────────
 
 
@@ -272,6 +300,7 @@ class LayerEntry(BaseModel):
     detail: str | None = None
     size: str | int | float | None = None
     opacity: float | None = Field(None, ge=0.0, le=1.0)
+    label: LabelSpec | None = None
 
 
 class MeasureEntry(BaseModel):
@@ -306,6 +335,8 @@ class MeasureEntry(BaseModel):
     # True = always show the shared axis on this panel
     # False = always hide the shared axis on this panel
     shared_axis: bool | None = None
+
+    label: LabelSpec | None = None
 
 
 # A shelf is either a single field name or a list of measure entries
@@ -359,6 +390,9 @@ class ChartSpec(BaseModel):
 
     # Axis config (for single-measure charts)
     axis: AxisConfig | None = None
+
+    # Data labels
+    label: LabelSpec | None = None
 
     # KPI special pattern
     kpi: KPIBlock | None = None

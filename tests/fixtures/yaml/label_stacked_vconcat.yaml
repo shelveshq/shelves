@@ -1,0 +1,9 @@
+sheet: "Revenue and Orders"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+  - measure: order_count
+    mark: line
+label: true

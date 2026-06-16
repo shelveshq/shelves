@@ -1,0 +1,10 @@
+sheet: "Revenue by Country"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+label:
+  vertical: top
+  color: "#333333"
+  size: 10
+  format: ",.0f"

@@ -24,6 +24,11 @@ from shelves.translator.encodings import (
     build_tooltip,
 )
 from shelves.translator.filters import build_transforms
+from shelves.translator.labels import (
+    build_label_intent,
+    resolve_label_cascade,
+    resolve_label_spec,
+)
 from shelves.translator.marks import build_mark
 from shelves.translator.panel import build_panel_encoding
 from shelves.translator.resolution import resolve_mark
@@ -100,7 +105,9 @@ def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpe
     ]
     all_same_mark = len({str(m) for m in effective_marks}) == 1
 
-    if all_same_mark and not any(e.color or e.detail or e.size for e in entries):
+    has_labels = _has_active_labels(spec, entries)
+
+    if all_same_mark and not any(e.color or e.detail or e.size for e in entries) and not has_labels:
         # Clean repeat: all panels identical except the measure field
         return _compile_repeat(
             entries,
@@ -127,6 +134,14 @@ def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpe
         resolver,
         transforms,
     )
+
+
+def _has_active_labels(spec: ChartSpec, entries: list[MeasureEntry]) -> bool:
+    for entry in entries:
+        resolved = resolve_label_cascade(None, entry.label, spec.label)
+        if resolve_label_spec(resolved) is not None:
+            return True
+    return False
 
 
 def _compile_repeat(
@@ -215,6 +230,7 @@ def _compile_concat(
 
     is_hconcat = concat_key == "hconcat"
     panels = []
+    label_intents: list[dict] = []
     for i, (entry, mark) in enumerate(zip(entries, effective_marks, strict=False)):
         panel_encoding = build_panel_encoding(
             entry=entry,
@@ -237,6 +253,17 @@ def _compile_concat(
         if transforms:
             panel["transform"] = transforms
 
+        resolved_label = resolve_label_cascade(None, entry.label, spec.label)
+        label_config = resolve_label_spec(resolved_label)
+        if label_config is not None:
+            mark_name = f"mark_{i}"
+            panel["name"] = mark_name
+            intent = build_label_intent(mark_name, entry.measure, label_config, resolver)
+            label_intents.append(intent)
+
         panels.append(panel)
 
-    return {concat_key: panels, "spacing": 10}
+    result: VegaLiteSpec = {concat_key: panels, "spacing": 10}
+    if label_intents:
+        result["_label_intents"] = label_intents
+    return result

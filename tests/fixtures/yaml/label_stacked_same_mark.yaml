@@ -1,0 +1,8 @@
+sheet: "Key Metrics"
+data: orders
+cols: week
+marks: bar
+rows:
+  - measure: revenue
+  - measure: order_count
+label: true

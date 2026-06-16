@@ -1,0 +1,13 @@
+sheet: "Revenue & ARPU by Week"
+data: orders
+cols: week
+rows:
+  - measure: revenue
+    mark: bar
+    layer:
+      - measure: arpu
+        mark:
+          type: line
+          style: dashed
+    axis: independent
+label: true

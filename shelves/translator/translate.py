@@ -85,8 +85,13 @@ def translate_chart(
     if inner is None:
         raise ValueError("No pattern compiler matched the spec")
 
+    label_intents = inner.pop("_label_intents", [])
+
     top_level = apply_facet(inner, spec.facet)
     top_level["$schema"] = VEGA_LITE_SCHEMA
+
+    if label_intents:
+        top_level["usermeta"] = {"charter": {"labels": label_intents}}
 
     if spec.description:
         top_level["title"] = {"text": spec.sheet, "subtitle": spec.description}

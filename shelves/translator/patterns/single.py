@@ -15,6 +15,7 @@ from shelves.schema.chart_schema import ChartSpec
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.translator.encodings import build_encodings
 from shelves.translator.filters import build_transforms
+from shelves.translator.labels import build_label_intent, resolve_label_spec, resolve_measure_field
 from shelves.translator.marks import build_mark
 from shelves.translator.sort import apply_default_sort_from_model, apply_sort
 
@@ -43,5 +44,14 @@ def compile_single(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpec
     transforms = build_transforms(spec.filters, resolver)
     if transforms:
         inner["transform"] = transforms
+
+    # Label intent
+    label_config = resolve_label_spec(spec.label)
+    if label_config is not None:
+        mark_name = "mark_0"
+        inner["name"] = mark_name
+        measure_field = resolve_measure_field(spec, resolver)
+        intent = build_label_intent(mark_name, measure_field, label_config, resolver)
+        inner["_label_intents"] = [intent]
 
     return inner

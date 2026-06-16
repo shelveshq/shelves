@@ -1,6 +1,6 @@
 # Shelves DSL Reference
 
-**DSL Version: 0.6.0**
+**DSL Version: 0.7.0**
 
 This document is the authoritative reference for the Shelves YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -37,6 +37,9 @@ axis:
   x: { title: "...", format: "...", grid: true }
   y: { title: "...", format: "...", grid: false }
 
+# Optional data labels
+label: true                  # or false, or {field, vertical, horizontal, color, size, format}
+
 # KPI pattern (replaces cols/rows/marks when present)
 kpi:
   value: revenue
@@ -69,7 +72,7 @@ rows:
   - measure: arpu
 ```
 
-One shelf is a list of measure entries, the other remains a string. Each entry can override `mark`, `color`, `detail`, `size`, and `opacity`:
+One shelf is a list of measure entries, the other remains a string. Each entry can override `mark`, `color`, `detail`, `size`, `opacity`, and `label`:
 
 **Shared axis visibility:** By default, stacked panels hide the shared axis on all but the edge panel (bottom for rows, left for cols) to reduce visual clutter. Override per-entry with `shared_axis`:
 
@@ -467,6 +470,102 @@ tooltip: [country, revenue]
 
 ---
 
+## Labels
+
+Data labels display values directly on chart marks. In the compile-then-patch architecture, the Python translator emits label *intent* as metadata, and the JavaScript rendering layer handles placement and collision avoidance.
+
+### Basic usage
+
+```yaml
+sheet: "Revenue by Country"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+label: true
+```
+
+`label: true` marks the chart for data labeling. The label field, format, and position are automatically resolved from the data model.
+
+### Label configuration
+
+```yaml
+label:
+  field: order_count          # which field to display (default: the measure)
+  vertical: top               # vertical position: top | center | bottom (default: center)
+  horizontal: right           # horizontal position: left | center | right (default: center)
+  color: "#333333"            # text color: hex string, "match", or omit for auto
+  size: 10                    # font size in pixels (default: 11)
+  format: ",.0f"              # d3 format string (overrides model format)
+```
+
+### Position axes
+
+The label position is specified as two independent axes. Both default to `center`.
+
+| Axis | Values | Default |
+|---|---|---|
+| `vertical` | `top`, `center`, `bottom` | `center` |
+| `horizontal` | `left`, `center`, `right` | `center` |
+
+Setting one axis leaves the other at `center`:
+
+```yaml
+label:
+  vertical: top      # → top-center placement
+```
+
+Setting both produces a corner anchor:
+
+```yaml
+label:
+  vertical: top
+  horizontal: right  # → top-right placement
+```
+
+The rendering layer uses the preferred position as its primary anchor and falls back to alternative positions on collision.
+
+### Color modes
+
+```yaml
+# Fixed hex color
+label:
+  color: "#333333"
+
+# Match the parent mark's color encoding
+label:
+  color: match
+
+# Omit for automatic contrast coloring (light on dark marks, dark on light)
+label: true
+```
+
+### Suppressing labels
+
+```yaml
+label: false    # explicitly suppress — overrides inherited labels
+```
+
+### Cascade
+
+Labels cascade through three levels: **top-level → measure entry → layer entry**. The first non-null value wins (including `false` for explicit suppression).
+
+```yaml
+label: true                    # default for all panels
+rows:
+  - measure: revenue
+    mark: bar                  # inherits label: true
+  - measure: order_count
+    mark: bar
+    label: false               # suppressed for this panel
+```
+
+### Format auto-resolution
+
+When no `format` is specified, the label format is automatically resolved from the data model. For example, if the model defines `revenue` with `format: "$,.0f"`, then `label: true` on a revenue chart formats labels as `$1,234`.
+
+---
+
 ## Title and subtitle
 
 Every chart automatically renders its `sheet` name as the Vega-Lite title. The optional `description` field renders as the subtitle:
@@ -614,6 +713,24 @@ sort:
   order: descending
 tooltip: [country, revenue]
 ```
+
+### Bar chart with labels
+
+```yaml
+sheet: "Revenue by Country"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+color: country
+label: true
+sort:
+  field: revenue
+  order: descending
+tooltip: [country, revenue]
+```
+
+Revenue values are displayed on each bar, formatted per the model's format string.
 
 ### Line chart with time
 
@@ -936,7 +1053,8 @@ All currently planned features are supported. See the DSL version history below 
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.6.0** | Current | KPI block schema: new `kpi` top-level property with `value`, `format`, `title`, `spacing`, and `comparison` sub-block. Replaces placeholder `KPIConfig`. |
+| **0.7.0** | Current | Labels: `label` property on charts (`true`, `false`, or config object). Two-axis position model (`vertical` + `horizontal`). Three-level cascade (chart → entry → layer). Label intents emitted in `usermeta` for compile-then-patch rendering. |
+| **0.6.0** | Previous | KPI block schema: new `kpi` top-level property with `value`, `format`, `title`, `spacing`, and `comparison` sub-block. Replaces placeholder `KPIConfig`. |
 | **0.5.2** | Previous | Shared axis hiding: stacked panels hide repeating shared axes by default. New `shared_axis` property on measure entries. |
 | **0.5.1** | Previous | Stacked layers: multi-entry shelves with mixed layered and standalone entries compile to `vconcat`/`hconcat`. |
 | **0.5.0** | Previous | Layer compilation (dual/triple axis): single-entry `layer` specs compile to Vega-Lite `layer` arrays with encoding inheritance, opacity merging, and axis scale resolution. Multi-entry layered shelves remain deferred. |
