@@ -73,8 +73,25 @@ class TestRenderHTML:
 
     def test_patch_finds_named_marks(self):
         html = render_html({"mark": "bar"})
-        assert "findNamedMark" in html
+        assert "findMarkPath" in html
         assert "insertAfterMark" in html
+
+    def test_patch_labels_bars_only(self):
+        # Bars and ticks both compile to rect; the patch must label only bars,
+        # distinguished by ariaRoleDescription.
+        from shelves.render.to_html import CHARTER_PATCH_JS
+
+        assert "ariaRoleDescription" in CHARTER_PATCH_JS
+        assert "!== 'bar'" in CHARTER_PATCH_JS
+
+    def test_patch_unclips_faceted_bar_groups(self):
+        # Stacked/rounded bars are wrapped in a facet group clipped to the bar
+        # bounding box; the patch must drop that clip so tip labels aren't
+        # clipped away.
+        from shelves.render.to_html import CHARTER_PATCH_JS
+
+        assert "from.facet" in CHARTER_PATCH_JS
+        assert "clip = { value: false }" in CHARTER_PATCH_JS
 
     def test_patch_creates_text_marks(self):
         html = render_html({"mark": "bar"})
@@ -108,9 +125,20 @@ class TestRenderHTML:
         # because compiled Vega carries band width on a separate signal.
         from shelves.render.to_html import CHARTER_PATCH_JS
 
-        assert "textEnc.x.band = 0.5" in CHARTER_PATCH_JS
-        assert "textEnc.y.band = 0.5" in CHARTER_PATCH_JS
+        assert "ref.band = 0.5" in CHARTER_PATCH_JS
         assert "if ('band' in" not in CHARTER_PATCH_JS
+
+    def test_positions_faceted_and_centered_marks(self):
+        # Regression: faceted bars carry no band ref (they fill the parent
+        # facet group), and tick/point marks use xc/yc instead of x/y. The
+        # patch must position both, not just plain x/y bars.
+        from shelves.render.to_html import CHARTER_PATCH_JS
+
+        # Faceted marks: center inside the group via {field:{group}, mult:0.5}
+        assert "group: sizeKey" in CHARTER_PATCH_JS
+        assert "mult: 0.5" in CHARTER_PATCH_JS
+        # Centered measure refs (tick/point): fall back to xc/yc
+        assert "axis + 'c'" in CHARTER_PATCH_JS
 
 
 # ─── Theme Merge ─────────────────────────────────────────────────

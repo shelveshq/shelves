@@ -10,12 +10,19 @@
 // when inlined into a file:// HTML page and when loaded via <script src> in the
 // studio, matching how Vega itself is loaded. Edit here only — never copy.
 (function (global) {
-  function findNamedMark(marks, name) {
+  function clone(o) {
+    return JSON.parse(JSON.stringify(o));
+  }
+
+  // Find a named mark and return the chain of ancestor groups leading to it,
+  // ending with the mark itself: [group, group, ..., mark]. VL appends
+  // '_marks' to the compiled Vega mark name.
+  function findMarkPath(marks, name, path) {
     if (!marks) return null;
     for (const m of marks) {
-      if (m.name === name || m.name === name + '_marks') return m;
+      if (m.name === name || m.name === name + '_marks') return path.concat(m);
       if (m.marks) {
-        const found = findNamedMark(m.marks, name);
+        const found = findMarkPath(m.marks, name, path.concat(m));
         if (found) return found;
       }
     }
@@ -36,62 +43,116 @@
     return false;
   }
 
+  // Center of the band along the cross axis ('x' or 'y').
+  //
+  // Plain bars carry the band ref directly on the rect ({scale, field}); the
+  // band width lives on a separate width/height signal, so we add band: 0.5 to
+  // center on the band rather than its leading edge. Faceted bars (color, or a
+  // row/column layout) instead fill their parent facet group via
+  // height/width: {field: {group: ...}} and carry NO band ref — for those we
+  // center inside the group with {field: {group: size}, mult: 0.5}.
+  function bandCenter(enc, dim) {
+    const sizeKey = dim === 'x' ? 'width' : 'height';
+    if (enc[dim]) {
+      const ref = clone(enc[dim]);
+      ref.band = 0.5;
+      return ref;
+    }
+    const size = enc[sizeKey];
+    if (size && size.field && size.field.group) {
+      return { field: { group: sizeKey }, mult: 0.5 };
+    }
+    return null;
+  }
+
+  // Measure-axis position along 'x' or 'y'. end=true → value end (bar tip),
+  // end=false → value origin (bar base). Falls back to the centered ref
+  // (xc/yc) used by tick and point marks.
+  function measurePos(enc, axis, end) {
+    const key = end ? axis : axis + '2';
+    if (enc[key]) return clone(enc[key]);
+    if (end && enc[axis + 'c']) return clone(enc[axis + 'c']);
+    return null;
+  }
+
   function charterPatch(vgSpec) {
     const labels = vgSpec.usermeta?.charter?.labels;
     if (!labels || labels.length === 0) return vgSpec;
 
     for (const intent of labels) {
-      const mark = findNamedMark(vgSpec.marks, intent.markName);
-      if (!mark || mark.type !== 'rect') continue;
+      const path = findMarkPath(vgSpec.marks, intent.markName, []);
+      if (!path) continue;
+      const mark = path[path.length - 1];
+      if (mark.type !== 'rect') continue;
 
       const enc = mark.encode?.update;
       if (!enc) continue;
 
+      // Bars only for now. Bars and ticks both compile to rect marks, but VL
+      // tags them differently via ariaRoleDescription ('bar' vs 'tick'). Skip
+      // anything that is explicitly not a bar; allow rects with no role.
+      const role = enc.ariaRoleDescription?.value;
+      if (role && role !== 'bar') continue;
+
+      // Stacked/rounded bars are wrapped in a facet "stack group" that is
+      // clipped to the bar's bounding box. A label placed at the bar tip would
+      // be clipped away, so drop the clip on any faceted ancestor — the label
+      // (and only the label) then renders past the bar edge.
+      for (let i = 0; i < path.length - 1; i++) {
+        const g = path[i];
+        if (g.from && g.from.facet && g.encode?.update?.clip) {
+          g.encode.update.clip = { value: false };
+        }
+      }
+
+      // Horizontal bars carry a height encoding (band on y); vertical bars
+      // carry a width encoding (band on x). Holds for faceted marks too,
+      // where the band size is {field: {group: ...}}.
       const isHBar = !!enc.height;
       const textEnc = {};
 
       if (isHBar) {
-        if (enc.y) {
-          textEnc.y = JSON.parse(JSON.stringify(enc.y));
-          // Compiled Vega puts the band width on a separate height signal;
-          // the y ref is {scale, field} with no band key. Always center on
-          // the band so the label sits over the bar, not its leading edge.
-          textEnc.y.band = 0.5;
-        }
+        const y = bandCenter(enc, 'y');
+        if (y) textEnc.y = y;
         const hPos = intent.horizontal || 'center';
         if (hPos === 'left') {
-          if (enc.x2) textEnc.x = JSON.parse(JSON.stringify(enc.x2));
+          const x = measurePos(enc, 'x', false);
+          if (x) textEnc.x = x;
           textEnc.align = { value: 'right' };
           textEnc.dx = { value: -4 };
         } else {
-          if (enc.x) textEnc.x = JSON.parse(JSON.stringify(enc.x));
+          const x = measurePos(enc, 'x', true);
+          if (x) textEnc.x = x;
           textEnc.align = { value: 'left' };
           textEnc.dx = { value: 4 };
         }
         textEnc.baseline = { value: 'middle' };
       } else {
-        if (enc.x) {
-          textEnc.x = JSON.parse(JSON.stringify(enc.x));
-          // Compiled Vega puts the band width on a separate width signal;
-          // the x ref is {scale, field} with no band key. Always center on
-          // the band so the label sits over the bar, not its leading edge.
-          textEnc.x.band = 0.5;
-        }
+        const x = bandCenter(enc, 'x');
+        if (x) textEnc.x = x;
         const vPos = intent.vertical || 'center';
         if (vPos === 'bottom') {
-          if (enc.y2) textEnc.y = JSON.parse(JSON.stringify(enc.y2));
+          const y = measurePos(enc, 'y', false);
+          if (y) textEnc.y = y;
           textEnc.baseline = { value: 'top' };
           textEnc.dy = { value: 4 };
         } else {
-          if (enc.y) textEnc.y = JSON.parse(JSON.stringify(enc.y));
+          const y = measurePos(enc, 'y', true);
+          if (y) textEnc.y = y;
           textEnc.baseline = { value: 'bottom' };
           textEnc.dy = { value: -4 };
         }
         textEnc.align = { value: 'center' };
       }
 
-      const mField = isHBar ? enc.x?.field : enc.y?.field;
-      const bField = isHBar ? enc.x2?.field : enc.y2?.field;
+      // Resolve the displayed field from the mark's measure encoding (handles
+      // VL aggregation renaming). Centered marks (tick/point) keep the field on
+      // xc/yc, so fall back to those, then to the intent's declared field.
+      const mAxis = isHBar ? 'x' : 'y';
+      const mRef = enc[mAxis] || enc[mAxis + 'c'];
+      const bRef = enc[mAxis + '2'];
+      const mField = mRef?.field;
+      const bField = bRef?.field;
       const isStacked = !!(bField && mField && bField !== mField);
 
       if (intent.format) {
@@ -107,14 +168,14 @@
 
       textEnc.fontSize = { value: intent.size || 11 };
       if (intent.color === 'match' && enc.fill) {
-        textEnc.fill = JSON.parse(JSON.stringify(enc.fill));
+        textEnc.fill = clone(enc.fill);
       } else {
         textEnc.fill = { value: intent.color || '#333333' };
       }
 
       const textMark = {
         type: 'text',
-        from: JSON.parse(JSON.stringify(mark.from)),
+        from: clone(mark.from),
         encode: { update: textEnc }
       };
       insertAfterMark(vgSpec.marks, mark, textMark);
