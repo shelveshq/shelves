@@ -1,8 +1,0 @@
-sheet: "Revenue by Country and Product"
-data: orders
-cols: country
-rows: revenue
-marks: bar
-color: product
-label: true
-tooltip: [country, product, revenue]

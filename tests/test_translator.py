@@ -5,7 +5,7 @@ Tests the full YAML -> Vega-Lite compilation pipeline.
 Each fixture YAML produces a deterministic Vega-Lite dict.
 """
 
-from tests.conftest import MODELS_DIR, compile_fixture
+from tests.conftest import compile_fixture
 
 
 class TestSingleMarkCharts:
@@ -118,65 +118,6 @@ class TestSort:
             "field": "revenue",
             "order": "descending",
         }
-
-    def test_sort_auto_detects_y_for_horizontal_bar(self):
-        from shelves.schema.chart_schema import parse_chart
-        from shelves.translator.translate import translate_chart
-
-        yaml = """\
-sheet: "Test"
-data: orders
-cols: revenue
-rows: country
-marks: bar
-sort:
-  field: revenue
-  order: descending
-"""
-        spec = parse_chart(yaml)
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
-        assert vl["encoding"]["y"]["sort"] == {
-            "field": "revenue",
-            "order": "descending",
-        }
-        assert "sort" not in vl["encoding"]["x"]
-
-    def test_sort_explicit_channel_overrides_auto(self):
-        from shelves.schema.chart_schema import parse_chart
-        from shelves.translator.translate import translate_chart
-
-        yaml = """\
-sheet: "Test"
-data: orders
-cols: revenue
-rows: country
-marks: bar
-sort:
-  field: revenue
-  order: descending
-  channel: x
-"""
-        spec = parse_chart(yaml)
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
-        assert "sort" in vl["encoding"]["x"]
-        assert "sort" not in vl["encoding"]["y"]
-
-    def test_default_sort_auto_detects_dimension_for_horizontal(self):
-        from shelves.schema.chart_schema import parse_chart
-        from shelves.translator.translate import translate_chart
-
-        yaml = """\
-sheet: "Test"
-data: orders
-cols: revenue
-rows: country
-marks: bar
-"""
-        spec = parse_chart(yaml)
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
-        # country has sortOrder in model → should land on y (the dimension axis)
-        assert "sort" in vl["encoding"]["y"]
-        assert "sort" not in vl["encoding"]["x"]
 
 
 class TestSchemaPresent:

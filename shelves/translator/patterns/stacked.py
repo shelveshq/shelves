@@ -24,7 +24,6 @@ from shelves.translator.encodings import (
     build_tooltip,
 )
 from shelves.translator.filters import build_transforms
-from shelves.translator.labels import maybe_wrap_with_label, resolve_label_cascade
 from shelves.translator.marks import build_mark
 from shelves.translator.panel import build_panel_encoding
 from shelves.translator.resolution import resolve_mark
@@ -101,11 +100,8 @@ def compile_stacked(spec: ChartSpec, resolver: FieldTypeResolver) -> VegaLiteSpe
     ]
     all_same_mark = len({str(m) for m in effective_marks}) == 1
 
-    has_labels = (spec.label is not None and spec.label is not False) or any(
-        e.label is not None and e.label is not False for e in entries
-    )
-
-    if all_same_mark and not any(e.color or e.detail or e.size for e in entries) and not has_labels:
+    if all_same_mark and not any(e.color or e.detail or e.size for e in entries):
+        # Clean repeat: all panels identical except the measure field
         return _compile_repeat(
             entries,
             effective_marks[0],
@@ -218,7 +214,6 @@ def _compile_concat(
     """Compile to Vega-Lite vconcat/hconcat (panels may differ in mark/color)."""
 
     is_hconcat = concat_key == "hconcat"
-    orientation = "horizontal" if is_hconcat else "vertical"
     panels = []
     for i, (entry, mark) in enumerate(zip(entries, effective_marks, strict=False)):
         panel_encoding = build_panel_encoding(
@@ -231,6 +226,9 @@ def _compile_concat(
             resolver=resolver,
         )
 
+        if not _resolve_shared_axis(entries, i, is_hconcat):
+            _suppress_shared_axis(panel_encoding, shared_axis)
+
         panel: VegaLiteSpec = {
             "mark": build_mark(mark),
             "encoding": panel_encoding,
@@ -238,23 +236,6 @@ def _compile_concat(
 
         if transforms:
             panel["transform"] = transforms
-
-        resolved_label = resolve_label_cascade(None, entry.label, spec.label)
-        panel = maybe_wrap_with_label(
-            panel=panel,
-            mark=mark,
-            label=resolved_label,
-            measure_field=entry.measure,
-            orientation=orientation,
-            resolver=resolver,
-        )
-
-        if not _resolve_shared_axis(entries, i, is_hconcat):
-            if "layer" in panel:
-                for layer_spec in panel["layer"]:
-                    _suppress_shared_axis(layer_spec["encoding"], shared_axis)
-            else:
-                _suppress_shared_axis(panel["encoding"], shared_axis)
 
         panels.append(panel)
 

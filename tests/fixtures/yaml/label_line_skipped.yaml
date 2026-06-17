@@ -1,6 +1,0 @@
-sheet: "Revenue Trend"
-data: orders
-cols: week
-rows: revenue
-marks: line
-label: true
