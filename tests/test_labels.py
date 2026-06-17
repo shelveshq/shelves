@@ -286,8 +286,8 @@ class TestLabelHelpers:
             "field": "revenue",
             "type": "quantitative",
             "format": "$,.0f",
-            "horizontal": "center",
-            "vertical": "center",
+            "horizontal": None,
+            "vertical": None,
             "size": 11,
             "color": None,
         }
@@ -339,8 +339,8 @@ class TestLabelCompilation:
             "field": "revenue",
             "type": "quantitative",
             "format": "$,.0f",
-            "horizontal": "center",
-            "vertical": "center",
+            "horizontal": None,
+            "vertical": None,
             "size": 11,
             "color": None,
         }
@@ -351,8 +351,8 @@ class TestLabelCompilation:
         labels = vl["usermeta"]["charter"]["labels"]
         assert labels[0]["field"] == "revenue"
         assert labels[0]["format"] == "$,.0f"
-        assert labels[0]["horizontal"] == "center"
-        assert labels[0]["vertical"] == "center"
+        assert labels[0]["horizontal"] is None
+        assert labels[0]["vertical"] is None
 
     def test_bar_config_overrides(self):
         vl = compile_fixture("label_bar_config.yaml")
@@ -363,7 +363,7 @@ class TestLabelCompilation:
             "field": "revenue",
             "type": "quantitative",
             "format": ",.0f",
-            "horizontal": "center",
+            "horizontal": None,
             "vertical": "top",
             "size": 10,
             "color": "#333333",
@@ -454,8 +454,8 @@ class TestLabelCompilation:
             "field": "revenue",
             "type": "quantitative",
             "format": "$,.0f",
-            "horizontal": "center",
-            "vertical": "center",
+            "horizontal": None,
+            "vertical": None,
             "size": 11,
             "color": None,
         }
@@ -464,8 +464,8 @@ class TestLabelCompilation:
             "field": "order_count",
             "type": "quantitative",
             "format": ",.0f",
-            "horizontal": "center",
-            "vertical": "center",
+            "horizontal": None,
+            "vertical": None,
             "size": 11,
             "color": None,
         }

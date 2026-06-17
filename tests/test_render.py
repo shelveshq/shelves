@@ -76,6 +76,14 @@ class TestRenderHTML:
         assert "findMarkPath" in html
         assert "insertAfterMark" in html
 
+    def test_patch_centers_segment_labels_inside(self):
+        # Explicit vertical/horizontal "center" on a stacked bar places the
+        # label at the segment midpoint (inside), via a scale-based signal.
+        from shelves.render.to_html import CHARTER_PATCH_JS
+
+        assert "midSignal" in CHARTER_PATCH_JS
+        assert "=== 'center' && isStacked" in CHARTER_PATCH_JS
+
     def test_patch_labels_bars_only(self):
         # Bars and ticks both compile to rect; the patch must label only bars,
         # distinguished by ariaRoleDescription.

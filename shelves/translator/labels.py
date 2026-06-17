@@ -45,8 +45,11 @@ def build_label_intent(
         "field": resolver.resolve_base_field(field),
         "type": resolver.resolve(field),
         "format": label_config.format or resolver.resolve_format(field),
-        "horizontal": label_config.horizontal or "center",
-        "vertical": label_config.vertical or "center",
+        # Left unset (null) when the user didn't specify a side: the JS patch
+        # treats null as the outside default (above/right) and reserves explicit
+        # "center" for inside-the-segment placement.
+        "horizontal": label_config.horizontal,
+        "vertical": label_config.vertical,
         "size": label_config.size or 11,
         "color": label_config.color,
     }

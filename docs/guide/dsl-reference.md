@@ -492,8 +492,8 @@ label: true
 ```yaml
 label:
   field: order_count          # which field to display (default: the measure)
-  vertical: top               # vertical position: top | center | bottom (default: center)
-  horizontal: right           # horizontal position: left | center | right (default: center)
+  vertical: center            # vertical position: top | center | bottom
+  horizontal: right           # horizontal position: left | center | right
   color: "#333333"            # text color: hex string, "match", or omit for auto
   size: 10                    # font size in pixels (default: 11)
   format: ",.0f"              # d3 format string (overrides model format)
@@ -501,29 +501,28 @@ label:
 
 ### Position axes
 
-The label position is specified as two independent axes. Both default to `center`.
+The label position is specified along the mark's **measure axis** — `vertical`
+for vertical bars (value runs up the y-axis), `horizontal` for horizontal bars
+(value runs along the x-axis). The other axis is centered on the band.
 
-| Axis | Values | Default |
+| Axis | Values | Behavior |
 |---|---|---|
-| `vertical` | `top`, `center`, `bottom` | `center` |
-| `horizontal` | `left`, `center`, `right` | `center` |
+| `vertical` | `top`, `center`, `bottom` | `top` → above the bar/segment top; `bottom` → below the base; `center` → inside, at the segment midpoint |
+| `horizontal` | `left`, `center`, `right` | `right` → past the bar/segment end; `left` → before the origin; `center` → inside, at the segment midpoint |
 
-Setting one axis leaves the other at `center`:
-
-```yaml
-label:
-  vertical: top      # → top-center placement
-```
-
-Setting both produces a corner anchor:
+When unset, labels are placed **outside** the mark (above a vertical bar's top,
+or past a horizontal bar's end). `center` places the value **inside** the bar at
+its midpoint — the natural choice for **stacked segments**, where each segment's
+value sits inside its own segment:
 
 ```yaml
+cols: category
+rows: net_sales
+marks: bar
+color: segment        # stacks each category by segment
 label:
-  vertical: top
-  horizontal: right  # → top-right placement
+  vertical: center    # → each segment's value centered inside the segment
 ```
-
-The rendering layer uses the preferred position as its primary anchor and falls back to alternative positions on collision.
 
 ### Color modes
 

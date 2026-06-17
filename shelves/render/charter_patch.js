@@ -75,6 +75,24 @@
     return null;
   }
 
+  // Pixel-position expression for a measure-axis value ref, for use in signals.
+  function posExpr(ref) {
+    if (!ref) return null;
+    if (ref.scale && ref.field) return "scale('" + ref.scale + "', datum['" + ref.field + "'])";
+    if (ref.scale && 'value' in ref) return "scale('" + ref.scale + "', " + ref.value + ")";
+    if (ref.signal) return '(' + ref.signal + ')';
+    if ('value' in ref) return '' + ref.value;
+    return null;
+  }
+
+  // Signal for the pixel midpoint between a segment's value-end (axis) and
+  // value-start (axis2) — i.e. the geometric center of a stacked segment.
+  function midSignal(enc, axis) {
+    const a = posExpr(enc[axis]);
+    const b = posExpr(enc[axis + '2']);
+    return a && b ? '(' + a + ' + ' + b + ') / 2' : null;
+  }
+
   function charterPatch(vgSpec) {
     const labels = vgSpec.usermeta?.charter?.labels;
     if (!labels || labels.length === 0) return vgSpec;
@@ -111,11 +129,27 @@
       const isHBar = !!enc.height;
       const textEnc = {};
 
+      // Resolve the displayed field from the mark's measure encoding (handles
+      // VL aggregation renaming). Centered marks (tick/point) keep the field on
+      // xc/yc, so fall back to those, then to the intent's declared field.
+      // A stacked segment has distinct start/end fields on the measure axis.
+      const mAxis = isHBar ? 'x' : 'y';
+      const mRef = enc[mAxis] || enc[mAxis + 'c'];
+      const bRef = enc[mAxis + '2'];
+      const mField = mRef?.field;
+      const bField = bRef?.field;
+      const isStacked = !!(bField && mField && bField !== mField);
+
       if (isHBar) {
         const y = bandCenter(enc, 'y');
         if (y) textEnc.y = y;
-        const hPos = intent.horizontal || 'center';
-        if (hPos === 'left') {
+        const hPos = intent.horizontal;
+        const mid = hPos === 'center' && isStacked ? midSignal(enc, 'x') : null;
+        if (mid) {
+          // Inside the segment, horizontally centered between start and end.
+          textEnc.x = { signal: mid };
+          textEnc.align = { value: 'center' };
+        } else if (hPos === 'left') {
           const x = measurePos(enc, 'x', false);
           if (x) textEnc.x = x;
           textEnc.align = { value: 'right' };
@@ -130,13 +164,19 @@
       } else {
         const x = bandCenter(enc, 'x');
         if (x) textEnc.x = x;
-        const vPos = intent.vertical || 'center';
-        if (vPos === 'bottom') {
+        const vPos = intent.vertical;
+        const mid = vPos === 'center' && isStacked ? midSignal(enc, 'y') : null;
+        if (mid) {
+          // Inside the segment, vertically centered between start and end.
+          textEnc.y = { signal: mid };
+          textEnc.baseline = { value: 'middle' };
+        } else if (vPos === 'bottom') {
           const y = measurePos(enc, 'y', false);
           if (y) textEnc.y = y;
           textEnc.baseline = { value: 'top' };
           textEnc.dy = { value: 4 };
         } else {
+          // top, or center on a non-stacked bar → just above the bar top.
           const y = measurePos(enc, 'y', true);
           if (y) textEnc.y = y;
           textEnc.baseline = { value: 'bottom' };
@@ -144,16 +184,6 @@
         }
         textEnc.align = { value: 'center' };
       }
-
-      // Resolve the displayed field from the mark's measure encoding (handles
-      // VL aggregation renaming). Centered marks (tick/point) keep the field on
-      // xc/yc, so fall back to those, then to the intent's declared field.
-      const mAxis = isHBar ? 'x' : 'y';
-      const mRef = enc[mAxis] || enc[mAxis + 'c'];
-      const bRef = enc[mAxis + '2'];
-      const mField = mRef?.field;
-      const bField = bRef?.field;
-      const isStacked = !!(bField && mField && bField !== mField);
 
       if (intent.format) {
         const expr = isStacked
