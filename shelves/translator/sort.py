@@ -11,7 +11,8 @@ Three modes:
   3. Custom order: {field: country, order: [US, UK, FR]}
      → encoding.x.sort = [US, UK, FR]
 
-Sort targets the x encoding by default. Set channel: y to sort the y axis.
+When channel is omitted, auto-detects the dimension axis (nominal/ordinal) as the
+sort target. Falls back to "x" if both axes are the same type.
 """
 
 from __future__ import annotations
@@ -22,6 +23,17 @@ from shelves.schema.chart_schema import AxisSort, FieldSort
 from shelves.schema.field_types import FieldTypeResolver
 
 SortSpec = FieldSort | AxisSort | None
+
+_DIMENSION_TYPES = {"nominal", "ordinal"}
+
+
+def _detect_sort_channel(encoding: dict[str, Any]) -> str:
+    """Pick the dimension axis as the sort target."""
+    x_type = encoding.get("x", {}).get("type")
+    y_type = encoding.get("y", {}).get("type")
+    if y_type in _DIMENSION_TYPES and x_type not in _DIMENSION_TYPES:
+        return "y"
+    return "x"
 
 
 def apply_sort(
@@ -34,7 +46,8 @@ def apply_sort(
     if sort is None:
         return
 
-    target = encoding.get(sort.channel)
+    channel = sort.channel or _detect_sort_channel(encoding)
+    target = encoding.get(channel)
     if target is None:
         return
 
@@ -71,30 +84,33 @@ def apply_default_sort_from_model(
     if spec_sort is not None:
         return
 
-    x_enc = encoding.get("x")
-    y_enc = encoding.get("y")
+    dim_ch = _detect_sort_channel(encoding)
+    measure_ch = "y" if dim_ch == "x" else "x"
 
-    if x_enc is None:
+    dim_enc = encoding.get(dim_ch)
+    measure_enc = encoding.get(measure_ch)
+
+    if dim_enc is None:
         return
 
     # Already has a sort from somewhere — don't override
-    if "sort" in x_enc:
+    if "sort" in dim_enc:
         return
 
-    x_field = x_enc.get("field")
-    if x_field is None:
+    dim_field = dim_enc.get("field")
+    if dim_field is None:
         return
 
-    # Check for sortOrder on the x-axis field (explicit category order)
-    sort_order = resolver.resolve_sort_order(x_field)
+    # Check for sortOrder on the dimension field (explicit category order)
+    sort_order = resolver.resolve_sort_order(dim_field)
     if sort_order is not None:
-        x_enc["sort"] = sort_order
+        dim_enc["sort"] = sort_order
         return
 
-    # Check for defaultSort on the y-axis measure
-    if y_enc is not None:
-        y_field = y_enc.get("field")
-        if y_field is not None and isinstance(y_field, str):
-            default_sort = resolver.resolve_default_sort(y_field)
+    # Check for defaultSort on the measure
+    if measure_enc is not None:
+        measure_field = measure_enc.get("field")
+        if measure_field is not None and isinstance(measure_field, str):
+            default_sort = resolver.resolve_default_sort(measure_field)
             if default_sort is not None:
-                x_enc["sort"] = {"encoding": "y", "order": default_sort}
+                dim_enc["sort"] = {"encoding": measure_ch, "order": default_sort}

@@ -360,7 +360,11 @@ filters:
 
 ## Sort
 
-Sort modifies the encoding on a target channel (defaults to `x`).
+Sort modifies the encoding on a target channel. When `channel` is omitted, it
+auto-detects the **dimension axis** (the nominal/ordinal one) as the target — so
+a horizontal bar (`rows:` dimension on `y`, `cols:` measure on `x`) sorts its `y`
+bars without needing `channel: y`. If both axes are the same type it falls back
+to `x`. Set `channel` explicitly to override the auto-detection.
 
 ```yaml
 # Sort x-axis by a field's values
