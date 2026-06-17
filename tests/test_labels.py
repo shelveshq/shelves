@@ -559,3 +559,75 @@ class TestLabelCompilation:
         assert labels[0]["field"] == "revenue"
         assert labels[1]["field"] == "arpu"
         assert labels[2]["field"] == "order_count"
+
+
+# ─── Point / Tick Mark Label Tests (KAN-285) ───────────────────────
+
+
+class TestPointMarkLabels:
+    """Regression guards: point-family and tick marks emit label intent."""
+
+    def test_circle_emits_intent(self):
+        vl = compile_fixture("label_scatter.yaml")
+
+        assert vl["mark"] == "circle"
+        assert vl["name"] == "mark_0"
+
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0] == {
+            "markName": "mark_0",
+            "field": "order_count",
+            "type": "quantitative",
+            "format": ",.0f",
+            "horizontal": None,
+            "vertical": None,
+            "size": 11,
+            "color": None,
+        }
+
+    def test_circle_custom_field(self):
+        vl = compile_fixture("label_scatter_field.yaml")
+
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0] == {
+            "markName": "mark_0",
+            "field": "country",
+            "type": "nominal",
+            "format": None,
+            "horizontal": None,
+            "vertical": None,
+            "size": 11,
+            "color": None,
+        }
+
+    def test_point_emits_intent(self):
+        vl = compile_fixture("label_point.yaml")
+
+        assert vl["mark"] == "point"
+        assert vl["name"] == "mark_0"
+
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0]["field"] == "order_count"
+        assert labels[0]["markName"] == "mark_0"
+
+    def test_tick_emits_intent(self):
+        vl = compile_fixture("label_tick.yaml")
+
+        assert vl["mark"] == "tick"
+        assert vl["name"] == "mark_0"
+
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0] == {
+            "markName": "mark_0",
+            "field": "revenue",
+            "type": "quantitative",
+            "format": "$,.0f",
+            "horizontal": None,
+            "vertical": None,
+            "size": 11,
+            "color": None,
+        }

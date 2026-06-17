@@ -72,6 +72,70 @@
     }
   }
 
+  // ── Point-family / tick label helpers (KAN-285) ───────────────────────────
+
+  function pointSide(intent) {
+    if (intent.vertical === 'top' || intent.vertical === 'bottom') return intent.vertical;
+    if (intent.horizontal === 'left' || intent.horizontal === 'right') return intent.horizontal;
+    return 'top';
+  }
+
+  function pointAnchorCandidates(side) {
+    switch (side) {
+      case 'bottom':
+        return ['bottom', 'bottom-right', 'bottom-left', 'right', 'left',
+                'top-right', 'top-left', 'top'];
+      case 'left':
+        return ['left', 'top-left', 'bottom-left', 'top', 'bottom',
+                'top-right', 'bottom-right', 'right'];
+      case 'right':
+        return ['right', 'top-right', 'bottom-right', 'top', 'bottom',
+                'top-left', 'bottom-left', 'left'];
+      case 'top':
+      default:
+        return ['top', 'top-right', 'top-left', 'right', 'left',
+                'bottom-right', 'bottom-left', 'bottom'];
+    }
+  }
+
+  function buildPointLabelMark(mark, enc, intent, path) {
+    var seg = "datum.datum['" + intent.field + "']";
+    var textSignal = intent.format
+      ? "format(" + seg + ", '" + intent.format + "')"
+      : seg;
+
+    var textEnc = {
+      text: { signal: textSignal },
+      fontSize: { value: intent.size || 11 },
+    };
+
+    var colorEnc =
+      enc.fill && enc.fill.scale ? enc.fill
+      : enc.stroke && enc.stroke.scale ? enc.stroke
+      : null;
+    if (intent.color === 'match' && colorEnc && colorEnc.field) {
+      textEnc.fill = { scale: colorEnc.scale, field: 'datum.' + colorEnc.field };
+    } else {
+      textEnc.fill = {
+        value: intent.color && intent.color !== 'match' ? intent.color : '#333333',
+      };
+    }
+
+    return {
+      type: 'text',
+      from: { data: mark.name },
+      encode: { update: textEnc },
+      transform: [{
+        type: 'label',
+        size: { signal: labelSizeSignal(path) },
+        avoidBaseMark: true,
+        anchor: pointAnchorCandidates(pointSide(intent)),
+        offset: [4],
+        as: ['x', 'y', 'opacity', 'align', 'baseline'],
+      }],
+    };
+  }
+
   // ── Deterministic inside-segment placement (stacked / explicit center) ──────
   // The Vega label transform reliably places OUTSIDE labels with collision
   // avoidance, but its `['middle']` anchor drops most stacked-segment labels
@@ -202,15 +266,20 @@
       const path = findMarkPath(vgSpec.marks, intent.markName, []);
       if (!path) continue;
       const mark = path[path.length - 1];
-      if (mark.type !== 'rect') continue;
 
       const enc = mark.encode?.update;
       if (!enc) continue;
 
-      // Bars only for now. Bars and ticks both compile to rect marks, but VL
-      // tags them differently via ariaRoleDescription ('bar' vs 'tick'). Skip
-      // anything that is explicitly not a bar; allow rects with no role.
       const role = enc.ariaRoleDescription?.value;
+
+      // ── Point-family / tick path (KAN-285) ────────────────────────────────
+      if (mark.type === 'symbol' || (mark.type === 'rect' && role === 'tick')) {
+        insertAfterMark(vgSpec.marks, mark, buildPointLabelMark(mark, enc, intent, path));
+        continue;
+      }
+
+      // ── Bars only beyond here ──────────────────────────────────────────────
+      if (mark.type !== 'rect') continue;
       if (role && role !== 'bar') continue;
 
       // Stacked/rounded bars are wrapped in a facet "stack group" clipped to the

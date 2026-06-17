@@ -53,6 +53,13 @@ two placement paths (KAN-283):
   (`from: <mark.from>`). The `label` transform's `['middle']` anchor drops most
   stacked-segment labels (only one band survives), so center placement does NOT
   use it. Verified by PNG.
+- **Point / tick** (`point`/`circle`/`square` → Vega `symbol`, and `tick` →
+  `rect` role `tick`, KAN-285): one mark instance per datum, like a bar.
+  Labels are **sourced from the mark** and placed by the `label` transform with
+  **8-direction anchor candidates** (`pointAnchorCandidates`), leading with the
+  user's preferred side. No headroom and no deterministic center path — points
+  have no measure axis. `color: match` reads `enc.stroke` for unfilled points
+  (which color via stroke, not fill).
 
 > ⚠️ The `label` transform is brittle for dense bar charts: it hides labels that
 > overlap a neighbor *or* spill past the plot edge, so even a 4-bar chart can

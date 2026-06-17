@@ -528,6 +528,25 @@ label:
   vertical: center    # → each segment's value centered inside the segment
 ```
 
+### Mark support
+
+Labels are supported on:
+
+| Mark | Behavior |
+|---|---|
+| `bar` | Outside (top/right) by default, or `center` inside the bar/segment. Collision-aware; stacked segments centered deterministically. |
+| `point`, `circle`, `square` | Placed beside each point, sweeping 8 directions around it from your preferred side. Collision-aware — labels in dense clusters are hidden. |
+| `tick` | Same as points — a label is anchored beside each tick. |
+
+Not yet supported: `line`, `area`, and `arc`/pie marks. A `label` on these mark
+types is currently **silently ignored** (labeling a line at its end point is
+planned separately).
+
+For points, `vertical`/`horizontal` set the *preferred* starting side
+(`top` is the default); the renderer then sweeps the remaining directions to
+avoid overlaps. `center` has no special meaning for a point and is treated as
+the default.
+
 ### Collision handling
 
 **Outside** labels (the default for an ordinary bar — above a vertical bar, past
@@ -781,6 +800,9 @@ color: country
 size: revenue
 tooltip: [country, revenue, order_count]
 ```
+
+Add `label: {field: country}` to annotate each point with its category; labels
+that would overlap in dense regions are automatically hidden.
 
 ### Heatmap
 
@@ -1071,7 +1093,11 @@ The `comparison` block is optional. When present, a comparison line is rendered 
 
 ## Not yet supported
 
-All currently planned features are supported. See the DSL version history below for what shipped in each version.
+- **Data labels on `line`, `area`, and `arc`/pie marks** — a `label` on these
+  mark types is silently ignored for now. Bars, points/circles/squares, and
+  ticks are supported. Line/area end-of-series labels are planned separately.
+
+See the DSL version history below for what shipped in each version.
 
 ---
 

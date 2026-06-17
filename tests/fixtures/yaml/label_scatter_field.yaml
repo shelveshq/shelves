@@ -1,0 +1,8 @@
+sheet: "Revenue vs Orders"
+data: orders
+cols: revenue
+rows: order_count
+marks: circle
+color: country
+label:
+  field: country
