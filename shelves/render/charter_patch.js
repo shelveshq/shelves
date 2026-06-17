@@ -10,6 +10,14 @@
 // when inlined into a file:// HTML page and when loaded via <script src> in the
 // studio, matching how Vega itself is loaded. Edit here only — never copy.
 (function (global) {
+  // Headroom: fraction of the data span added to the measure-scale domain so an
+  // edge label isn't clipped at the chart boundary (KAN-289). Tweak these to
+  // trade bar length for label breathing room — higher = shorter bars, more gap.
+  const HEADROOM = {
+    horizontal: 0.12, // room past a horizontal bar's end (label to the right)
+    vertical: 0.1, // room above a vertical bar's top (label on top)
+  };
+
   function clone(o) {
     return JSON.parse(JSON.stringify(o));
   }
@@ -91,6 +99,56 @@
     const a = posExpr(enc[axis]);
     const b = posExpr(enc[axis + '2']);
     return a && b ? '(' + a + ' + ' + b + ') / 2' : null;
+  }
+
+  // Extend a continuous measure scale's domain to leave room for an edge label
+  // so it isn't clipped at the chart boundary (KAN-289).
+  function applyHeadroom(vgSpec, scaleName, factor, extendMax) {
+    var scales = vgSpec.scales;
+    if (!scales) return;
+    var scale = scales.find(function (s) { return s.name === scaleName; });
+    if (!scale || scale.type !== 'linear') return;
+
+    var dom = scale.domain;
+    if (!dom || !dom.data) return;
+    var fields = dom.fields || (dom.field ? [dom.field] : []);
+    if (fields.length === 0) return;
+    if (!vgSpec.data || !vgSpec.data.some(function (d) { return d.name === dom.data; })) {
+      return;
+    }
+
+    var aggName = scaleName + '_hr';
+    if (vgSpec.data.some(function (d) { return d.name === aggName; })) return;
+
+    vgSpec.data.push({
+      name: aggName,
+      source: dom.data,
+      transform: [{
+        type: 'aggregate',
+        fields: fields.concat(fields),
+        ops: fields.map(function () { return 'min'; })
+          .concat(fields.map(function () { return 'max'; })),
+        as: fields.map(function (_, i) { return 'mn' + i; })
+          .concat(fields.map(function (_, i) { return 'mx' + i; }))
+      }]
+    });
+
+    var row = "data('" + aggName + "')[0]";
+    var mxExpr = 'max(' + fields.map(function (_, i) { return row + '.mx' + i; }).join(',') + ')';
+    var mnExpr = 'min(' + fields.map(function (_, i) { return row + '.mn' + i; }).join(',') + ')';
+    var sMax = scaleName + '_dmax';
+    var sMin = scaleName + '_dmin';
+
+    vgSpec.signals = vgSpec.signals || [];
+    vgSpec.signals.push({ name: sMax, update: row + ' ? ' + mxExpr + ' : 0' });
+    vgSpec.signals.push({ name: sMin, update: row + ' ? ' + mnExpr + ' : 0' });
+
+    var span = '(' + sMax + ' - ' + sMin + ')';
+    if (extendMax) {
+      scale.domainMax = { signal: sMax + ' + ' + factor + ' * ' + span };
+    } else {
+      scale.domainMin = { signal: sMin + ' - ' + factor + ' * ' + span };
+    }
   }
 
   function charterPatch(vgSpec) {
@@ -201,6 +259,22 @@
         textEnc.fill = clone(enc.fill);
       } else {
         textEnc.fill = { value: intent.color || '#333333' };
+      }
+
+      // KAN-289: give the edge label room so it isn't clipped.
+      const measureScaleName = (enc[mAxis] || enc[mAxis + 'c'])?.scale;
+      if (measureScaleName) {
+        if (isHBar) {
+          const hSide = intent.horizontal || 'right';
+          if (hSide !== 'center') {
+            applyHeadroom(vgSpec, measureScaleName, HEADROOM.horizontal, hSide === 'right');
+          }
+        } else {
+          const vSide = intent.vertical || 'top';
+          if (vSide !== 'center') {
+            applyHeadroom(vgSpec, measureScaleName, HEADROOM.vertical, vSide === 'top');
+          }
+        }
       }
 
       const textMark = {

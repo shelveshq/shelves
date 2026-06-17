@@ -87,6 +87,26 @@ is surprising in ways that have repeatedly broken labels:
    value-start and value-end). Intent must emit `null` for an unset side so the
    patch can tell explicit-center from default.
 
+8. **Scale headroom for edge labels (KAN-289).** A label at a bar tip/end is
+   clipped because the measure scale domain fits the data exactly. The patch
+   expands it via `applyHeadroom()`. Two traps make this non-obvious:
+   - **The scale is named `mark_0_y` / `mark_0_x`, not `y`/`x`.** VL names
+     unit-spec scales `<markName>_<axis>`. Read the name from the mark's own
+     encoding (`enc.y.scale`), never hardcode `'y'`.
+   - **The domain is data-driven (`{data, fields}`), not a `[min,max]` array.**
+     You cannot multiply a number. `applyHeadroom` adds an `aggregate` data
+     source (`<scale>_hr`) computing the field extent, exposes
+     `<scale>_dmax`/`_dmin` signals, and sets `scale.domainMax`/`domainMin` to
+     a signal adding `factor * span`. The factors live in the `HEADROOM`
+     constant at the top of `charter_patch.js` (default 0.12 horizontal, 0.10
+     vertical) — tweak there.
+   It only touches **top-level linear scales** whose domain data is also
+   top-level (concat/grouped keep both top-level; true faceting nests them and
+   is skipped). It is idempotent per scale via the `<scale>_hr` name guard, and
+   runs only for labeled bars, so non-labeled charts are unaffected. `nice:true`
+   rounds the expanded endpoint further outward — that is expected (more room,
+   never less), so assertions on the new domain must use inequalities.
+
 ## Debugging the patch: render to PNG and LOOK
 
 Python tests cannot see browser output, and the Vega **scenegraph `item.bounds`
