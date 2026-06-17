@@ -51,14 +51,39 @@
     return false;
   }
 
-  // Center of the band along the cross axis ('x' or 'y').
-  //
-  // Plain bars carry the band ref directly on the rect ({scale, field}); the
-  // band width lives on a separate width/height signal, so we add band: 0.5 to
-  // center on the band rather than its leading edge. Faceted bars (color, or a
-  // row/column layout) instead fill their parent facet group via
-  // height/width: {field: {group: ...}} and carry NO band ref — for those we
-  // center inside the group with {field: {group: size}, mult: 0.5}.
+  // Map the user's preferred label side to an ordered list of Vega label-
+  // transform anchor candidates: [primary, fallback]. The transform tries them
+  // in order and hides the label (opacity 0) if none fit. 'center' → ['middle']
+  // with no fallback, so a value that cannot fit inside its mark is hidden.
+  function anchorCandidates(side) {
+    switch (side) {
+      case 'top':
+        return ['top', 'bottom'];
+      case 'bottom':
+        return ['bottom', 'top'];
+      case 'left':
+        return ['left', 'right'];
+      case 'right':
+        return ['right', 'left'];
+      case 'center':
+        return ['middle'];
+      default:
+        return ['top', 'bottom'];
+    }
+  }
+
+  // ── Deterministic inside-segment placement (stacked / explicit center) ──────
+  // The Vega label transform reliably places OUTSIDE labels with collision
+  // avoidance, but its `['middle']` anchor drops most stacked-segment labels
+  // (only one category's segments survive). Inside a stacked bar every segment
+  // should be labeled at its own midpoint — deterministically, not via the
+  // collision solver. These helpers (sourced from the DATA, like a plain text
+  // mark) compute that midpoint, mirroring the pre-transform placement.
+
+  // Center of the band along the cross axis ('x' or 'y'). Plain bars carry the
+  // band ref on the rect ({scale, field}); add band: 0.5 to center on the band.
+  // Faceted bars fill their parent facet group and carry no band ref — center
+  // inside the group via {field: {group: size}, mult: 0.5}.
   function bandCenter(enc, dim) {
     const sizeKey = dim === 'x' ? 'width' : 'height';
     if (enc[dim]) {
@@ -73,16 +98,6 @@
     return null;
   }
 
-  // Measure-axis position along 'x' or 'y'. end=true → value end (bar tip),
-  // end=false → value origin (bar base). Falls back to the centered ref
-  // (xc/yc) used by tick and point marks.
-  function measurePos(enc, axis, end) {
-    const key = end ? axis : axis + '2';
-    if (enc[key]) return clone(enc[key]);
-    if (end && enc[axis + 'c']) return clone(enc[axis + 'c']);
-    return null;
-  }
-
   // Pixel-position expression for a measure-axis value ref, for use in signals.
   function posExpr(ref) {
     if (!ref) return null;
@@ -93,12 +108,40 @@
     return null;
   }
 
-  // Signal for the pixel midpoint between a segment's value-end (axis) and
-  // value-start (axis2) — i.e. the geometric center of a stacked segment.
+  // Signal for the pixel midpoint of a stacked segment along the measure axis
+  // ('x' or 'y') — halfway between its value-end (axis) and value-start (axis2).
   function midSignal(enc, axis) {
     const a = posExpr(enc[axis]);
     const b = posExpr(enc[axis + '2']);
     return a && b ? '(' + a + ' + ' + b + ') / 2' : null;
+  }
+
+  // Pixel-dimension expression for a group's width/height encode ref.
+  function dimExpr(ref) {
+    if (!ref) return null;
+    if (ref.signal) return ref.signal;
+    if (typeof ref.value === 'number') return String(ref.value);
+    return null;
+  }
+
+  // The [w, h] signal the label transform lays labels out within. In a single
+  // unit spec the rect is top-level and the global `width`/`height` signals are
+  // correct. In concat/faceted layouts there is NO top-level `width`/`height`
+  // signal — the enclosing child group carries its own size (e.g.
+  // `childWidth`/`mark_0_height`), so `[width, height]` resolves to 0 and the
+  // transform throws. Walk up to the nearest non-facet ancestor group that
+  // declares explicit dimensions; fall back to the top-level signals.
+  function labelSizeSignal(path) {
+    for (let i = path.length - 2; i >= 0; i--) {
+      const g = path[i];
+      if (g.from && g.from.facet) continue; // facet cell — sized to one datum
+      const genc = g.encode && g.encode.update;
+      if (!genc) continue;
+      const w = dimExpr(genc.width);
+      const h = dimExpr(genc.height);
+      if (w && h) return '[' + w + ', ' + h + ']';
+    }
+    return '[width, height]';
   }
 
   // Extend a continuous measure scale's domain to leave room for an edge label
@@ -170,10 +213,9 @@
       const role = enc.ariaRoleDescription?.value;
       if (role && role !== 'bar') continue;
 
-      // Stacked/rounded bars are wrapped in a facet "stack group" that is
-      // clipped to the bar's bounding box. A label placed at the bar tip would
-      // be clipped away, so drop the clip on any faceted ancestor — the label
-      // (and only the label) then renders past the bar edge.
+      // Stacked/rounded bars are wrapped in a facet "stack group" clipped to the
+      // bar's bounding box. A label placed past the bar tip would be clipped
+      // away, so drop the clip on any faceted ancestor.
       for (let i = 0; i < path.length - 1; i++) {
         const g = path[i];
         if (g.from && g.from.facet && g.encode?.update?.clip) {
@@ -181,107 +223,107 @@
         }
       }
 
-      // Horizontal bars carry a height encoding (band on y); vertical bars
-      // carry a width encoding (band on x). Holds for faceted marks too,
-      // where the band size is {field: {group: ...}}.
+      // Orientation + measure fields, read from the bar's measure encoding.
+      // Horizontal bars carry a height encoding (band on y); vertical bars a
+      // width encoding (band on x). Tick/point marks center on xc/yc.
       const isHBar = !!enc.height;
-      const textEnc = {};
-
-      // Resolve the displayed field from the mark's measure encoding (handles
-      // VL aggregation renaming). Centered marks (tick/point) keep the field on
-      // xc/yc, so fall back to those, then to the intent's declared field.
-      // A stacked segment has distinct start/end fields on the measure axis.
       const mAxis = isHBar ? 'x' : 'y';
       const mRef = enc[mAxis] || enc[mAxis + 'c'];
       const bRef = enc[mAxis + '2'];
       const mField = mRef?.field;
       const bField = bRef?.field;
+      // VL stack-encodes every bar (distinct start/end fields), so this is true
+      // for single bars too; the segment value end - start is correct because a
+      // single bar's start is 0.
       const isStacked = !!(bField && mField && bField !== mField);
 
-      if (isHBar) {
-        const y = bandCenter(enc, 'y');
-        if (y) textEnc.y = y;
-        const hPos = intent.horizontal;
-        const mid = hPos === 'center' && isStacked ? midSignal(enc, 'x') : null;
-        if (mid) {
-          // Inside the segment, horizontally centered between start and end.
-          textEnc.x = { signal: mid };
-          textEnc.align = { value: 'center' };
-        } else if (hPos === 'left') {
-          const x = measurePos(enc, 'x', false);
-          if (x) textEnc.x = x;
-          textEnc.align = { value: 'right' };
-          textEnc.dx = { value: -4 };
-        } else {
-          const x = measurePos(enc, 'x', true);
-          if (x) textEnc.x = x;
-          textEnc.align = { value: 'left' };
-          textEnc.dx = { value: 4 };
-        }
-        textEnc.baseline = { value: 'middle' };
-      } else {
-        const x = bandCenter(enc, 'x');
-        if (x) textEnc.x = x;
-        const vPos = intent.vertical;
-        const mid = vPos === 'center' && isStacked ? midSignal(enc, 'y') : null;
-        if (mid) {
-          // Inside the segment, vertically centered between start and end.
-          textEnc.y = { signal: mid };
-          textEnc.baseline = { value: 'middle' };
-        } else if (vPos === 'bottom') {
-          const y = measurePos(enc, 'y', false);
-          if (y) textEnc.y = y;
-          textEnc.baseline = { value: 'top' };
-          textEnc.dy = { value: 4 };
-        } else {
-          // top, or center on a non-stacked bar → just above the bar top.
-          const y = measurePos(enc, 'y', true);
-          if (y) textEnc.y = y;
-          textEnc.baseline = { value: 'bottom' };
-          textEnc.dy = { value: -4 };
-        }
-        textEnc.align = { value: 'center' };
-      }
+      // A real multi-segment stack carries a fill bound to a field DIFFERENT
+      // from the band/category field (e.g. cols:category + color:sub_category).
+      // A single bar merely colored by its own category has fill.field ===
+      // bandField. Charter has no grouped (xOffset) bars, so fill≠band ⟹ stack.
+      // Stacked segments default to inside-center: an outside top/right anchor
+      // only fits the outermost segment, so the inner ones would be auto-hidden.
+      const bandField = (enc[isHBar ? 'y' : 'x'] || {}).field;
+      const isSegmented = !!(enc.fill && enc.fill.field && bandField && enc.fill.field !== bandField);
 
-      if (intent.format) {
-        const expr = isStacked
-          ? "format(datum['" + mField + "'] - datum['" + bField + "'], '" + intent.format + "')"
-          : "format(datum['" + (mField || intent.field) + "'], '" + intent.format + "')";
-        textEnc.text = { signal: expr };
-      } else if (isStacked) {
-        textEnc.text = { signal: "datum['" + mField + "'] - datum['" + bField + "']" };
-      } else {
-        textEnc.text = { field: mField || intent.field };
-      }
+      // Preferred side → anchor candidates. Unset side → outside default for a
+      // plain bar, inside-center for a stacked segment.
+      const outsideDefault = isHBar ? 'right' : 'top';
+      const side = (isHBar ? intent.horizontal : intent.vertical)
+        || (isSegmented ? 'center' : outsideDefault);
+      const isCenter = side === 'center';
 
-      textEnc.fontSize = { value: intent.size || 11 };
-      if (intent.color === 'match' && enc.fill) {
-        textEnc.fill = clone(enc.fill);
+      // Inside (center) and outside placement read the measure value
+      // differently because they are sourced differently (see below): an outside
+      // label is sourced FROM the bar mark, so its tuple is at datum.datum; an
+      // inside label is sourced from the DATA, so its tuple is datum directly.
+      const tuple = isCenter ? 'datum' : 'datum.datum';
+      const seg = isStacked
+        ? tuple + "['" + mField + "'] - " + tuple + "['" + bField + "']"
+        : tuple + "['" + (mField || intent.field) + "']";
+      const textSignal = intent.format
+        ? "format(" + seg + ", '" + intent.format + "')"
+        : seg;
+
+      const textEnc = {
+        text: { signal: textSignal },
+        fontSize: { value: intent.size || 11 },
+      };
+      if (intent.color === 'match' && enc.fill && enc.fill.scale && enc.fill.field) {
+        // Re-resolve the color scale against the source datum's category field.
+        // (Sourced-from-mark needs the datum. prefix; sourced-from-data does not.)
+        const fillField = (isCenter ? '' : 'datum.') + enc.fill.field;
+        textEnc.fill = { scale: enc.fill.scale, field: fillField };
       } else {
         textEnc.fill = { value: intent.color || '#333333' };
       }
 
-      // KAN-289: give the edge label room so it isn't clipped.
-      const measureScaleName = (enc[mAxis] || enc[mAxis + 'c'])?.scale;
-      if (measureScaleName) {
-        if (isHBar) {
-          const hSide = intent.horizontal || 'right';
-          if (hSide !== 'center') {
-            applyHeadroom(vgSpec, measureScaleName, HEADROOM.horizontal, hSide === 'right');
-          }
-        } else {
-          const vSide = intent.vertical || 'top';
-          if (vSide !== 'center') {
-            applyHeadroom(vgSpec, measureScaleName, HEADROOM.vertical, vSide === 'top');
-          }
+      let textMark;
+      if (isCenter) {
+        // Inside placement: deterministically center the value in its segment.
+        // The Vega label transform's ['middle'] anchor drops most stacked
+        // labels, so place by hand (cross-axis band center + measure midpoint)
+        // and source from the DATA, like an ordinary text mark.
+        const cross = bandCenter(enc, isHBar ? 'y' : 'x');
+        if (cross) textEnc[isHBar ? 'y' : 'x'] = cross;
+        const mid = midSignal(enc, mAxis);
+        if (mid) textEnc[mAxis] = { signal: mid };
+        textEnc.align = { value: 'center' };
+        textEnc.baseline = { value: 'middle' };
+        textMark = {
+          type: 'text',
+          from: clone(mark.from),
+          encode: { update: textEnc },
+        };
+      } else {
+        // Outside placement: delegate to the Vega label transform for collision
+        // avoidance (preferred anchor → opposite fallback → hide). Source FROM
+        // the bar mark so the transform can read each bar's bounding box.
+        const measureScaleName = mRef?.scale;
+        if (measureScaleName) {
+          // KAN-289: give the edge label room so it isn't clipped and the
+          // preferred outside anchor fits instead of flipping inside.
+          applyHeadroom(
+            vgSpec,
+            measureScaleName,
+            isHBar ? HEADROOM.horizontal : HEADROOM.vertical,
+            isHBar ? side === 'right' : side === 'top',
+          );
         }
+        textMark = {
+          type: 'text',
+          from: { data: mark.name },
+          encode: { update: textEnc },
+          transform: [{
+            type: 'label',
+            size: { signal: labelSizeSignal(path) },
+            avoidBaseMark: true,
+            anchor: anchorCandidates(side),
+            offset: [3],
+            as: ['x', 'y', 'opacity', 'align', 'baseline'],
+          }],
+        };
       }
-
-      const textMark = {
-        type: 'text',
-        from: clone(mark.from),
-        encode: { update: textEnc }
-      };
       insertAfterMark(vgSpec.marks, mark, textMark);
     }
     return vgSpec;

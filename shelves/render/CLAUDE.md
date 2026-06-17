@@ -39,7 +39,26 @@ If you change labels, **none** of these may go stale:
 Python emits **intent** in `usermeta.charter.labels` (one descriptor per
 labelable mark, with `markName`, `field`, `format`, `vertical`/`horizontal`
 side, `size`, `color`). The JS patch reads the intent, finds the named mark in
-the **compiled Vega** scenegraph, and inserts a sibling `text` mark.
+the **compiled Vega** scenegraph, and inserts a sibling `text` mark. There are
+two placement paths (KAN-283):
+
+- **Outside** (`top`/`bottom`/`left`/`right`, the default for an un-segmented
+  bar): the text mark is **sourced from the bar mark** (`from: {data: <markName>}`)
+  and carries a Vega `label` transform that places each label (preferred anchor →
+  opposite-side fallback → hide on overlap) and writes
+  `x`/`y`/`opacity`/`align`/`baseline` onto the items.
+- **Inside / center** (explicit `center`, and the default for a real stacked
+  segment): placed **deterministically** — band-centered on the cross axis,
+  midpoint of the segment on the measure axis — and sourced from the **data**
+  (`from: <mark.from>`). The `label` transform's `['middle']` anchor drops most
+  stacked-segment labels (only one band survives), so center placement does NOT
+  use it. Verified by PNG.
+
+> ⚠️ The `label` transform is brittle for dense bar charts: it hides labels that
+> overlap a neighbor *or* spill past the plot edge, so even a 4-bar chart can
+> lose most of its outside labels. This is a known limitation kept on purpose
+> for now; a future theme token may gate the aggressive auto-hide. Always verify
+> label changes by **rendering a PNG and looking** — never trust the scene walk.
 
 Design principle (keep it this way): **Python owns intent; JS owns mechanics.**
 Do not gate by mark type in Python — emit intent for all labelable marks and let
@@ -59,12 +78,12 @@ is surprising in ways that have repeatedly broken labels:
    `'tick'`). The patch labels bars only by skipping rects whose role is not
    `'bar'` (allowing rects with no role).
 
-3. **Band position is not always on the rect.** Plain bars put the band ref on
-   `x`/`y` as `{scale, field}` (no `band` key — the band width lives on a
-   separate `width`/`height` signal, so add `band: 0.5` to center). **Faceted**
-   bars (color, or a row/column layout) instead fill their parent facet group
-   via `height/width: {field:{group:...}}` and carry **no** band ref — center
-   inside the group with `{field:{group:size}, mult:0.5}`.
+3. **Labels are sourced FROM the bar mark, not the data.** The text mark's
+   `from.data` is the compiled bar mark name (`mark.name`, e.g. `"mark_0_marks"`),
+   so each text datum is a bar **scene item**. Its backing tuple is at
+   `datum.datum` — read the measure as `datum.datum['<field>']` and the
+   match-color field as `field: 'datum.<field>'`. (Reading `datum['<field>']`
+   silently yields undefined — this was the field-access trap.)
 
 4. **Stacked/rounded bars live in a clipped facet "stack group".** VL wraps them
    in a group with `clip:{value:true}` sized to the bar's bounding box (to round
@@ -78,14 +97,26 @@ is surprising in ways that have repeatedly broken labels:
    use it to detect a *real* multi-segment stack. The segment value is
    `end - start` (correct for single bars too, since start = 0).
 
-6. **Tick/point marks use `xc`/`yc`** (centered), not `x`/`y`. `measurePos`
-   falls back to `xc`/`yc`.
+6. **The `label` transform `size` is NOT `[width, height]`.** That works only
+   for a top-level unit spec. In **concat/faceted** layouts there is no
+   top-level `width`/`height` signal (the child group carries `childWidth` /
+   `mark_0_height` etc.), so `[width, height]` resolves to 0 and `vega-label`
+   throws `IndexSizeError: source width is 0` — the whole chart fails to render.
+   `labelSizeSignal(path)` walks up to the nearest non-facet ancestor group and
+   reads its width/height, falling back to `[width, height]` for a unit spec.
+   The transform also mutates scene items in place, so the outside text
+   `encode.update` sets only `text`/`fontSize`/`fill` — never position.
 
-7. **`vertical`/`horizontal` are the measure-axis side.** Unset → outside
-   default (above a vertical bar / past a horizontal bar's end). Explicit
-   `center` → inside, at the segment midpoint (scale-based signal between
-   value-start and value-end). Intent must emit `null` for an unset side so the
-   patch can tell explicit-center from default.
+7. **A real stack defaults to inside-center; a plain bar defaults to outside.**
+   `isSegmented` = the bar has a `fill` bound to a field **different** from the
+   band/category field (`enc.fill.field !== bandField`). Charter has no grouped
+   (xOffset) bars, so fill≠band ⟹ a true multi-segment stack — those default to
+   `center` (deterministic, inside each segment) because the outside anchor only
+   fits the outermost segment. An un-segmented bar defaults to `top` (vertical) /
+   `right` (horizontal), placed by the `label` transform. `anchorCandidates()`
+   maps an explicit outside side to `[primary, fallback]`
+   (`top`→`['top','bottom']`, etc.); explicit `center` is deterministic (see
+   "How labels work").
 
 8. **Scale headroom for edge labels (KAN-289).** A label at a bar tip/end is
    clipped because the measure scale domain fits the data exactly. The patch

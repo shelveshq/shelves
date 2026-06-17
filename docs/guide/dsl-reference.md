@@ -524,6 +524,29 @@ label:
   vertical: center    # → each segment's value centered inside the segment
 ```
 
+### Collision handling
+
+**Outside** labels (the default for an ordinary bar — above a vertical bar, past
+a horizontal bar's end) are collision-aware: the rendering layer uses Vega's
+label transform to lay them out against the bars' geometry in a single pass:
+
+- **Preferred side first.** Each label is placed on the side you asked for
+  (`vertical`/`horizontal`), or the outside default when unset.
+- **Fall back to the opposite side.** If the preferred side would overlap another
+  label or run off the chart, the label flips to the opposite side
+  (`top` ⇄ `bottom`, `left` ⇄ `right`).
+- **Hide when nothing fits.** If neither side can place the label without
+  overlap, it is hidden rather than drawn on top of another label.
+
+> The collision pass is aggressive — in a dense chart it can hide more labels
+> than you expect. If labels go missing, give the chart more room (fewer
+> categories, a larger chart, a shorter `format`), or place them inside with
+> `center`.
+
+**Stacked segments** (`vertical: center` / `horizontal: center`, also the default
+for a multi-segment stacked bar) are placed **deterministically** inside each
+segment at its midpoint — every segment is labeled, regardless of neighbors.
+
 ### Color modes
 
 ```yaml
