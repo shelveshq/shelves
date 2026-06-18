@@ -256,17 +256,25 @@ def _build_resolved_nodes(
         main_size = resolved_sizes[idx]
         margin = child_margins[idx]
 
+        # Tableau model: children always fill the cross axis. A cross-axis size
+        # (height in a horizontal container, width in a vertical one) is ignored;
+        # only main-axis sizing is a per-child concept. Warn so the ignore is not
+        # silent. width/height remain valid as MAIN-axis sizes (see _classify_sizes),
+        # so we only inspect the cross-axis property here.
         cross_size_val = (
             getattr(comp, "height", None) if is_horizontal else getattr(comp, "width", None)
         )
-        cross_bucket, cross_num = _parse_size(cross_size_val)
-        if cross_bucket == "px":
-            cross_size = int(cross_num)
-        elif cross_bucket == "pct":
-            cross_size = int(round(cross_num * cross_content))  # noqa: RUF046
-        else:
-            cross_margins = margin[0] + margin[2] if is_horizontal else margin[1] + margin[3]
-            cross_size = max(cross_content - cross_margins, 0)
+        if cross_size_val is not None:
+            cname = child_name or f"child[{idx}]"
+            axis_prop = "height" if is_horizontal else "width"
+            warnings.warn(
+                f"Cross-axis size `{axis_prop}: {cross_size_val}` on `{cname}` is"
+                f" ignored; container children always fill the cross axis."
+                f" Use `{axis_prop}` only as a main-axis size.",
+                stacklevel=2,
+            )
+        cross_margins = margin[0] + margin[2] if is_horizontal else margin[1] + margin[3]
+        cross_size = max(cross_content - cross_margins, 0)
 
         if is_horizontal:
             outer_w, outer_h = main_size, cross_size

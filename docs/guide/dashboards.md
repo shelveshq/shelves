@@ -228,6 +228,28 @@ Containers arrange their children along a main axis. The layout solver computes 
 
 All children pack to the start (top-left origin). There are no `align` or `justify` keywords — the solver uses fixed-size inline blocks, not flexbox distribution.
 
+**Cross-axis sizing follows the Tableau model: children always fill the container on the cross axis.** Only the *main axis* (the container's flow direction) is sized per child:
+
+- In a **horizontal** container, `width` sizes a child along the row; its `height` is ignored — the child fills the row's height.
+- In a **vertical** container, `height` sizes a child down the column; its `width` is ignored — the child fills the column's width.
+
+Setting a cross-axis size emits a warning and has no effect. To center or inset a child, use `padding` on the container or a `blank` spacer object — there is no cross-axis alignment keyword.
+
+```yaml
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/kpi.yaml
+      height: 120        # main-axis size — a 120px-tall band
+      # `width` here would be ignored; the card fills the column width
+    - horizontal:
+        height: 300      # main-axis size of this row within the column
+        contains:
+          - sheet: charts/a.yaml
+            width: 400   # main-axis size — 400px wide within the row
+            # `height` here would be ignored; the chart fills the row height
+```
+
 ### Sheet (chart embed)
 
 Embeds a Chart DSL visualization.
@@ -404,6 +426,8 @@ root:
 
 The root does **not** use type-led syntax — it is always `root:` with an explicit `orientation` field. This is the one exception to the type-led pattern, because the root is a fixed structural element, not a child in a `contains` list.
 
+The root container follows the same cross-axis rule as any container: its direct children always fill the cross axis, and only their main-axis size is honored.
+
 ---
 
 ## Predefined components
@@ -535,7 +559,7 @@ Along the **main axis**, the solver resolves sizes in priority order:
 2. **Fixed pixels** — reserved at their exact value
 3. **Auto** — remaining space divided equally among auto children
 
-Along the **cross axis**, components default to 100% of the parent (minus their own margins) unless an explicit size is set.
+Along the **cross axis**, components always fill 100% of the parent (minus their own margins). A cross-axis size is ignored (and warns) — only main-axis sizing is a per-child concept. See [Containers](#containers) for the Tableau-model rationale.
 
 ### Gap
 
