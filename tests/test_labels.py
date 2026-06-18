@@ -560,6 +560,62 @@ class TestLabelCompilation:
         assert labels[1]["field"] == "arpu"
         assert labels[2]["field"] == "order_count"
 
+    def test_per_layer_label_suppression(self):
+        # `label: false` on a single layer suppresses only that mark's intent;
+        # siblings under top-level `label: true` still emit (was label_layer_suppress).
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: week
+            rows:
+              - measure: revenue
+                mark: bar
+                layer:
+                  - measure: arpu
+                    mark: bar
+                    label: false
+                axis: independent
+            label: true
+        """)
+        )
+        from shelves.translator.translate import translate_chart
+
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert {lbl["markName"] for lbl in labels} == {"mark_0"}
+        assert labels[0]["field"] == "revenue"
+        # The suppressed layer still gets a name, just no intent referencing it.
+        assert vl["layer"][1]["name"] == "mark_1"
+
+    def test_labels_survive_filter_transform(self):
+        # A filter transform must not drop label intent (was label_bar_filtered).
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: country
+            rows: revenue
+            marks: bar
+            label: true
+            filters:
+              - field: country
+                operator: neq
+                value: "FR"
+        """)
+        )
+        from shelves.translator.translate import translate_chart
+
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+
+        assert "transform" in vl  # filter survived
+        assert vl["name"] == "mark_0"
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0]["markName"] == "mark_0"
+        assert labels[0]["field"] == "revenue"
+
 
 # ─── Point / Tick Mark Label Tests (KAN-285) ───────────────────────
 

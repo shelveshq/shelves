@@ -327,9 +327,18 @@
       // label is sourced FROM the bar mark, so its tuple is at datum.datum; an
       // inside label is sourced from the DATA, so its tuple is datum directly.
       const tuple = isCenter ? 'datum' : 'datum.datum';
-      const seg = isStacked
-        ? tuple + "['" + mField + "'] - " + tuple + "['" + bField + "']"
-        : tuple + "['" + (mField || intent.field) + "']";
+      // The value to display. A custom label.field (different from the bar's
+      // measure) is read straight off the datum; the measure default shows the
+      // stacked SEGMENT value (end − start). VL suffixes the measure's position
+      // field with _end/_start, so strip that to recover the base measure name
+      // and tell a custom field apart from the measure itself.
+      const measureBase = (mField || '').replace(/_(start|end)$/, '');
+      const isCustomField = !!intent.field && intent.field !== measureBase;
+      const seg = isCustomField
+        ? tuple + "['" + intent.field + "']"
+        : isStacked
+          ? tuple + "['" + mField + "'] - " + tuple + "['" + bField + "']"
+          : tuple + "['" + (mField || intent.field) + "']";
       const textSignal = intent.format
         ? "format(" + seg + ", '" + intent.format + "')"
         : seg;
@@ -344,7 +353,11 @@
         const fillField = (isCenter ? '' : 'datum.') + enc.fill.field;
         textEnc.fill = { scale: enc.fill.scale, field: fillField };
       } else {
-        textEnc.fill = { value: intent.color || '#333333' };
+        // 'match' is a sentinel, not a CSS color — fall back to the default
+        // when there's no color scale to resolve it against.
+        textEnc.fill = {
+          value: intent.color && intent.color !== 'match' ? intent.color : '#333333',
+        };
       }
 
       let textMark;

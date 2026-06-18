@@ -25,7 +25,7 @@ from shelves.translator.encodings import (
 )
 from shelves.translator.filters import build_transforms
 from shelves.translator.labels import (
-    build_label_intent,
+    attach_label_intent,
     resolve_label_cascade,
     resolve_label_spec,
 )
@@ -254,11 +254,8 @@ def _compile_concat(
             panel["transform"] = transforms
 
         resolved_label = resolve_label_cascade(None, entry.label, spec.label)
-        label_config = resolve_label_spec(resolved_label)
-        if label_config is not None:
-            mark_name = f"mark_{i}"
-            panel["name"] = mark_name
-            intent = build_label_intent(mark_name, entry.measure, label_config, resolver)
+        intent = attach_label_intent(panel, f"mark_{i}", entry.measure, resolved_label, resolver)
+        if intent is not None:
             label_intents.append(intent)
 
         panels.append(panel)

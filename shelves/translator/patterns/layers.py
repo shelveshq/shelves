@@ -95,6 +95,7 @@ from shelves.translator.encodings import (
 )
 from shelves.translator.filters import build_transforms
 from shelves.translator.labels import (
+    attach_label_intent,
     build_label_intent,
     resolve_label_cascade,
     resolve_label_spec,
@@ -184,13 +185,11 @@ def compile_stacked_with_layers(
             num_marks = 1
 
             resolved_label = resolve_label_cascade(None, entry.label, spec.label)
-            label_config = resolve_label_spec(resolved_label)
-            if label_config is not None:
-                mark_name = f"mark_{mark_counter}"
-                panel["name"] = mark_name
-                all_label_intents.append(
-                    build_label_intent(mark_name, entry.measure, label_config, resolver)
-                )
+            intent = attach_label_intent(
+                panel, f"mark_{mark_counter}", entry.measure, resolved_label, resolver
+            )
+            if intent is not None:
+                all_label_intents.append(intent)
 
         panel_intents = panel.pop("_label_intents", [])
         all_label_intents.extend(panel_intents)

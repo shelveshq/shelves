@@ -101,8 +101,14 @@ is surprising in ways that have repeatedly broken labels:
 5. **VL stack-encodes even single bars.** A plain single bar still compiles to
    `y:{field:"x_end"}, y2:{field:"x_start"}` with `start = 0`. So "is this
    stacked?" (distinct start/end fields) is **true for every bar** — you cannot
-   use it to detect a *real* multi-segment stack. The segment value is
+   use it to detect a *real* multi-segment stack. The measure segment value is
    `end - start` (correct for single bars too, since start = 0).
+   **A custom `label.field` short-circuits this.** When the intent's `field`
+   differs from the bar's measure (derived by stripping the `_start`/`_end`
+   suffix off the position field), the label reads that column **raw**
+   (`datum.datum['<field>']`) instead of `end - start`. Without this, a custom
+   field is ignored and the bar's measure value is shown instead (the
+   `label_bar_custom_field` regression).
 
 6. **The `label` transform `size` is NOT `[width, height]`.** That works only
    for a top-level unit spec. In **concat/faceted** layouts there is no

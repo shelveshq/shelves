@@ -24,7 +24,10 @@ from pydantic import BaseModel, Field, model_validator
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = "0.7.0"  # Labels: label property on charts (KAN-281)
+# 0.8.0: label grammar changed — LabelConfig.position replaced by
+# horizontal/vertical, and color now accepts "match" (KAN-281). Breaking for
+# specs that used the old `position` key (now silently ignored by Pydantic).
+DSL_VERSION = "0.8.0"  # Labels: label property on charts (KAN-281)
 
 # ─── Primitives ────────────────────────────────────────────────────
 

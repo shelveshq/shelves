@@ -55,6 +55,26 @@ def build_label_intent(
     }
 
 
+def attach_label_intent(
+    panel: dict[str, Any],
+    mark_name: str,
+    measure_field: str,
+    resolved_label: LabelSpec | None,
+    resolver: FieldTypeResolver,
+) -> dict[str, Any] | None:
+    """Name *panel* and build its label intent when *resolved_label* is active.
+
+    Returns the intent dict, or None (leaving *panel* untouched) when there is
+    no active label. Centralizes the name↔intent pairing the JS patch relies on
+    (the intent's ``markName`` must match the mark the panel compiles to).
+    """
+    label_config = resolve_label_spec(resolved_label)
+    if label_config is None:
+        return None
+    panel["name"] = mark_name
+    return build_label_intent(mark_name, measure_field, label_config, resolver)
+
+
 def resolve_measure_field(
     spec: ChartSpec,
     resolver: FieldTypeResolver,
