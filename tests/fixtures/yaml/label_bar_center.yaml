@@ -3,7 +3,5 @@ data: orders
 cols: country
 rows: revenue
 marks: bar
-label: true
-sort:
-  field: revenue
-  order: descending
+label:
+  vertical: center

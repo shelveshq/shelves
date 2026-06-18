@@ -73,7 +73,14 @@ async def compile_file_and_broadcast(
     from shelves.pipeline import compile_chart, resolve_model_data
 
     try:
-        content = abs_path.read_text()
+        try:
+            content = abs_path.read_text()
+        except FileNotFoundError:
+            # The file was created and deleted before we could read it (a test
+            # temp file, or an editor's atomic-save swap file). The watcher
+            # already saw the create; treat the read race as a silent no-op
+            # rather than surfacing a spurious "No such file" compile error.
+            return
         if not content.strip():
             await manager.broadcast(
                 {
@@ -179,7 +186,12 @@ async def compile_dashboard_file_and_broadcast(
     from shelves.studio.routes.dashboard import run_dashboard_pipeline
 
     try:
-        content = abs_path.read_text()
+        try:
+            content = abs_path.read_text()
+        except FileNotFoundError:
+            # Created-then-deleted before read (test temp / atomic-save swap);
+            # the read race is a silent no-op, not a dashboard compile error.
+            return
         effective_project_dir = project_dir or abs_path.parent
         resolved_charts = charts_dir or (effective_project_dir / "charts")
         result = await run_dashboard_pipeline(

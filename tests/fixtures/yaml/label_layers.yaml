@@ -4,13 +4,10 @@ cols: week
 rows:
   - measure: revenue
     mark: bar
-    color: country
     layer:
       - measure: arpu
         mark:
           type: line
           style: dashed
-        color: "#666666"
     axis: independent
 label: true
-tooltip: [week, country, revenue, arpu]

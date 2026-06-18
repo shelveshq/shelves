@@ -38,7 +38,7 @@ axis:
   y: { title: "...", format: "...", grid: false }
 
 # Optional data labels
-label: true                  # or false, or {field, position, color, size, format}
+label: true                  # or false, or {field, vertical, horizontal, color, size, format}
 
 # KPI pattern (replaces cols/rows/marks when present)
 kpi:
@@ -72,7 +72,7 @@ rows:
   - measure: arpu
 ```
 
-One shelf is a list of measure entries, the other remains a string. Each entry can override `mark`, `color`, `detail`, `size`, and `opacity`:
+One shelf is a list of measure entries, the other remains a string. Each entry can override `mark`, `color`, `detail`, `size`, `opacity`, and `label`:
 
 **Shared axis visibility:** By default, stacked panels hide the shared axis on all but the edge panel (bottom for rows, left for cols) to reduce visual clutter. Override per-entry with `shared_axis`:
 
@@ -360,7 +360,11 @@ filters:
 
 ## Sort
 
-Sort modifies the encoding on a target channel (defaults to `x`).
+Sort modifies the encoding on a target channel. When `channel` is omitted, it
+auto-detects the **dimension axis** (the nominal/ordinal one) as the target — so
+a horizontal bar (`rows:` dimension on `y`, `cols:` measure on `x`) sorts its `y`
+bars without needing `channel: y`. If both axes are the same type it falls back
+to `x`. Set `channel` explicitly to override the auto-detection.
 
 ```yaml
 # Sort x-axis by a field's values
@@ -472,7 +476,7 @@ tooltip: [country, revenue]
 
 ## Labels
 
-Data labels display values directly on chart marks. Labels are rendered as Vega-Lite text-mark layers — they share the chart's scales and automatically align with the data.
+Data labels display values directly on chart marks. In the compile-then-patch architecture, the Python translator emits label *intent* as metadata, and the JavaScript rendering layer handles placement and collision avoidance.
 
 ### Basic usage
 
@@ -485,81 +489,125 @@ marks: bar
 label: true
 ```
 
-`label: true` displays the measure value inside each bar end, formatted per the model's format string.
+`label: true` marks the chart for data labeling. The label field, format, and position are automatically resolved from the data model.
 
 ### Label configuration
 
 ```yaml
 label:
   field: order_count          # which field to display (default: the measure)
-  position: top               # positioning preset (default: inside-end)
-  color: "#333333"            # text color (hex)
-  size: 10                    # font size in pixels
-  format: ",.0f"              # D3 format string (overrides model format)
+  vertical: center            # vertical position: top | center | bottom
+  horizontal: right           # horizontal position: left | center | right
+  color: "#333333"            # text color: hex string, "match", or omit for auto
+  size: 10                    # font size in pixels (default: 11)
+  format: ",.0f"              # d3 format string (overrides model format)
 ```
 
-### Positions
+### Position axes
 
-| Position | Vertical bars | Horizontal bars |
+The label position is specified along the mark's **measure axis** — `vertical`
+for vertical bars (value runs up the y-axis), `horizontal` for horizontal bars
+(value runs along the x-axis). The other axis is centered on the band.
+
+| Axis | Values | Behavior |
 |---|---|---|
-| `inside-top` / `inside-right` | Inside bar, near top edge (default for vertical) | Inside bar, near right edge (default for horizontal) |
-| `inside-bottom` / `inside-left` | Inside bar, near bottom edge | Inside bar, near left edge |
-| `top` / `right` | Above bar | Right of bar |
-| `bottom` / `left` | Below bar | Left of bar |
+| `vertical` | `top`, `center`, `bottom` | `top` → above the bar/segment top; `bottom` → below the base; `center` → inside, at the segment midpoint |
+| `horizontal` | `left`, `center`, `right` | `right` → past the bar/segment end; `left` → before the origin; `center` → inside, at the segment midpoint |
 
-The default position is `inside-top` for vertical bars and `inside-right` for horizontal bars.
+When unset, labels are placed **outside** the mark (above a vertical bar's top,
+or past a horizontal bar's end). `center` places the value **inside** the bar at
+its midpoint — the natural choice for **stacked segments**, where each segment's
+value sits inside its own segment:
+
+```yaml
+cols: category
+rows: net_sales
+marks: bar
+color: segment        # stacks each category by segment
+label:
+  vertical: center    # → each segment's value centered inside the segment
+```
+
+### Mark support
+
+Labels are supported on:
+
+| Mark | Behavior |
+|---|---|
+| `bar` | Outside (top/right) by default, or `center` inside the bar/segment. Collision-aware; stacked segments centered deterministically. |
+| `point`, `circle`, `square` | Placed beside each point, sweeping 8 directions around it from your preferred side. Collision-aware — labels in dense clusters are hidden. |
+| `tick` | Same as points — a label is anchored beside each tick. |
+
+Not yet supported: `line`, `area`, and `arc`/pie marks. A `label` on these mark
+types is currently **silently ignored** (labeling a line at its end point is
+planned separately).
+
+For points, `vertical`/`horizontal` set the *preferred* starting side
+(`top` is the default); the renderer then sweeps the remaining directions to
+avoid overlaps. `center` has no special meaning for a point and is treated as
+the default.
+
+### Collision handling
+
+**Outside** labels (the default for an ordinary bar — above a vertical bar, past
+a horizontal bar's end) are collision-aware: the rendering layer uses Vega's
+label transform to lay them out against the bars' geometry in a single pass:
+
+- **Preferred side first.** Each label is placed on the side you asked for
+  (`vertical`/`horizontal`), or the outside default when unset.
+- **Fall back to the opposite side.** If the preferred side would overlap another
+  label or run off the chart, the label flips to the opposite side
+  (`top` ⇄ `bottom`, `left` ⇄ `right`).
+- **Hide when nothing fits.** If neither side can place the label without
+  overlap, it is hidden rather than drawn on top of another label.
+
+> The collision pass is aggressive — in a dense chart it can hide more labels
+> than you expect. If labels go missing, give the chart more room (fewer
+> categories, a larger chart, a shorter `format`), or place them inside with
+> `center`.
+
+**Stacked segments** (`vertical: center` / `horizontal: center`, also the default
+for a multi-segment stacked bar) are placed **deterministically** inside each
+segment at its midpoint — every segment is labeled, regardless of neighbors.
+
+### Color modes
+
+```yaml
+# Fixed hex color
+label:
+  color: "#333333"
+
+# Match the parent mark's color encoding
+label:
+  color: match
+
+# Omit for automatic contrast coloring (light on dark marks, dark on light)
+label: true
+```
 
 ### Suppressing labels
 
 ```yaml
-label: false    # explicitly suppress — useful to override inherited labels
+label: false    # explicitly suppress — overrides inherited labels
+```
+
+### Cascade
+
+Labels cascade through three levels: **top-level → measure entry → layer entry**. The first non-null value wins (including `false` for explicit suppression).
+
+```yaml
+label: true                    # default for all panels
+rows:
+  - measure: revenue
+    mark: bar                  # inherits label: true
+  - measure: order_count
+    mark: bar
+    label: false               # suppressed for this panel
 ```
 
 ### Format auto-resolution
 
-When no `format` is specified, the label format is automatically resolved from the data model. For example, if the model defines `revenue` with `format: "$,.0f"`, then `label: true` on a revenue chart displays labels as `$1,234`.
-
-### Color grouping
-
-When the chart has a field-based `color` encoding (e.g., `color: country`), labels inherit the color grouping so each group's label positions correctly. The label layer uses `legend: null` to avoid duplicating the legend entry.
-
-Static hex colors (e.g., `color: "#4A90D9"`) are NOT inherited — they don't create data grouping.
-
-### Labels on layered charts
-
-When `label: true` is set on a chart with layers (dual/multi-axis), labels are injected for bar-mark layers only. Non-bar layers (line, area, etc.) are silently skipped.
-
-```yaml
-cols: week
-rows:
-  - measure: revenue
-    mark: bar
-    color: country
-    layer:
-      - measure: arpu
-        mark:
-          type: line
-          style: dashed
-        color: "#666666"
-    axis: independent
-label: true
-```
-
-Revenue bars get data labels; the ARPU line is not labeled.
-
-The three-level cascade applies per layer: `label: false` on a `layer` entry suppresses labels on that specific layer, even if the chart or entry level sets `label: true`.
-
-```yaml
-rows:
-  - measure: revenue
-    mark: bar
-    layer:
-      - measure: order_count
-        mark: bar
-        label: false      # suppresses label on this bar layer only
-    axis: independent
-label: true
-```
+When no `format` is specified, the label format is automatically resolved from the data model. For example, if the model defines `revenue` with `format: "$,.0f"`, then `label: true` on a revenue chart formats labels as `$1,234`.
 
 ---
 
@@ -711,7 +759,7 @@ sort:
 tooltip: [country, revenue]
 ```
 
-### Simple bar chart with labels
+### Bar chart with labels
 
 ```yaml
 sheet: "Revenue by Country"
@@ -724,9 +772,10 @@ label: true
 sort:
   field: revenue
   order: descending
+tooltip: [country, revenue]
 ```
 
-Revenue values are displayed inside each bar, formatted per the model's format string (`$1,234`).
+Revenue values are displayed on each bar, formatted per the model's format string.
 
 ### Line chart with time
 
@@ -751,6 +800,9 @@ color: country
 size: revenue
 tooltip: [country, revenue, order_count]
 ```
+
+Add `label: {field: country}` to annotate each point with its category; labels
+that would overlap in dense regions are automatically hidden.
 
 ### Heatmap
 
@@ -1041,7 +1093,11 @@ The `comparison` block is optional. When present, a comparison line is rendered 
 
 ## Not yet supported
 
-All currently planned features are supported. See the DSL version history below for what shipped in each version.
+- **Data labels on `line`, `area`, and `arc`/pie marks** — a `label` on these
+  mark types is silently ignored for now. Bars, points/circles/squares, and
+  ticks are supported. Line/area end-of-series labels are planned separately.
+
+See the DSL version history below for what shipped in each version.
 
 ---
 
@@ -1049,7 +1105,7 @@ All currently planned features are supported. See the DSL version history below 
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.7.0** | Current | Labels v2: `label` property on charts (`true`, `false`, or config object). Implicit text-mark layers on bar/column charts with inside-end default positioning. Three-level cascade (chart → entry → layer). |
+| **0.7.0** | Current | Labels: `label` property on charts (`true`, `false`, or config object). Two-axis position model (`vertical` + `horizontal`). Three-level cascade (chart → entry → layer). Label intents emitted in `usermeta` for compile-then-patch rendering. |
 | **0.6.0** | Previous | KPI block schema: new `kpi` top-level property with `value`, `format`, `title`, `spacing`, and `comparison` sub-block. Replaces placeholder `KPIConfig`. |
 | **0.5.2** | Previous | Shared axis hiding: stacked panels hide repeating shared axes by default. New `shared_axis` property on measure entries. |
 | **0.5.1** | Previous | Stacked layers: multi-entry shelves with mixed layered and standalone entries compile to `vconcat`/`hconcat`. |

@@ -25,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from shelves.render.to_html import load_charter_patch_js
 from shelves.studio.connection import ConnectionManager
 from shelves.studio.lifespan import make_lifespan
 from shelves.studio.routes import compile, dashboard, files, terminal
@@ -105,6 +106,13 @@ def create_app(
     @app.get("/schema")
     async def get_schema() -> JSONResponse:
         return await compile.get_schema()
+
+    @app.get("/charter-patch.js")
+    async def charter_patch_js() -> Response:
+        # Canonical label-patch script shared with the standalone HTML renderer.
+        # Served fresh from shelves/render/charter_patch.js so the studio and CLI
+        # render paths can never drift, and edits show up without a restart.
+        return Response(load_charter_patch_js(), media_type="text/javascript")
 
     @app.get("/project")
     async def get_project(request: Request) -> JSONResponse:

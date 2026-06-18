@@ -83,14 +83,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from shelves.schema.chart_schema import (
-    ChartSpec,
-    ColorSpec,
-    LabelSpec,
-    LayerEntry,
-    MarkSpec,
-    MeasureEntry,
-)
+from shelves.schema.chart_schema import ChartSpec, ColorSpec, LayerEntry, MarkSpec, MeasureEntry
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.translator.encodings import (
     _auto_inject_from_model,
@@ -102,9 +95,8 @@ from shelves.translator.encodings import (
 )
 from shelves.translator.filters import build_transforms
 from shelves.translator.labels import (
-    build_label_layer,
-    is_bar_mark,
-    maybe_wrap_with_label,
+    attach_label_intent,
+    build_label_intent,
     resolve_label_cascade,
     resolve_label_spec,
 )
@@ -158,14 +150,15 @@ def compile_stacked_with_layers(
             measure_axis=measure_axis,
             spec=spec,
             resolver=resolver,
+            mark_counter=0,
         )
 
     # Multi-entry branch (KAN-112): vconcat/hconcat of layer + simple panels.
-    # Transforms go per-panel (vconcat/hconcat children are independent unit specs).
-    # compile_layer_entry already adds transforms at the layer-group level;
-    # _build_simple_panel adds them to its own output.
     is_hconcat = concat_key == "hconcat"
     panels: list[dict[str, Any]] = []
+    all_label_intents: list[dict[str, Any]] = []
+    mark_counter = 0
+
     for i, entry in enumerate(entries):
         if entry.layer:
             panel = compile_layer_entry(
@@ -176,7 +169,9 @@ def compile_stacked_with_layers(
                 measure_axis=measure_axis,
                 spec=spec,
                 resolver=resolver,
+                mark_counter=mark_counter,
             )
+            num_marks = 1 + len(entry.layer)
         else:
             panel = _build_simple_panel(
                 entry=entry,
@@ -187,6 +182,17 @@ def compile_stacked_with_layers(
                 spec=spec,
                 resolver=resolver,
             )
+            num_marks = 1
+
+            resolved_label = resolve_label_cascade(None, entry.label, spec.label)
+            intent = attach_label_intent(
+                panel, f"mark_{mark_counter}", entry.measure, resolved_label, resolver
+            )
+            if intent is not None:
+                all_label_intents.append(intent)
+
+        panel_intents = panel.pop("_label_intents", [])
+        all_label_intents.extend(panel_intents)
 
         # KAN-232: suppress shared axis on non-edge panels
         if not _resolve_shared_axis(entries, i, is_hconcat):
@@ -197,8 +203,12 @@ def compile_stacked_with_layers(
                 _suppress_shared_axis(panel["encoding"], shared_axis)
 
         panels.append(panel)
+        mark_counter += num_marks
 
-    return {concat_key: panels, "spacing": 10}
+    result: dict[str, Any] = {concat_key: panels, "spacing": 10}
+    if all_label_intents:
+        result["_label_intents"] = all_label_intents
+    return result
 
 
 def compile_layer_entry(
@@ -209,6 +219,7 @@ def compile_layer_entry(
     measure_axis: str,
     spec: ChartSpec,
     resolver: FieldTypeResolver,
+    mark_counter: int = 0,
 ) -> dict[str, Any]:
     """
     Compile a single MeasureEntry with a `layer` list into a Vega-Lite layer spec.
@@ -273,7 +284,6 @@ def compile_layer_entry(
 
     # Step 3: Build each secondary layer.
     secondaries = []
-    secondary_marks: list[MarkSpec] = []
     for i, layer in enumerate(entry.layer):  # type: ignore[union-attr]
         try:
             layer_mark = resolve_mark(
@@ -284,7 +294,6 @@ def compile_layer_entry(
             )
         except (ValueError, TypeError) as e:
             raise ValueError(f"Entry {entry.measure!r} layer {i}: {e}") from e
-        secondary_marks.append(layer_mark)
         layer_color = resolve_property(layer.color, entry.color, spec.color)
         layer_detail = _resolve_layer_detail(layer, entry, spec)
         layer_size = resolve_property(layer.size, entry.size, spec.size)
@@ -307,76 +316,42 @@ def compile_layer_entry(
         )
         secondaries.append(secondary)
 
-    # Step 4: Assemble.
-    all_layer_specs = [primary, *secondaries]
+    # Step 4: Mark naming + label intents.
+    label_intents: list[dict[str, Any]] = []
 
-    # Step 4b: Inject label layers for bar-mark children.
-    all_layer_specs = _inject_label_layers(
-        layer_specs=all_layer_specs,
-        layer_marks=[primary_mark, *secondary_marks],
-        layer_measures=[entry.measure] + [le.measure for le in entry.layer],  # type: ignore[union-attr]
-        layer_entries=[None, *list(entry.layer)],  # type: ignore[union-attr]
-        entry_label=entry.label,
-        top_label=spec.label,
-        measure_axis=measure_axis,
-        resolver=resolver,
-    )
+    primary_name = f"mark_{mark_counter}"
+    primary["name"] = primary_name
+    resolved_label = resolve_label_cascade(None, entry.label, spec.label)
+    label_config = resolve_label_spec(resolved_label)
+    if label_config is not None:
+        label_intents.append(
+            build_label_intent(primary_name, entry.measure, label_config, resolver)
+        )
 
-    result: dict[str, Any] = {"layer": all_layer_specs}
+    for j, (secondary, layer_entry) in enumerate(zip(secondaries, entry.layer, strict=False)):  # type: ignore[union-attr]
+        layer_name = f"mark_{mark_counter + 1 + j}"
+        secondary["name"] = layer_name
+        layer_label = resolve_label_cascade(layer_entry.label, entry.label, spec.label)
+        layer_config = resolve_label_spec(layer_label)
+        if layer_config is not None:
+            label_intents.append(
+                build_label_intent(layer_name, layer_entry.measure, layer_config, resolver)
+            )
 
-    # Step 5: Resolve only for explicit independent.
+    # Step 5: Assemble.
+    result: dict[str, Any] = {"layer": [primary, *secondaries]}
+
+    # Step 6: Resolve only for explicit independent.
     if entry.axis == "independent":
         result["resolve"] = {"scale": {measure_axis: "independent"}}
 
-    # Step 6: Transforms at the layer-group level.
+    # Step 7: Transforms at the layer-group level.
     transforms = build_transforms(spec.filters, resolver)
     if transforms:
         result["transform"] = transforms
 
-    return result
-
-
-def _inject_label_layers(
-    layer_specs: list[dict[str, Any]],
-    layer_marks: list[MarkSpec],
-    layer_measures: list[str],
-    layer_entries: list[LayerEntry | None],
-    entry_label: LabelSpec | None,
-    top_label: LabelSpec | None,
-    measure_axis: str,
-    resolver: FieldTypeResolver,
-) -> list[dict[str, Any]]:
-    orientation = "vertical" if measure_axis == "y" else "horizontal"
-
-    result: list[dict[str, Any]] = []
-    for spec_dict, mark, measure, layer_entry in zip(
-        layer_specs, layer_marks, layer_measures, layer_entries, strict=True
-    ):
-        result.append(spec_dict)
-
-        layer_label = layer_entry.label if layer_entry is not None else None
-        resolved = resolve_label_cascade(layer_label, entry_label, top_label)
-        label_config = resolve_label_spec(resolved)
-
-        if label_config is None:
-            continue
-        if not is_bar_mark(mark):
-            continue
-
-        text_layer = build_label_layer(
-            measure_field=measure,
-            base_x_enc=spec_dict["encoding"]["x"],
-            base_y_enc=spec_dict["encoding"]["y"],
-            label_config=label_config,
-            orientation=orientation,
-            resolver=resolver,
-            color_enc=spec_dict["encoding"].get("color"),
-            detail_enc=spec_dict["encoding"].get("detail"),
-        )
-        # Suppress measure-axis axis to prevent duplicates under independent resolution.
-        # Shared axis is left as-is (popped by _strip_axis_metadata) so dimension labels render.
-        text_layer["encoding"][measure_axis]["axis"] = None
-        result.append(text_layer)
+    if label_intents:
+        result["_label_intents"] = label_intents
 
     return result
 
@@ -412,17 +387,6 @@ def _build_simple_panel(
     transforms = build_transforms(spec.filters, resolver)
     if transforms:
         panel["transform"] = transforms
-
-    resolved_label = resolve_label_cascade(None, entry.label, spec.label)
-    orientation = "vertical" if measure_axis == "y" else "horizontal"
-    panel = maybe_wrap_with_label(
-        panel=panel,
-        mark=mark,
-        label=resolved_label,
-        measure_field=entry.measure,
-        orientation=orientation,
-        resolver=resolver,
-    )
 
     return panel
 

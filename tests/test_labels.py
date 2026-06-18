@@ -1,98 +1,211 @@
 """
-Label Tests (KAN-269)
+Label Intent Tests (KAN-281)
 
-Tests for data labels on bar/column charts — schema parsing, helper functions,
-and full compilation (single-measure + stacked panels).
+Tests for label schema parsing, label helper functions, and label intent
+emission across all three pattern compilers (single, stacked, layers).
 """
+
+import textwrap
 
 import pytest
 from pydantic import ValidationError
 
 from shelves.schema.chart_schema import LabelConfig, parse_chart
 from shelves.translator.labels import (
-    detect_orientation,
-    is_bar_mark,
+    build_label_intent,
     resolve_label_cascade,
     resolve_label_spec,
+    resolve_measure_field,
 )
-from tests.conftest import MODELS_DIR, compile_fixture, load_yaml
+from tests.conftest import MODELS_DIR, compile_fixture
 
-# ═══ Schema Tests ═══════════════════════════════════════════════════
+# ─── Schema Tests ────────────────────────────────────────────────────
 
 
 class TestLabelSchema:
+    """Parsing and validation of the label DSL property."""
+
     def test_label_true_parses(self):
-        spec = parse_chart(load_yaml("label_bar_simple.yaml"))
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: country
+            rows: revenue
+            marks: bar
+            label: true
+        """)
+        )
         assert spec.label is True
 
     def test_label_false_parses(self):
-        yaml = """\
-sheet: "Test"
-data: orders
-cols: country
-rows: revenue
-marks: bar
-label: false
-"""
-        spec = parse_chart(yaml)
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: country
+            rows: revenue
+            marks: bar
+            label: false
+        """)
+        )
         assert spec.label is False
 
     def test_label_config_parses(self):
-        spec = parse_chart(load_yaml("label_bar_config.yaml"))
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: country
+            rows: revenue
+            marks: bar
+            label:
+              vertical: top
+              horizontal: right
+              color: "#333333"
+              size: 10
+              format: ",.0f"
+              field: order_count
+        """)
+        )
         assert isinstance(spec.label, LabelConfig)
-        assert spec.label.position == "top"
+        assert spec.label.vertical == "top"
+        assert spec.label.horizontal == "right"
         assert spec.label.color == "#333333"
         assert spec.label.size == 10
         assert spec.label.format == ",.0f"
+        assert spec.label.field == "order_count"
 
-    def test_label_omitted_is_none(self):
-        spec = parse_chart(load_yaml("simple_bar.yaml"))
-        assert spec.label is None
+    def test_label_match_color_parses(self):
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: country
+            rows: revenue
+            marks: bar
+            label:
+              color: match
+        """)
+        )
+        assert isinstance(spec.label, LabelConfig)
+        assert spec.label.color == "match"
 
-    def test_invalid_position_rejected(self):
-        yaml = """\
-sheet: "Test"
-data: orders
-cols: country
-rows: revenue
-marks: bar
-label:
-  position: center
-"""
-        with pytest.raises(ValidationError):
-            parse_chart(yaml)
+    def test_label_on_measure_entry(self):
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: week
+            rows:
+              - measure: revenue
+                mark: bar
+                label: false
+              - measure: order_count
+                mark: line
+            label: true
+        """)
+        )
+        assert spec.rows[0].label is False
+        assert spec.rows[1].label is None
+        assert spec.label is True
+
+    def test_label_on_layer_entry(self):
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: week
+            rows:
+              - measure: revenue
+                mark: bar
+                layer:
+                  - measure: arpu
+                    mark: line
+                    label: false
+                axis: independent
+            label: true
+        """)
+        )
+        assert spec.rows[0].layer[0].label is False
 
     def test_invalid_color_rejected(self):
-        yaml = """\
-sheet: "Test"
-data: orders
-cols: country
-rows: revenue
-marks: bar
-label:
-  color: "not-a-color"
-"""
         with pytest.raises(ValidationError):
-            parse_chart(yaml)
+            parse_chart(
+                textwrap.dedent("""\
+                sheet: "Test"
+                data: orders
+                cols: country
+                rows: revenue
+                marks: bar
+                label:
+                  color: "not-a-color"
+            """)
+            )
 
     def test_zero_size_rejected(self):
-        yaml = """\
-sheet: "Test"
-data: orders
-cols: country
-rows: revenue
-marks: bar
-label:
-  size: 0
-"""
         with pytest.raises(ValidationError):
-            parse_chart(yaml)
+            parse_chart(
+                textwrap.dedent("""\
+                sheet: "Test"
+                data: orders
+                cols: country
+                rows: revenue
+                marks: bar
+                label:
+                  size: 0
+            """)
+            )
+
+    def test_negative_size_rejected(self):
+        with pytest.raises(ValidationError):
+            parse_chart(
+                textwrap.dedent("""\
+                sheet: "Test"
+                data: orders
+                cols: country
+                rows: revenue
+                marks: bar
+                label:
+                  size: -1
+            """)
+            )
+
+    def test_invalid_vertical_rejected(self):
+        with pytest.raises(ValidationError):
+            parse_chart(
+                textwrap.dedent("""\
+                sheet: "Test"
+                data: orders
+                cols: country
+                rows: revenue
+                marks: bar
+                label:
+                  vertical: inside-top
+            """)
+            )
+
+    def test_invalid_horizontal_rejected(self):
+        with pytest.raises(ValidationError):
+            parse_chart(
+                textwrap.dedent("""\
+                sheet: "Test"
+                data: orders
+                cols: country
+                rows: revenue
+                marks: bar
+                label:
+                  horizontal: top
+            """)
+            )
 
 
-# ═══ Helper Unit Tests ══════════════════════════════════════════════
+# ─── Helper Unit Tests ───────────────────────────────────────────────
 
 
 class TestLabelHelpers:
+    """Unit tests for the labels.py helper functions."""
+
     def test_resolve_label_spec_none(self):
         assert resolve_label_spec(None) is None
 
@@ -103,672 +216,474 @@ class TestLabelHelpers:
         result = resolve_label_spec(True)
         assert isinstance(result, LabelConfig)
         assert result.field is None
-        assert result.position is None
+        assert result.horizontal is None
+        assert result.vertical is None
 
     def test_resolve_label_spec_config(self):
-        cfg = LabelConfig(position="top", color="#FF0000")
-        assert resolve_label_spec(cfg) is cfg
+        config = LabelConfig(vertical="top", size=10)
+        assert resolve_label_spec(config) is config
 
-    def test_resolve_label_cascade_layer_wins(self):
-        assert resolve_label_cascade(False, True, True) is False
+    def test_cascade_layer_wins(self):
+        result = resolve_label_cascade(False, True, True)
+        assert result is False
 
-    def test_resolve_label_cascade_entry_wins(self):
-        assert resolve_label_cascade(None, False, True) is False
+    def test_cascade_entry_wins(self):
+        result = resolve_label_cascade(None, False, True)
+        assert result is False
 
-    def test_resolve_label_cascade_top_level(self):
-        assert resolve_label_cascade(None, None, True) is True
+    def test_cascade_top_wins(self):
+        result = resolve_label_cascade(None, None, True)
+        assert result is True
 
-    def test_resolve_label_cascade_all_none(self):
-        assert resolve_label_cascade(None, None, None) is None
+    def test_cascade_all_none(self):
+        result = resolve_label_cascade(None, None, None)
+        assert result is None
 
-    def test_detect_orientation_vertical(self):
+    def test_resolve_measure_field_rows_measure(self):
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: country
+            rows: revenue
+            marks: bar
+        """)
+        )
         from shelves.models.loader import load_model
         from shelves.models.resolver import ModelResolver
 
-        spec = parse_chart(load_yaml("label_bar_simple.yaml"))
         model = load_model("orders", models_dir=MODELS_DIR)
         resolver = ModelResolver(model)
-        assert detect_orientation(spec, resolver) == "vertical"
+        assert resolve_measure_field(spec, resolver) == "revenue"
 
-    def test_detect_orientation_horizontal(self):
+    def test_resolve_measure_field_cols_measure(self):
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: revenue
+            rows: country
+            marks: bar
+        """)
+        )
         from shelves.models.loader import load_model
         from shelves.models.resolver import ModelResolver
 
-        spec = parse_chart(load_yaml("label_bar_horizontal.yaml"))
         model = load_model("orders", models_dir=MODELS_DIR)
         resolver = ModelResolver(model)
-        assert detect_orientation(spec, resolver) == "horizontal"
+        assert resolve_measure_field(spec, resolver) == "revenue"
 
-    def test_is_bar_mark_string(self):
-        assert is_bar_mark("bar") is True
-        assert is_bar_mark("line") is False
-        assert is_bar_mark("area") is False
-        assert is_bar_mark("text") is False
+    def test_build_label_intent_defaults(self):
+        from shelves.models.loader import load_model
+        from shelves.models.resolver import ModelResolver
 
-    def test_is_bar_mark_object(self):
-        from shelves.schema.chart_schema import MarkObject
+        model = load_model("orders", models_dir=MODELS_DIR)
+        resolver = ModelResolver(model)
+        config = LabelConfig()
+        result = build_label_intent("mark_0", "revenue", config, resolver)
+        assert result == {
+            "markName": "mark_0",
+            "field": "revenue",
+            "type": "quantitative",
+            "format": "$,.0f",
+            "horizontal": None,
+            "vertical": None,
+            "size": 11,
+            "color": None,
+        }
 
-        assert is_bar_mark(MarkObject(type="bar")) is True
-        assert is_bar_mark(MarkObject(type="line")) is False
+    def test_build_label_intent_overrides(self):
+        from shelves.models.loader import load_model
+        from shelves.models.resolver import ModelResolver
+
+        model = load_model("orders", models_dir=MODELS_DIR)
+        resolver = ModelResolver(model)
+        config = LabelConfig(
+            field="order_count",
+            horizontal="right",
+            vertical="top",
+            color="#333333",
+            size=10,
+            format=",.0f",
+        )
+        result = build_label_intent("mark_1", "revenue", config, resolver)
+        assert result == {
+            "markName": "mark_1",
+            "field": "order_count",
+            "type": "quantitative",
+            "format": ",.0f",
+            "horizontal": "right",
+            "vertical": "top",
+            "size": 10,
+            "color": "#333333",
+        }
 
 
-# ═══ Compilation Tests ══════════════════════════════════════════════
+# ─── Compilation Tests ───────────────────────────────────────────────
 
 
 class TestLabelCompilation:
+    """End-to-end compilation tests: YAML → Vega-Lite with label intents."""
+
     def test_bar_simple(self):
         vl = compile_fixture("label_bar_simple.yaml")
-        assert "layer" in vl
-        assert len(vl["layer"]) == 2
 
-        bar_layer = vl["layer"][0]
-        assert bar_layer["mark"] == "bar"
-        assert bar_layer["encoding"]["x"]["field"] == "country"
-        assert bar_layer["encoding"]["x"]["title"] == "Country"
-        assert bar_layer["encoding"]["y"]["field"] == "revenue"
-        assert bar_layer["encoding"]["y"]["title"] == "Revenue"
+        assert vl["name"] == "mark_0"
+        assert vl["mark"] == "bar"
+        assert "layer" not in vl
 
-        text_layer = vl["layer"][1]
-        assert text_layer["mark"]["type"] == "text"
-        assert text_layer["mark"]["baseline"] == "top"
-        assert text_layer["mark"]["dy"] == 6
-        assert text_layer["mark"]["color"] == "#ffffff"
-
-        assert text_layer["encoding"]["x"]["field"] == "country"
-        assert text_layer["encoding"]["y"]["field"] == "revenue"
-        assert text_layer["encoding"]["text"]["field"] == "revenue"
-        assert text_layer["encoding"]["text"]["type"] == "quantitative"
-        assert text_layer["encoding"]["text"]["format"] == "$,.0f"
-
-        # Axis metadata stripped from text layer
-        assert "title" not in text_layer["encoding"]["x"]
-        assert "axis" not in text_layer["encoding"]["x"]
-        assert "title" not in text_layer["encoding"]["y"]
-        assert "axis" not in text_layer["encoding"]["y"]
-
-        # No transform when no filters
-        assert "transform" not in vl
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0] == {
+            "markName": "mark_0",
+            "field": "revenue",
+            "type": "quantitative",
+            "format": "$,.0f",
+            "horizontal": None,
+            "vertical": None,
+            "size": 11,
+            "color": None,
+        }
 
     def test_bar_horizontal(self):
         vl = compile_fixture("label_bar_horizontal.yaml")
-        assert "layer" in vl
-        assert len(vl["layer"]) == 2
 
-        text_layer = vl["layer"][1]
-        assert text_layer["mark"]["type"] == "text"
-        assert text_layer["mark"]["align"] == "right"
-        assert text_layer["mark"]["dx"] == -6
-        assert text_layer["mark"]["color"] == "#ffffff"
-
-        assert text_layer["encoding"]["x"]["field"] == "revenue"
-        assert text_layer["encoding"]["y"]["field"] == "country"
-        assert text_layer["encoding"]["text"]["field"] == "revenue"
-        assert text_layer["encoding"]["text"]["format"] == "$,.0f"
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert labels[0]["field"] == "revenue"
+        assert labels[0]["format"] == "$,.0f"
+        assert labels[0]["horizontal"] is None
+        assert labels[0]["vertical"] is None
 
     def test_bar_config_overrides(self):
         vl = compile_fixture("label_bar_config.yaml")
-        text_layer = vl["layer"][1]
 
-        # position: top → outside-top (baseline bottom, dy -6)
-        assert text_layer["mark"]["baseline"] == "bottom"
-        assert text_layer["mark"]["dy"] == -6
-        assert text_layer["mark"]["color"] == "#333333"
-        assert text_layer["mark"]["fontSize"] == 10
-
-        assert text_layer["encoding"]["text"]["format"] == ",.0f"
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert labels[0] == {
+            "markName": "mark_0",
+            "field": "revenue",
+            "type": "quantitative",
+            "format": ",.0f",
+            "horizontal": None,
+            "vertical": "top",
+            "size": 10,
+            "color": "#333333",
+        }
 
     def test_bar_custom_field(self):
         vl = compile_fixture("label_bar_custom_field.yaml")
-        text_layer = vl["layer"][1]
 
-        assert text_layer["encoding"]["text"]["field"] == "order_count"
-        assert text_layer["encoding"]["text"]["type"] == "quantitative"
-        assert text_layer["encoding"]["text"]["format"] == ",.0f"
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert labels[0]["field"] == "order_count"
+        assert labels[0]["type"] == "quantitative"
+        assert labels[0]["format"] == ",.0f"
 
-    def test_grouped_bar_with_color(self):
-        vl = compile_fixture("label_grouped_bar.yaml")
-        assert "layer" in vl
-        text_layer = vl["layer"][1]
+    def test_bar_match_color(self):
+        vl = compile_fixture("label_bar_match_color.yaml")
 
-        # Color field moved to detail for grouping (not color, to avoid overriding label color)
-        assert "color" not in text_layer["encoding"]
-        assert text_layer["encoding"]["detail"]["field"] == "product"
-        assert text_layer["encoding"]["detail"]["type"] == "nominal"
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert labels[0]["color"] == "match"
 
-        # Label still gets default contrast color via mark properties
-        assert text_layer["mark"]["color"] == "#ffffff"
+    def test_line_emits_intent(self):
+        vl = compile_fixture("label_line.yaml")
 
-        # Tooltip NOT on text layer
-        assert "tooltip" not in text_layer["encoding"]
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0]["markName"] == "mark_0"
+        assert labels[0]["field"] == "revenue"
 
-    def test_stacked_bar_label_has_stack(self):
-        vl = compile_fixture("label_grouped_bar.yaml")
-        text_layer = vl["layer"][1]
-        # Text marks don't auto-stack — must match the bar's stack: zero
-        assert text_layer["encoding"]["y"]["stack"] == "zero"
-
-    def test_unstacked_bar_label_no_stack(self):
-        vl = compile_fixture("label_bar_simple.yaml")
-        text_layer = vl["layer"][1]
-        # No color grouping → bar isn't stacked → label shouldn't stack
-        assert "stack" not in text_layer["encoding"]["y"]
-
-    def test_hex_color_bar_label_no_stack(self):
-        yaml = """\
-sheet: "Test"
-data: orders
-cols: country
-rows: revenue
-marks: bar
-color: "#4A90D9"
-label: true
-"""
-        spec = parse_chart(yaml)
-        from shelves.translator.translate import translate_chart
-
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
-        text_layer = vl["layer"][1]
-        # Hex color → value encoding, no stacking
-        assert "stack" not in text_layer["encoding"]["y"]
-
-    def test_filter_hoisted_to_layer_group(self):
-        vl = compile_fixture("label_bar_filtered.yaml")
-        assert "layer" in vl
-
-        # Transforms at top level of the layer group
-        assert "transform" in vl
-        assert vl["transform"][0]["filter"]["oneOf"] == ["US", "UK", "DE"]
-
-        # NOT on individual layers
-        assert "transform" not in vl["layer"][0]
-        assert "transform" not in vl["layer"][1]
-
-    def test_label_false_no_layer(self):
-        yaml = """\
-sheet: "Revenue by Country"
-data: orders
-cols: country
-rows: revenue
-marks: bar
-label: false
-"""
-        spec = parse_chart(yaml)
-        from shelves.translator.translate import translate_chart
-
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
+        assert vl["mark"] == "line"
         assert "layer" not in vl
-        assert vl["mark"] == "bar"
 
-    def test_label_omitted_no_layer(self):
+    def test_label_false_no_intent(self):
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Revenue by Country"
+            data: orders
+            cols: country
+            rows: revenue
+            marks: bar
+            label: false
+        """)
+        )
+        from shelves.translator.translate import translate_chart
+
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+        assert "usermeta" not in vl
+        assert "name" not in vl
+
+    def test_label_omitted_no_intent(self):
         vl = compile_fixture("simple_bar.yaml")
-        assert "layer" not in vl
-        assert vl["mark"] == "bar"
+        assert "usermeta" not in vl
+        assert "name" not in vl
 
-    def test_sort_preserved(self):
-        vl = compile_fixture("label_bar_sorted.yaml")
-        assert "layer" in vl
+    def test_both_axes(self):
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Revenue by Country"
+            data: orders
+            cols: country
+            rows: revenue
+            marks: bar
+            label:
+              vertical: top
+              horizontal: right
+        """)
+        )
+        from shelves.translator.translate import translate_chart
 
-        bar_layer = vl["layer"][0]
-        assert "sort" in bar_layer["encoding"]["x"]
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert labels[0]["vertical"] == "top"
+        assert labels[0]["horizontal"] == "right"
 
-        # Sort preserved on label layer for correct positioning
-        text_layer = vl["layer"][1]
-        assert text_layer["encoding"]["x"]["sort"] == bar_layer["encoding"]["x"]["sort"]
+    # ─── Stacked Tests ───────────────────────────────────────────
 
-    def test_stacked_vconcat_labels(self):
-        vl = compile_fixture("label_stacked_diff_marks.yaml")
+    def test_stacked_vconcat(self):
+        vl = compile_fixture("label_stacked_vconcat.yaml")
+
         assert "vconcat" in vl
         assert len(vl["vconcat"]) == 2
 
-        # First panel (bar) should be wrapped with label layer
-        bar_panel = vl["vconcat"][0]
-        assert "layer" in bar_panel
-        assert len(bar_panel["layer"]) == 2
-        assert bar_panel["layer"][0]["mark"] == "bar"
-        assert bar_panel["layer"][1]["mark"]["type"] == "text"
-        assert bar_panel["layer"][1]["mark"]["baseline"] == "top"
-        assert bar_panel["layer"][1]["mark"]["dy"] == 6
+        assert vl["vconcat"][0]["name"] == "mark_0"
+        assert vl["vconcat"][1]["name"] == "mark_1"
 
-        # Second panel (line) should NOT be wrapped — silently skipped
-        line_panel = vl["vconcat"][1]
-        assert "layer" not in line_panel
-        assert line_panel["mark"] == "line"
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 2
+        assert labels[0] == {
+            "markName": "mark_0",
+            "field": "revenue",
+            "type": "quantitative",
+            "format": "$,.0f",
+            "horizontal": None,
+            "vertical": None,
+            "size": 11,
+            "color": None,
+        }
+        assert labels[1] == {
+            "markName": "mark_1",
+            "field": "order_count",
+            "type": "quantitative",
+            "format": ",.0f",
+            "horizontal": None,
+            "vertical": None,
+            "size": 11,
+            "color": None,
+        }
 
-        # Shared axis hiding still applies: top panel x-axis suppressed
-        # After label wrapping, suppression applies to BOTH layer children
-        for layer_spec in bar_panel["layer"]:
-            assert layer_spec["encoding"]["x"]["axis"] is None
-            assert "title" not in layer_spec["encoding"]["x"]
+        for panel in vl["vconcat"]:
+            assert "layer" not in panel
 
-        # Bottom panel's x-axis is shown
-        assert line_panel["encoding"]["x"]["axis"] is not None
-
-    def test_stacked_per_entry_label(self):
+    def test_stacked_per_entry_cascade(self):
         vl = compile_fixture("label_stacked_per_entry.yaml")
+
         assert "vconcat" in vl
         assert len(vl["vconcat"]) == 2
 
-        # First panel (revenue): inherits top-level label: true → wrapped
-        first_panel = vl["vconcat"][0]
-        assert "layer" in first_panel
+        assert vl["vconcat"][0]["name"] == "mark_0"
+        assert "name" not in vl["vconcat"][1]
 
-        # Second panel (order_count): label: false at entry → NOT wrapped
-        second_panel = vl["vconcat"][1]
-        assert "layer" not in second_panel
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0]["markName"] == "mark_0"
+        assert labels[0]["field"] == "revenue"
 
     def test_stacked_same_mark_degrades_to_concat(self):
         vl = compile_fixture("label_stacked_same_mark.yaml")
-        # With label: true, repeat degrades to vconcat
+
         assert "vconcat" in vl
         assert "repeat" not in vl
         assert len(vl["vconcat"]) == 2
 
-        # Each panel is wrapped with its own label layer
-        for panel in vl["vconcat"]:
-            assert "layer" in panel
-            assert panel["layer"][1]["mark"]["type"] == "text"
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 2
+        assert labels[0]["field"] == "revenue"
+        assert labels[0]["format"] == "$,.0f"
+        assert labels[1]["field"] == "order_count"
+        assert labels[1]["format"] == ",.0f"
 
-        # Shared axis shown on both panels (shared_axis: true)
-        for panel in vl["vconcat"]:
-            bar_enc = panel["layer"][0]["encoding"]
-            assert bar_enc["x"].get("axis") is not None or "title" in bar_enc["x"]
+    # ─── Layer Tests ─────────────────────────────────────────────
 
-    def test_non_bar_mark_skipped(self):
-        vl = compile_fixture("label_line_skipped.yaml")
-        assert "layer" not in vl
-        assert vl["mark"] == "line"
+    def test_layer_entry_labels(self):
+        vl = compile_fixture("label_layers.yaml")
 
-    def test_inside_position_default_white_label(self):
-        vl = compile_fixture("label_bar_simple.yaml")
-        text_layer = vl["layer"][1]
-        assert text_layer["mark"]["color"] == "#ffffff"
-
-    def test_outside_position_default_dark_label(self):
-        vl = compile_fixture("label_bar_config.yaml")
-        # label_bar_config uses position: top (outside)
-        text_layer = vl["layer"][1]
-        assert text_layer["mark"]["color"] == "#333333"
-
-    def test_explicit_color_overrides_default(self):
-        yaml = """\
-sheet: "Test"
-data: orders
-cols: country
-rows: revenue
-marks: bar
-label:
-  color: "#FF0000"
-"""
-        spec = parse_chart(yaml)
-        from shelves.translator.translate import translate_chart
-
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
-        text_layer = vl["layer"][1]
-        assert text_layer["mark"]["color"] == "#FF0000"
-
-
-# ═══ Layer Label Compilation Tests (KAN-278) ═══════════════════════
-
-
-class TestLayerLabelCompilation:
-    def test_layer_bar_line_labels_bar_only(self):
-        vl = compile_fixture("label_layer_bar_line.yaml")
         assert "layer" in vl
-        assert len(vl["layer"]) == 3
-
-        # Primary bar layer
-        bar_layer = vl["layer"][0]
-        assert bar_layer["mark"] == "bar"
-        assert bar_layer["encoding"]["x"]["field"] == "week"
-        assert bar_layer["encoding"]["y"]["field"] == "revenue"
-        assert bar_layer["encoding"]["color"]["field"] == "country"
-        assert "tooltip" in bar_layer["encoding"]
-
-        # Label layer for bar
-        label_layer = vl["layer"][1]
-        assert label_layer["mark"]["type"] == "text"
-        assert label_layer["mark"]["baseline"] == "top"
-        assert label_layer["mark"]["dy"] == 6
-        assert label_layer["mark"]["color"] == "#ffffff"
-        assert label_layer["encoding"]["x"]["field"] == "week"
-        assert label_layer["encoding"]["y"]["field"] == "revenue"
-        assert label_layer["encoding"]["text"]["field"] == "revenue"
-        assert label_layer["encoding"]["text"]["type"] == "quantitative"
-        assert label_layer["encoding"]["text"]["format"] == "$,.0f"
-        assert label_layer["encoding"]["detail"]["field"] == "country"
-        assert label_layer["encoding"]["detail"]["type"] == "nominal"
-        assert "tooltip" not in label_layer["encoding"]
-
-        # Secondary line layer — no label injected
-        line_layer = vl["layer"][2]
-        assert line_layer["mark"]["type"] == "line"
-
-        # Resolve for independent y
-        assert vl["resolve"] == {"scale": {"y": "independent"}}
-
-    def test_layer_entry_label_config(self):
-        yaml = """\
-sheet: "Revenue & Orders"
-data: orders
-cols: week
-rows:
-  - measure: revenue
-    mark: bar
-    layer:
-      - measure: order_count
-        mark: bar
-        label:
-          position: top
-          color: "#333333"
-          size: 10
-          format: ",.0f"
-    axis: independent
-label: true
-"""
-        spec = parse_chart(yaml)
-        from shelves.translator.translate import translate_chart
-
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
-        assert "layer" in vl
-        # [primary_bar, primary_label, secondary_bar, secondary_label]
-        assert len(vl["layer"]) == 4
-
-        # Primary bar label — defaults (inside-top, white)
-        primary_label = vl["layer"][1]
-        assert primary_label["mark"]["type"] == "text"
-        assert primary_label["mark"]["baseline"] == "top"
-        assert primary_label["mark"]["dy"] == 6
-        assert primary_label["mark"]["color"] == "#ffffff"
-
-        # Secondary bar label — config overrides
-        secondary_label = vl["layer"][3]
-        assert secondary_label["mark"]["type"] == "text"
-        assert secondary_label["mark"]["baseline"] == "bottom"
-        assert secondary_label["mark"]["dy"] == -6
-        assert secondary_label["mark"]["color"] == "#333333"
-        assert secondary_label["mark"]["fontSize"] == 10
-        assert secondary_label["encoding"]["text"]["format"] == ",.0f"
-
-    def test_layer_entry_label_false_suppresses(self):
-        vl = compile_fixture("label_layer_suppress.yaml")
-        assert "layer" in vl
-        # [primary_bar, primary_label, secondary_bar] — secondary has NO label
-        assert len(vl["layer"]) == 3
-
-        assert vl["layer"][0]["mark"] == "bar"
-        assert vl["layer"][1]["mark"]["type"] == "text"
-        assert vl["layer"][2]["mark"] == "bar"
-
-    def test_entry_label_false_suppresses_all(self):
-        yaml = """\
-sheet: "Revenue & Orders"
-data: orders
-cols: week
-rows:
-  - measure: revenue
-    mark: bar
-    label: false
-    layer:
-      - measure: order_count
-        mark: bar
-    axis: independent
-label: true
-"""
-        spec = parse_chart(yaml)
-        from shelves.translator.translate import translate_chart
-
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
-        assert "layer" in vl
-        # No labels — entry-level false overrides top-level true
         assert len(vl["layer"]) == 2
-        assert vl["layer"][0]["mark"] == "bar"
-        assert vl["layer"][1]["mark"] == "bar"
 
-    def test_stacked_layers_with_labels(self):
-        vl = compile_fixture("label_stacked_layers_labeled.yaml")
+        assert vl["layer"][0]["name"] == "mark_0"
+        assert vl["layer"][1]["name"] == "mark_1"
+
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 2
+        assert labels[0]["markName"] == "mark_0"
+        assert labels[0]["field"] == "revenue"
+        assert labels[0]["format"] == "$,.0f"
+        assert labels[1]["markName"] == "mark_1"
+        assert labels[1]["field"] == "arpu"
+        assert labels[1]["format"] == "$,.2f"
+
+    def test_stacked_layers_labels(self):
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Revenue+ARPU Panel, Orders Panel"
+            data: orders
+            cols: week
+            rows:
+              - measure: revenue
+                mark: bar
+                layer:
+                  - measure: arpu
+                    mark:
+                      type: line
+                      style: dashed
+                axis: independent
+              - measure: order_count
+                mark: line
+            label: true
+        """)
+        )
+        from shelves.translator.translate import translate_chart
+
+        vl = translate_chart(spec, models_dir=MODELS_DIR)
+
         assert "vconcat" in vl
         assert len(vl["vconcat"]) == 2
 
-        # Panel 0: layered bar+line — bar gets label
-        panel0 = vl["vconcat"][0]
-        assert "layer" in panel0
-        assert len(panel0["layer"]) == 3
-        assert panel0["layer"][0]["mark"] == "bar"
-        assert panel0["layer"][1]["mark"]["type"] == "text"
-        assert panel0["layer"][2]["mark"]["type"] == "line"
+        assert "layer" in vl["vconcat"][0]
+        assert vl["vconcat"][0]["layer"][0]["name"] == "mark_0"
+        assert vl["vconcat"][0]["layer"][1]["name"] == "mark_1"
 
-        # Panel 1: simple bar — wrapped with label
-        panel1 = vl["vconcat"][1]
-        assert "layer" in panel1
-        assert len(panel1["layer"]) == 2
-        assert panel1["layer"][0]["mark"] == "bar"
-        assert panel1["layer"][1]["mark"]["type"] == "text"
+        assert vl["vconcat"][1]["name"] == "mark_2"
 
-    def test_stacked_layers_simple_line_skipped(self):
-        yaml = """\
-sheet: "Revenue & Orders"
-data: orders
-cols: week
-rows:
-  - measure: revenue
-    mark: bar
-    layer:
-      - measure: arpu
-        mark:
-          type: line
-          style: dashed
-        color: "#666666"
-    axis: independent
-  - measure: order_count
-    mark: line
-label: true
-tooltip: [week, revenue, arpu, order_count]
-"""
-        spec = parse_chart(yaml)
-        from shelves.translator.translate import translate_chart
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 3
+        assert labels[0]["field"] == "revenue"
+        assert labels[1]["field"] == "arpu"
+        assert labels[2]["field"] == "order_count"
 
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
-        assert "vconcat" in vl
-
-        # Panel 0: layered — bar gets label
-        panel0 = vl["vconcat"][0]
-        assert "layer" in panel0
-        assert len(panel0["layer"]) == 3
-
-        # Panel 1: simple line — NOT wrapped (no layer key)
-        panel1 = vl["vconcat"][1]
-        assert "layer" not in panel1
-        assert panel1["mark"] == "line"
-
-    def test_filter_hoisting_with_labels(self):
-        yaml = """\
-sheet: "Revenue & ARPU"
-data: orders
-cols: week
-rows:
-  - measure: revenue
-    mark: bar
-    layer:
-      - measure: arpu
-        mark:
-          type: line
-          style: dashed
-        color: "#666666"
-    axis: independent
-label: true
-filters:
-  - field: country
-    operator: in
-    values: ["US", "UK"]
-"""
-        spec = parse_chart(yaml)
-        from shelves.translator.translate import translate_chart
-
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
-        # Transforms at layer-group level
-        assert "transform" in vl
-        # NOT on individual layer children
-        for layer_child in vl["layer"]:
-            assert "transform" not in layer_child
-
-    def test_sort_preserved_on_primary_label(self):
-        yaml = """\
-sheet: "Revenue & ARPU"
-data: orders
-cols: week
-rows:
-  - measure: revenue
-    mark: bar
-    layer:
-      - measure: arpu
-        mark:
-          type: line
-          style: dashed
-        color: "#666666"
-    axis: independent
-label: true
-sort:
-  field: revenue
-  order: descending
-"""
-        spec = parse_chart(yaml)
+    def test_per_layer_label_suppression(self):
+        # `label: false` on a single layer suppresses only that mark's intent;
+        # siblings under top-level `label: true` still emit (was label_layer_suppress).
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: week
+            rows:
+              - measure: revenue
+                mark: bar
+                layer:
+                  - measure: arpu
+                    mark: bar
+                    label: false
+                axis: independent
+            label: true
+        """)
+        )
         from shelves.translator.translate import translate_chart
 
         vl = translate_chart(spec, models_dir=MODELS_DIR)
 
-        primary_bar = vl["layer"][0]
-        assert "sort" in primary_bar["encoding"]["x"]
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert {lbl["markName"] for lbl in labels} == {"mark_0"}
+        assert labels[0]["field"] == "revenue"
+        # The suppressed layer still gets a name, just no intent referencing it.
+        assert vl["layer"][1]["name"] == "mark_1"
 
-        label_layer = vl["layer"][1]
-        assert label_layer["encoding"]["x"]["sort"] == primary_bar["encoding"]["x"]["sort"]
-
-        secondary_line = vl["layer"][2]
-        assert "sort" not in secondary_line["encoding"]["x"]
-
-    def test_color_field_to_detail_on_label(self):
-        vl = compile_fixture("label_layer_bar_line.yaml")
-        label_layer = vl["layer"][1]
-        # Color field NOT on color encoding — moved to detail
-        assert "color" not in label_layer["encoding"]
-        # Color field used as detail for correct per-group positioning
-        assert label_layer["encoding"]["detail"]["field"] == "country"
-        assert label_layer["encoding"]["detail"]["type"] == "nominal"
-        # Contrast color set via mark properties, not data-driven
-        assert label_layer["mark"]["color"] == "#ffffff"
-
-    def test_hex_color_not_inherited(self):
-        yaml = """\
-sheet: "Revenue & ARPU"
-data: orders
-cols: week
-rows:
-  - measure: revenue
-    mark: bar
-    color: "#4A90D9"
-    layer:
-      - measure: arpu
-        mark:
-          type: line
-          style: dashed
-        color: "#666666"
-    axis: independent
-label: true
-"""
-        spec = parse_chart(yaml)
+    def test_labels_survive_filter_transform(self):
+        # A filter transform must not drop label intent (was label_bar_filtered).
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: country
+            rows: revenue
+            marks: bar
+            label: true
+            filters:
+              - field: country
+                operator: neq
+                value: "FR"
+        """)
+        )
         from shelves.translator.translate import translate_chart
 
         vl = translate_chart(spec, models_dir=MODELS_DIR)
-        label_layer = vl["layer"][1]
-        assert "color" not in label_layer["encoding"]
-        assert "detail" not in label_layer["encoding"]
-        # Label still gets contrast color via mark property
-        assert label_layer["mark"]["color"] == "#ffffff"
 
-    def test_inside_contrast_white(self):
-        vl = compile_fixture("label_layer_bar_line.yaml")
-        label_layer = vl["layer"][1]
-        assert label_layer["mark"]["color"] == "#ffffff"
-        assert label_layer["mark"]["baseline"] == "top"
-        assert label_layer["mark"]["dy"] == 6
+        assert "transform" in vl  # filter survived
+        assert vl["name"] == "mark_0"
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0]["markName"] == "mark_0"
+        assert labels[0]["field"] == "revenue"
 
-    def test_outside_contrast_dark(self):
-        yaml = """\
-sheet: "Revenue & ARPU"
-data: orders
-cols: week
-rows:
-  - measure: revenue
-    mark: bar
-    layer:
-      - measure: arpu
-        mark:
-          type: line
-          style: dashed
-        color: "#666666"
-    axis: independent
-label:
-  position: top
-"""
-        spec = parse_chart(yaml)
-        from shelves.translator.translate import translate_chart
 
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
-        label_layer = vl["layer"][1]
-        assert label_layer["mark"]["color"] == "#333333"
-        assert label_layer["mark"]["baseline"] == "bottom"
-        assert label_layer["mark"]["dy"] == -6
+# ─── Point / Tick Mark Label Tests (KAN-285) ───────────────────────
 
-    def test_tooltip_not_on_label(self):
-        vl = compile_fixture("label_layer_bar_line.yaml")
-        primary_bar = vl["layer"][0]
-        assert "tooltip" in primary_bar["encoding"]
 
-        label_layer = vl["layer"][1]
-        assert "tooltip" not in label_layer["encoding"]
+class TestPointMarkLabels:
+    """Regression guards: point-family and tick marks emit label intent."""
 
-        secondary_line = vl["layer"][2]
-        assert "tooltip" not in secondary_line["encoding"]
+    def test_circle_emits_intent(self):
+        vl = compile_fixture("label_scatter.yaml")
 
-    def test_axis_metadata_stripped(self):
-        vl = compile_fixture("label_layer_bar_line.yaml")
-        primary_bar = vl["layer"][0]
-        assert "title" in primary_bar["encoding"]["x"]
-        assert "axis" in primary_bar["encoding"]["x"]
-        assert "title" in primary_bar["encoding"]["y"]
-        assert "axis" in primary_bar["encoding"]["y"]
+        assert vl["mark"] == "circle"
+        assert vl["name"] == "mark_0"
 
-        label_layer = vl["layer"][1]
-        # Shared axis (x): axis popped — doesn't interfere with dimension labels
-        assert "title" not in label_layer["encoding"]["x"]
-        assert "axis" not in label_layer["encoding"]["x"]
-        # Measure axis (y): axis explicitly null — prevents duplicate under independent resolution
-        assert "title" not in label_layer["encoding"]["y"]
-        assert label_layer["encoding"]["y"]["axis"] is None
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0] == {
+            "markName": "mark_0",
+            "field": "order_count",
+            "type": "quantitative",
+            "format": ",.0f",
+            "horizontal": None,
+            "vertical": None,
+            "size": 11,
+            "color": None,
+        }
 
-    def test_all_non_bar_layers_no_labels(self):
-        yaml = """\
-sheet: "Revenue & Cost"
-data: orders
-cols: week
-rows:
-  - measure: revenue
-    mark: line
-    layer:
-      - measure: cost
-        mark: area
-label: true
-"""
-        spec = parse_chart(yaml)
-        from shelves.translator.translate import translate_chart
+    def test_circle_custom_field(self):
+        vl = compile_fixture("label_scatter_field.yaml")
 
-        vl = translate_chart(spec, models_dir=MODELS_DIR)
-        assert "layer" in vl
-        assert len(vl["layer"]) == 2
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0] == {
+            "markName": "mark_0",
+            "field": "country",
+            "type": "nominal",
+            "format": None,
+            "horizontal": None,
+            "vertical": None,
+            "size": 11,
+            "color": None,
+        }
 
-    def test_label_omitted_no_change(self):
-        vl = compile_fixture("dual_axis.yaml")
-        assert "layer" in vl
-        assert len(vl["layer"]) == 2
-        # No label layers — existing behavior preserved
-        for child in vl["layer"]:
-            assert child["mark"] != {"type": "text"} or "text" not in child.get("encoding", {})
+    def test_point_emits_intent(self):
+        vl = compile_fixture("label_point.yaml")
+
+        assert vl["mark"] == "point"
+        assert vl["name"] == "mark_0"
+
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0]["field"] == "order_count"
+        assert labels[0]["markName"] == "mark_0"
+
+    def test_tick_emits_intent(self):
+        vl = compile_fixture("label_tick.yaml")
+
+        assert vl["mark"] == "tick"
+        assert vl["name"] == "mark_0"
+
+        labels = vl["usermeta"]["charter"]["labels"]
+        assert len(labels) == 1
+        assert labels[0] == {
+            "markName": "mark_0",
+            "field": "revenue",
+            "type": "quantitative",
+            "format": "$,.0f",
+            "horizontal": None,
+            "vertical": None,
+            "size": 11,
+            "color": None,
+        }

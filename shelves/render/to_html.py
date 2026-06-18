@@ -12,6 +12,22 @@ from __future__ import annotations
 
 import html
 import json
+from pathlib import Path
+
+# Canonical browser-side label renderer, shared with the studio pipeline.
+# The JS lives in exactly one file (no f-string brace escaping, no copy to keep
+# in sync). It is read fresh on every render so a long-running dev/studio server
+# picks up edits without a restart.
+PATCH_JS_PATH = Path(__file__).parent / "charter_patch.js"
+
+
+def load_charter_patch_js() -> str:
+    """Read the canonical label-patch JS from disk (fresh, no import-time cache)."""
+    return PATCH_JS_PATH.read_text(encoding="utf-8")
+
+
+# Snapshot for tests/back-compat; render paths call load_charter_patch_js().
+CHARTER_PATCH_JS = load_charter_patch_js()
 
 
 def render_html(spec: dict, title: str | None = None) -> str:
@@ -19,8 +35,9 @@ def render_html(spec: dict, title: str | None = None) -> str:
     spec_json = json.dumps(spec, indent=2).replace("</", r"<\/")
     page_title = title or spec.get("title", "Charter -- Chart Preview")
     page_title = html.escape(str(page_title), quote=True)
+    patch_js = load_charter_patch_js()
 
-    return f"""<!DOCTYPE html>
+    head = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -43,11 +60,16 @@ def render_html(spec: dict, title: str | None = None) -> str:
 <body>
   <div id="chart"></div>
   <script>
+{patch_js}
+  </script>
+  <script>
     const spec = {spec_json};
     vegaEmbed('#chart', spec, {{
       renderer: 'canvas',
+      patch: charterPatch,
       actions: {{ export: true, source: true, compiled: false, editor: true }}
     }}).catch(console.error);
   </script>
 </body>
 </html>"""
+    return head

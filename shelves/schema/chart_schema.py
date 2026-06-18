@@ -24,7 +24,10 @@ from pydantic import BaseModel, Field, model_validator
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
-DSL_VERSION = "0.7.0"  # Labels v2 — data labels on bar/column charts (KAN-269)
+# 0.8.0: label grammar changed — LabelConfig.position replaced by
+# horizontal/vertical, and color now accepts "match" (KAN-281). Breaking for
+# specs that used the old `position` key (now silently ignored by Pydantic).
+DSL_VERSION = "0.8.0"  # Labels: label property on charts (KAN-281)
 
 # ─── Primitives ────────────────────────────────────────────────────
 
@@ -211,32 +214,27 @@ class AxisConfig(BaseModel):
     y: AxisChannelConfig | None = None
 
 
-# ─── Label Config ────────────────────────────────────────────────
+# ─── Label Configuration ─────────────────────────────────────────
 
-LabelPosition = Literal[
-    "top",
-    "bottom",
-    "left",
-    "right",
-    "inside-top",
-    "inside-bottom",
-    "inside-left",
-    "inside-right",
-]
+LabelHorizontal = Literal["left", "center", "right"]
+LabelVertical = Literal["top", "center", "bottom"]
 
 
 class LabelConfig(BaseModel):
+    """Configuration for data labels on a mark."""
+
     field: str | None = None
-    position: LabelPosition | None = None
+    horizontal: LabelHorizontal | None = None
+    vertical: LabelVertical | None = None
     color: str | None = None
     size: int | float | None = Field(default=None, gt=0)
     format: str | None = None
 
     @model_validator(mode="after")
-    def _validate_color_hex(self) -> LabelConfig:
-        if self.color is not None and not HEX_COLOR_RE.match(self.color):
+    def _validate_color(self) -> LabelConfig:
+        if self.color is not None and self.color != "match" and not HEX_COLOR_RE.match(self.color):
             raise ValueError(
-                f"Label color must be a hex color string (e.g. '#333333'), got {self.color!r}"
+                f"Label color must be a hex color (e.g. '#333333') or 'match', got {self.color!r}"
             )
         return self
 
@@ -330,8 +328,6 @@ class MeasureEntry(BaseModel):
     # Phase 1a: layers overlaid on this measure
     layer: list[LayerEntry] | None = None
 
-    label: LabelSpec | None = None
-
     # Phase 1a: axis scale resolution for layers
     # "independent" = each measure gets its own axis scale
     # "shared" = all measures share one axis scale (default)
@@ -342,6 +338,8 @@ class MeasureEntry(BaseModel):
     # True = always show the shared axis on this panel
     # False = always hide the shared axis on this panel
     shared_axis: bool | None = None
+
+    label: LabelSpec | None = None
 
 
 # A shelf is either a single field name or a list of measure entries

@@ -1,8 +1,9 @@
-sheet: "Revenue by Country and Product"
+sheet: "Revenue by Country"
 data: orders
 cols: country
 rows: revenue
 marks: bar
-color: product
-label: true
-tooltip: [country, product, revenue]
+color: country
+label:
+  color: match
+tooltip: [country, revenue]

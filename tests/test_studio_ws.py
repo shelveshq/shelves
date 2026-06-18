@@ -284,6 +284,63 @@ class TestWatcherYamlSyntaxError:
         asyncio.run(_test())
 
 
+# ─── Vanished-file race (transient temp/atomic-save files) ───────
+
+
+class TestWatcherVanishedFile:
+    """A file that is created and deleted before the watcher reads it (test
+    temp files, editor atomic-save swap files) must NOT surface a compile
+    error. The read race should be a silent no-op."""
+
+    def test_vanished_chart_file_emits_no_error(self, tmp_path):
+        async def _test():
+            missing = tmp_path / "_tmp_gone.yaml"  # never created on disk
+
+            captured: list[dict] = []
+
+            class _Capture:
+                async def broadcast(self, msg: dict) -> None:
+                    captured.append(msg)
+
+            await _compile_file_and_broadcast(
+                missing,
+                "_tmp_gone.yaml",
+                _Capture(),  # type: ignore[arg-type]
+                models_dir=MODELS_DIR,
+                theme_path=None,
+            )
+
+            assert captured == [], f"Vanished file should emit nothing, got {captured}"
+
+        asyncio.run(_test())
+
+    def test_vanished_dashboard_file_emits_no_error(self, tmp_path):
+        from shelves.studio.lifespan import (
+            compile_dashboard_file_and_broadcast as _compile_dashboard,
+        )
+
+        async def _test():
+            missing = tmp_path / "_tmp_gone_dashboard.yaml"  # never created
+
+            captured: list[dict] = []
+
+            class _Capture:
+                async def broadcast(self, msg: dict) -> None:
+                    captured.append(msg)
+
+            await _compile_dashboard(
+                missing,
+                "_tmp_gone_dashboard.yaml",
+                _Capture(),  # type: ignore[arg-type]
+                models_dir=MODELS_DIR,
+                theme_path=None,
+            )
+
+            assert captured == [], f"Vanished dashboard should emit nothing, got {captured}"
+
+        asyncio.run(_test())
+
+
 # ─── Dashboard hot-reload project root resolution ────────────────
 
 
