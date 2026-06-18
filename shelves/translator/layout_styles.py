@@ -293,7 +293,11 @@ def resolve_inner_styles(
         else:  # "fill" or None
             css["overflow"] = "hidden"
     elif isinstance(component, TextComponent):
+        # Clip overflow and degrade gracefully with an ellipsis instead of
+        # silently swallowing text that exceeds the fixed-size box (KAN-295).
         css["overflow"] = "hidden"
+        css["text-overflow"] = "ellipsis"
+        css["white-space"] = "nowrap"
         # Vertically center the text within its box.  flex-direction:column with
         # justify-content:center centers on the block (vertical) axis while the
         # text stays a full-width item so text-align (horizontal) is preserved.

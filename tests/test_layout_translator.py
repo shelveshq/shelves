@@ -9,6 +9,9 @@ These tests define expected behavior for the implementation to follow.
 """
 
 import re
+import warnings
+
+import pytest
 
 from shelves.schema.layout_schema import (
     parse_dashboard,
@@ -56,6 +59,13 @@ def _outer_wrapper_style(html: str, sheet_name: str) -> str:
     wrapping id="sheet-{name}")."""
     m = re.search(rf'<div style="([^"]+)"><div id="sheet-{re.escape(sheet_name)}"', html)
     assert m is not None, f"outer wrapper for '{sheet_name}' not found"
+    return m.group(1)
+
+
+def _inner_text_style(html: str, content: str) -> str:
+    """Extract the style attribute of the inner div directly wrapping a text node."""
+    m = re.search(rf'style="([^"]+)">{re.escape(content)}</div>', html)
+    assert m is not None, f"inner text div for {content!r} not found"
     return m.group(1)
 
 
@@ -1744,10 +1754,11 @@ root:
             chart_specs={},
         )
         # Text inner div keeps overflow:hidden (the sheet-overflow refactor did not
-        # leak position:relative into the text branch).  Vertical centering (KAN-293)
-        # is additive on top of this.
+        # leak position:relative into the text branch).  Ellipsis clipping (KAN-295)
+        # and vertical centering (KAN-293) are additive on top of this.
         assert (
             "width: 100%; height: 100%; overflow: hidden; "
+            "text-overflow: ellipsis; white-space: nowrap; "
             "display: flex; flex-direction: column; justify-content: center" in html
         )
 
@@ -1864,3 +1875,159 @@ root:
         outer = m.group(1)
         assert "display: flex" in outer
         assert "align-items: center" in outer
+
+
+# ─── Text Overflow (KAN-295) ────────────────────────────────────────
+
+
+class TestTextOverflow:
+    """Text boxes clip with an ellipsis instead of silently swallowing content."""
+
+    _LONG_TEXT = "A very long string that would overflow its fixed-size box"
+
+    def test_text_inner_div_has_ellipsis(self):
+        """Inner text div degrades clipped text with ellipsis + nowrap."""
+        html = _translate(f"""\
+dashboard: "Test"
+canvas: {{ width: 800, height: 600 }}
+root:
+  orientation: vertical
+  contains:
+    - text: "{self._LONG_TEXT}"
+      width: 120
+      height: 40
+""")
+        style = _inner_text_style(html, self._LONG_TEXT)
+        assert "overflow: hidden" in style
+        assert "text-overflow: ellipsis" in style
+        assert "white-space: nowrap" in style
+
+    def test_text_inner_div_keeps_flex_centering(self):
+        """The ellipsis change is additive — KAN-293 vertical centering is kept."""
+        html = _translate(f"""\
+dashboard: "Test"
+canvas: {{ width: 800, height: 600 }}
+root:
+  orientation: vertical
+  contains:
+    - text: "{self._LONG_TEXT}"
+      width: 120
+      height: 40
+""")
+        style = _inner_text_style(html, self._LONG_TEXT)
+        assert "display: flex" in style
+        assert "flex-direction: column" in style
+        assert "justify-content: center" in style
+
+    def test_text_no_explicit_size_gets_ellipsis(self):
+        """Ellipsis default applies regardless of explicit width/height."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Auto sized"
+""")
+        style = _inner_text_style(html, "Auto sized")
+        assert "text-overflow: ellipsis" in style
+        assert "white-space: nowrap" in style
+
+    def test_non_text_leaf_no_ellipsis(self):
+        """Only the text branch changes — sheet inner divs get no text-overflow."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: chart_a
+""")
+        style = _inner_sheet_style(html, "chart_a")
+        assert "text-overflow" not in style
+        assert "white-space" not in style
+
+
+# ─── Gap Warning Consolidation (KAN-295) ────────────────────────────
+
+
+class TestGapWarningConsolidation:
+    """Gap-overflow is warned exactly once, by the solver (single owner)."""
+
+    def test_gap_overflow_warns_once(self):
+        """Gap alone exceeding the box warns once (solver), not twice."""
+        yaml_str = """\
+dashboard: "Test"
+canvas: { width: 200, height: 200 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        gap: 300
+        contains:
+          - text: "A"
+          - text: "B"
+"""
+        with pytest.warns(UserWarning) as record:
+            _translate(yaml_str)
+        gap_warnings = [w for w in record if "exceeds available space" in str(w.message)]
+        assert len(gap_warnings) == 1  # solver only
+        # old renderer message is gone
+        assert not any("does not fit in container" in str(w.message) for w in record)
+
+    def test_gap_fits_no_warning(self):
+        """A fitting gap produces no gap-overflow warning from either layer."""
+        yaml_str = """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        gap: 16
+        contains:
+          - text: "A"
+          - text: "B"
+"""
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            _translate(yaml_str)
+        assert not any("available space" in str(w.message) for w in record)
+        assert not any("does not fit in container" in str(w.message) for w in record)
+
+    def test_vertical_gap_overflow_warns_once_and_renders_spacer(self):
+        """Vertical gap overflow warns once; spacer divs are still emitted."""
+        yaml_str = """\
+dashboard: "Test"
+canvas: { width: 200, height: 200 }
+root:
+  orientation: vertical
+  gap: 300
+  contains:
+    - text: "A"
+    - text: "B"
+"""
+        with pytest.warns(UserWarning) as record:
+            html = _translate(yaml_str)
+        gap_warnings = [w for w in record if "exceeds available space" in str(w.message)]
+        assert len(gap_warnings) == 1
+        # Removing the warning must not remove spacer rendering.
+        assert '<div style="height: 300px;"></div>' in html
+
+    def test_single_child_large_gap_no_warning(self):
+        """A single child means total_gap=0, so no gap warning fires."""
+        yaml_str = """\
+dashboard: "Test"
+canvas: { width: 200, height: 200 }
+root:
+  orientation: vertical
+  gap: 300
+  contains:
+    - text: "Only"
+"""
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            _translate(yaml_str)
+        assert not any("available space" in str(w.message) for w in record)
+        assert not any("does not fit in container" in str(w.message) for w in record)

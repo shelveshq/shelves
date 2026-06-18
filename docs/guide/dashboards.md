@@ -314,6 +314,12 @@ Static text blocks with optional presets for quick styling.
 | `style` | No | — | Reference to a shared style |
 | `html` | No | — | Raw CSS escape hatch |
 
+**Overflow:** text is clipped to its box and rendered on a single line; text that
+is too long for the box is truncated with an ellipsis (`…`). Size the box (via
+`width`/`height` on the component or its container) to fit the content, or shorten
+the text. Multi-line wrapping inside a fixed-size text box is not supported — each
+text component renders on one line.
+
 **Text presets** (values come from your theme):
 
 | Preset | Default size | Weight | Color |
@@ -325,13 +331,18 @@ Static text blocks with optional presets for quick styling.
 | `caption` | 12px | normal | tertiary |
 | `label` | 11px | 500 | secondary |
 
-Multi-line text uses YAML block scalars:
+A text component renders on a single line (see **Overflow** above). YAML block
+scalars and other newlines are collapsed to spaces — they do not produce visible
+line breaks. To stack multiple lines, use a separate `text` component for each
+line inside a vertical container:
 
 ```yaml
-- text: |
-    Revenue metrics for Q4 2024.
-    All figures in USD thousands.
-  preset: caption
+- vertical:
+    contains:
+      - text: "Revenue metrics for Q4 2024."
+        preset: caption
+      - text: "All figures in USD thousands."
+        preset: caption
 ```
 
 ### Navigation — `button`, `link`

@@ -77,24 +77,9 @@ def _render_children(
     child_htmls = [render_node(c, ctx, parent_orientation=orientation) for c in node.children]
 
     if gap and len(child_htmls) > 1:
-        if orientation == "horizontal":
-            children_total = sum(c.outer_width for c in node.children)
-            available = node.content_width
-        else:
-            children_total = sum(c.outer_height for c in node.children)
-            available = node.content_height
-        total_gap = gap * (len(child_htmls) - 1)
-
-        if children_total + total_gap > available:
-            import warnings
-
-            warnings.warn(
-                f"Gap of {gap}px ({total_gap}px total) does not fit in container "
-                f"'{node.name or 'root'}': children use {children_total}px, "
-                f"content area is {available}px",
-                stacklevel=2,
-            )
-
+        # Gap-overflow is warned by the solver (the single owner of layout
+        # invariants); by render time it has already shrunk children to fit, so
+        # a renderer-side check would only duplicate that warning (KAN-295).
         if orientation == "horizontal":
             spacer = f'<div style="display: inline-block; width: {gap}px; height: 1px;"></div>'
         else:
