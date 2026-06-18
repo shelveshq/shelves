@@ -8,6 +8,8 @@ HTML output, and integration with the solver.
 These tests define expected behavior for the implementation to follow.
 """
 
+import re
+
 from shelves.schema.layout_schema import (
     parse_dashboard,
 )
@@ -40,6 +42,21 @@ def _translate(yaml_str, theme=None, chart_specs=None):
     """Parse, solve, and translate a dashboard YAML to HTML."""
     spec = parse_dashboard(yaml_str)
     return translate_dashboard(spec, theme or _default_theme(), chart_specs=chart_specs)
+
+
+def _inner_sheet_style(html: str, sheet_name: str) -> str:
+    """Extract the style attribute of the inner div id="sheet-{name}"."""
+    m = re.search(rf'id="sheet-{re.escape(sheet_name)}" style="([^"]+)"', html)
+    assert m is not None, f"inner sheet div for '{sheet_name}' not found"
+    return m.group(1)
+
+
+def _outer_wrapper_style(html: str, sheet_name: str) -> str:
+    """Extract the outer wrapper div style for a sheet (the div immediately
+    wrapping id="sheet-{name}")."""
+    m = re.search(rf'<div style="([^"]+)"><div id="sheet-{re.escape(sheet_name)}"', html)
+    assert m is not None, f"outer wrapper for '{sheet_name}' not found"
+    return m.group(1)
 
 
 # ─── Style Resolution: Cascade ──────────────────────────────────────
@@ -1590,3 +1607,260 @@ root:
         )
         json_area = html.split("const specs = ")[1].split("Object.entries")[0]
         assert "</script>" not in json_area
+
+
+class TestSheetInnerOverflow:
+    """KAN-292: clipping/scroll lives on the inner content div so the clip
+    boundary is the content box (inside padding), not the padding box."""
+
+    def test_inner_div_overflow_hidden_default(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: s1
+      padding: 24
+""",
+            chart_specs={"s1": {"mark": "bar"}},
+        )
+        inner = _inner_sheet_style(html, "s1")
+        assert "overflow: hidden" in inner
+        assert "position: relative" in inner
+        assert "width: 100%" in inner
+        assert "height: 100%" in inner
+
+    def test_padding_preserved_on_outer_wrapper(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: s1
+      padding: 24
+""",
+            chart_specs={"s1": {"mark": "bar"}},
+        )
+        outer = _outer_wrapper_style(html, "s1")
+        assert "padding: 24px" in outer
+        assert "box-sizing: border-box" in outer
+
+    def test_outer_wrapper_no_overflow_when_no_fit(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: s1
+      padding: 24
+""",
+            chart_specs={"s1": {"mark": "bar"}},
+        )
+        outer = _outer_wrapper_style(html, "s1")
+        assert "overflow" not in outer
+
+    def test_fit_width_scroll_on_inner_div(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: wide
+      fit: width
+      padding: 24
+""",
+            chart_specs={"wide": {"mark": "bar"}},
+        )
+        inner = _inner_sheet_style(html, "wide")
+        assert "overflow-y: auto" in inner
+        assert "overflow: hidden" not in inner
+        outer = _outer_wrapper_style(html, "wide")
+        assert "overflow-y" not in outer
+        assert "padding: 24px" in outer
+
+    def test_fit_height_scroll_on_inner_div(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: tall
+      fit: height
+      padding: 24
+""",
+            chart_specs={"tall": {"mark": "line"}},
+        )
+        inner = _inner_sheet_style(html, "tall")
+        assert "overflow-x: auto" in inner
+        assert "overflow: hidden" not in inner
+        outer = _outer_wrapper_style(html, "tall")
+        assert "overflow-x" not in outer
+
+    def test_fit_fill_clips_on_inner_div(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: full
+      fit: fill
+      padding: 24
+""",
+            chart_specs={"full": {"mark": "area"}},
+        )
+        inner = _inner_sheet_style(html, "full")
+        assert "overflow: hidden" in inner
+        outer = _outer_wrapper_style(html, "full")
+        assert "overflow" not in outer
+
+    def test_non_sheet_inner_styles_unchanged(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Hello"
+""",
+            chart_specs={},
+        )
+        # Text inner div keeps overflow:hidden (the sheet-overflow refactor did not
+        # leak position:relative into the text branch).  Vertical centering (KAN-293)
+        # is additive on top of this.
+        assert (
+            "width: 100%; height: 100%; overflow: hidden; "
+            "display: flex; flex-direction: column; justify-content: center" in html
+        )
+
+
+class TestTextVerticalCentering:
+    """KAN-293: text content is vertically centered within its box so small and
+    large text presets sit on the same vertical center (not top-aligned)."""
+
+    def _text_inner_style(self, html: str, content: str) -> str:
+        m = re.search(rf'<div style="([^"]+)">{re.escape(content)}</div>', html)
+        assert m is not None, f"inner text div for '{content}' not found"
+        return m.group(1)
+
+    def test_text_inner_div_vertically_centers(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Hello"
+""")
+        inner = self._text_inner_style(html, "Hello")
+        assert "display: flex" in inner
+        assert "flex-direction: column" in inner
+        assert "justify-content: center" in inner
+
+    def test_text_inner_div_keeps_overflow_and_size(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Clip me"
+""")
+        inner = self._text_inner_style(html, "Clip me")
+        assert "overflow: hidden" in inner
+        assert "width: 100%" in inner
+        assert "height: 100%" in inner
+
+    def test_sheet_inner_div_not_centered(self):
+        """Sheets must NOT get text flex-centering — only their fit-aware overflow."""
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: s1
+      fit: fill
+""",
+            chart_specs={"s1": {"mark": "bar"}},
+        )
+        inner = _inner_sheet_style(html, "s1")
+        assert "display: flex" not in inner
+        assert "position: relative" in inner
+
+    def test_image_inner_not_centered(self):
+        """Images keep object-fit:contain sizing — no flex centering injected."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: "logo.png"
+      alt: "Logo"
+""")
+        assert "object-fit: contain" in html
+        m = re.search(r'<img src="logo.png"[^>]*style="([^"]+)"', html)
+        assert m is not None
+        assert "justify-content: center" not in m.group(1)
+
+    def test_link_in_horizontal_centers_anchor(self):
+        """A link in a horizontal bar uses inline-flex + align-items:center so the
+        <a> is vertically centered alongside centered text (KAN-293)."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        height: 60
+        contains:
+          - text: "Title"
+          - link: "Nav"
+            href: "/about"
+""")
+        m = re.search(r'<div style="([^"]+)"><a href="/about"', html)
+        assert m is not None, "outer wrapper around link <a> not found"
+        outer = m.group(1)
+        assert "display: inline-flex" in outer
+        assert "align-items: center" in outer
+
+    def test_button_in_vertical_centers_anchor(self):
+        """A button placed in a vertical container flex-centers its <a> so a fixed
+        box height (e.g. a sidebar nav item) centers the label vertically."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "Menu"
+      href: "/x"
+      height: 40
+""")
+        m = re.search(r'<div style="([^"]+)"><a href="/x"', html)
+        assert m is not None, "outer wrapper around button <a> not found"
+        outer = m.group(1)
+        assert "display: flex" in outer
+        assert "align-items: center" in outer

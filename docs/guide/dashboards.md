@@ -261,6 +261,11 @@ Embeds a Chart DSL visualization.
 | `width` | Chart fills container width. Vertical scrolling if content overflows. |
 | `height` | Chart fills container height. Horizontal scrolling if content overflows. |
 
+Padding is always preserved: clipping and scrolling apply to the chart content
+only, never to the sheet's padding. A chart that overflows is clipped (or
+scrolled) at the inner content edge, so the configured padding stays visible on
+all sides regardless of chart size.
+
 **`show_title`:** When `false`, the chart's Vega-Lite title is suppressed. Useful when the dashboard provides its own section headings and the chart title would be redundant.
 
 ### Text

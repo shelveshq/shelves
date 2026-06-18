@@ -149,10 +149,22 @@ def resolve_styles(
     if isinstance(component, RootComponent):
         css["overflow"] = "hidden"
 
-    # Children of horizontal containers are inline-block
+    # Anchor leaves (link/button) render an <a> directly inside the outer box
+    # with no inner companion div, so they cannot use resolve_inner_styles for
+    # centering.  Make the outer box a flex container that vertically centers
+    # the <a> (KAN-293), matching the centered text in the same row.
+    is_anchor_leaf = isinstance(component, (LinkComponent, ButtonComponent))
+
+    # Children of horizontal containers are inline-block (inline-flex for anchors
+    # so they stay in the inline row while centering their <a> vertically).
     if parent_orientation == "horizontal":
-        css["display"] = "inline-block"
+        css["display"] = "inline-flex" if is_anchor_leaf else "inline-block"
         css["vertical-align"] = "top"
+    elif is_anchor_leaf:
+        css["display"] = "flex"
+
+    if is_anchor_leaf:
+        css["align-items"] = "center"
 
     # Step 2: Sizing — solver-computed pixel dimensions
     if resolved_width is not None:
@@ -209,17 +221,12 @@ def resolve_styles(
     fit = component.fit if isinstance(component, SheetComponent) else None
 
     if has_wrapper:
-        # Outer div: always include padding, overflow, box-sizing
+        # Outer div: padding + box-sizing only.  Overflow/clipping is handled
+        # by the INNER content div (resolve_inner_styles) so that the clip
+        # boundary is the content box (inside padding), not the padding box.
         padding_css = _format_spacing(component.padding)
         if padding_css:
             css["padding"] = padding_css
-        # Fit-specific overflow on the outer div
-        if fit == "width":
-            css["overflow-y"] = "auto"
-        elif fit == "height":
-            css["overflow-x"] = "auto"
-        else:
-            css["overflow"] = "hidden"
         css["box-sizing"] = "border-box"
     else:
         # Step 8: Single-div path — include padding (but NOT for fitted sheets)
@@ -255,12 +262,22 @@ def resolve_styles(
 def resolve_inner_styles(
     component: Component | RootComponent,
     ctx: RenderContext,
+    fit: Literal["width", "height", "fill"] | None = None,
 ) -> str:
     """Resolve CSS for the inner content div in a div-in-div structure.
 
     Always: width:100%; height:100%
-    Sheets: + position:relative
-    Text: + overflow:hidden
+    Sheets: + position:relative, and a fit-aware overflow so the clip/scroll
+            boundary is the *content box* (inside the outer wrapper's padding):
+              fit == "width"  -> overflow-y: auto
+              fit == "height" -> overflow-x: auto
+              fit in ("fill", None) -> overflow: hidden
+    Text:   + overflow:hidden, and flex column centering so the text is
+            vertically centered within its box (KAN-293).  Column direction
+            keeps the text a full-width block so the outer div's text-align
+            (horizontal alignment) still applies.
+
+    `fit` is ignored for all non-sheet components.
     """
     css: dict[str, str] = {
         "width": "100%",
@@ -268,8 +285,21 @@ def resolve_inner_styles(
     }
     if isinstance(component, SheetComponent):
         css["position"] = "relative"
+        # Step: fit-aware clip/scroll on the inner content div
+        if fit == "width":
+            css["overflow-y"] = "auto"
+        elif fit == "height":
+            css["overflow-x"] = "auto"
+        else:  # "fill" or None
+            css["overflow"] = "hidden"
     elif isinstance(component, TextComponent):
         css["overflow"] = "hidden"
+        # Vertically center the text within its box.  flex-direction:column with
+        # justify-content:center centers on the block (vertical) axis while the
+        # text stays a full-width item so text-align (horizontal) is preserved.
+        css["display"] = "flex"
+        css["flex-direction"] = "column"
+        css["justify-content"] = "center"
 
     parts = [f"{k}: {v}" for k, v in css.items()]
     return "; ".join(parts)

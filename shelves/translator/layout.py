@@ -239,7 +239,10 @@ def render_node(
     )
     safe_outer = html.escape(outer_css, quote=True)
 
-    inner_css = "" if isinstance(defn, RootComponent) else resolve_inner_styles(defn, ctx)
+    inner_fit = defn.fit if isinstance(defn, SheetComponent) else None
+    inner_css = (
+        "" if isinstance(defn, RootComponent) else resolve_inner_styles(defn, ctx, fit=inner_fit)
+    )
     safe_inner = html.escape(inner_css, quote=True)
 
     renderer = _RENDERERS.get(type(defn))
