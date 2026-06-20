@@ -28,9 +28,6 @@
   var NATURAL_CELL_PX = 200;
   // Floor so a heavily compressed grid never collapses its gaps to nothing.
   var MIN_SPACING = 2;
-  // Pass-1 probe cell size. Any value works; the chrome it reveals is what we
-  // actually use. Kept modest so the probe render is cheap.
-  var PROBE_PX = 100;
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
@@ -165,7 +162,17 @@
     // not display, so layout/scenegraph still compute).
     if (el) el.style.visibility = 'hidden';
 
-    var probe = withCellSizes(vlSpec, kind, PROBE_PX, PROBE_PX, baseSpacing);
+    // Probe at a container-derived cell size (a first approximation that ignores
+    // chrome), NOT a tiny fixed size. The chart title spans the full width and
+    // sits ABOVE the plots, so it is vertical chrome — but the scenegraph's total
+    // width is max(titleWidth, plotRowWidth). With a tiny probe the narrow plot
+    // row lets the title dominate totalW, inflating the horizontal chrome and
+    // leaving a gap (the vconcat right-gap bug). Sizing the probe plots near the
+    // container makes the plot row dominate, so the measured chrome is the real
+    // axis chrome. Chrome is ~size-invariant, so one correction pass converges.
+    var probeW = Math.max(1, Math.floor(box.width / cols));
+    var probeH = Math.max(1, Math.floor(box.height / rows));
+    var probe = withCellSizes(vlSpec, kind, probeW, probeH, baseSpacing);
     return global.vegaEmbed(target, probe, assign({}, embedOpts, { actions: false }))
       .then(function (r1) {
         var b = r1.view.scenegraph().root.bounds;
@@ -173,8 +180,8 @@
         var totalH = b.y2 - b.y1;
         // Plot area the probe occupied (cells + inter-cell gaps); the remainder
         // is chrome (axes, title, headers) — invariant to cell size.
-        var gridPlotW = cols * PROBE_PX + (cols - 1) * baseSpacing;
-        var gridPlotH = rows * PROBE_PX + (rows - 1) * baseSpacing;
+        var gridPlotW = cols * probeW + (cols - 1) * baseSpacing;
+        var gridPlotH = rows * probeH + (rows - 1) * baseSpacing;
         var chromeW = Math.max(0, totalW - gridPlotW);
         var chromeH = Math.max(0, totalH - gridPlotH);
         if (r1.finalize) r1.finalize();
