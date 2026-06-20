@@ -304,6 +304,15 @@ This sizing is measured in the browser at render time — the actual rendered si
 the axes and title is read back and the panels are sized to match — so it stays
 correct regardless of orientation, font sizes, or how long the axis labels are.
 
+**Faceted charts:** a sheet whose chart facets a measure across a dimension
+(`facet.field` + `columns`, or `facet.row` / `facet.column`) renders as a grid of
+small multiples. Like stacked panels, the grid is sized in the browser to fill the
+sheet in **both** directions: the number of rows and columns is determined from the
+chart's data, the real size of the facet headers, axes, and title is measured, and
+every cell is given the same size so the grid fills the sheet without overflowing
+its height. Inter-cell spacing shrinks proportionally when the grid is compressed,
+exactly as it does for stacked panels.
+
 **`show_title`:** When `false`, the chart's Vega-Lite title is suppressed. Useful when the dashboard provides its own section headings and the chart title would be redundant.
 
 ### Text

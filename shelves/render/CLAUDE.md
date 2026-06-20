@@ -41,9 +41,21 @@ mechanics (measure + size)**:
    compute even cell sizes via the pure `computeGridFit`, then re-embed exactly.
 
 `computeGridFit`/`solveAxis` are **pure** (no DOM): concat is a degenerate grid
-(`vconcat`=rows×1, `hconcat`=1×cols), and facet (KAN-294) passes its real
-`rows×cols` — so the same utility is reusable. `bounds:"flush"` (emitted by
-`patterns/stacked.py`) makes the plot-area packing measurable and uniform.
+(`vconcat`=rows×1, `hconcat`=1×cols), and facet/repeat pass their real `rows×cols`
+— the facet grid is counted in JS from the bound `data.values` (`facetGrid`), the
+repeat grid from its array lengths (`repeatGrid`). The same `withCellSizes` then
+sizes either the concat panel list or the facet/repeat inner `spec.spec`. When a
+facet spec carries no bound data the grid can't be counted, so `fit` degrades to
+the width-only `fitFacet` fallback.
+
+Bounds differ by kind. Concat uses `bounds:"flush"` (emitted by
+`patterns/stacked.py`) so its header-less panels pack tightly and uniformly.
+Facet/repeat use `bounds:"full"` instead: each cell has a header drawn *above* it,
+and under `"flush"` the inter-row spacing reserves no room for it, so a row's
+headers overlap the cells of the row above (the collapsed-row-gap bug). `"full"`
+reserves each cell's header/axis in the layout, turning the proportionally-reduced
+spacing into a clean gap. The chrome math is unchanged either way (the header is
+size-invariant and cancels out of `chromeH = total − gridPlot`).
 
 Reused like the patch: `compound_fit.js` is a plain global script, read fresh per
 render, inlined by `wrap_html_page` (which serves both the CLI dashboard HTML and

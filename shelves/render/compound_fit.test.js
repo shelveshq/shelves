@@ -103,13 +103,124 @@ test('compoundKind: detects each compound key and rejects single views', () => {
   assert.strictEqual(fit.compoundKind(null), null);
 });
 
-test('gridShape: concat shapes; null for facet/repeat (KAN-294)', () => {
-  assert.deepStrictEqual(
-    { rows: fit.gridShape({ vconcat: [1, 2, 3] }, 'vconcat').rows, cols: fit.gridShape({ vconcat: [1, 2, 3] }, 'vconcat').cols },
-    { rows: 3, cols: 1 },
-  );
-  const h = fit.gridShape({ hconcat: [1, 2] }, 'hconcat');
-  assert.strictEqual(h.rows, 1);
-  assert.strictEqual(h.cols, 2);
-  assert.strictEqual(fit.gridShape({ facet: {} }, 'facet'), null);
+test('gridShape: concat shapes, plus facet/repeat grids', () => {
+  assert.strictEqual(fit.gridShape({ vconcat: [1, 2, 3] }, 'vconcat').rows, 3);
+  assert.strictEqual(fit.gridShape({ hconcat: [1, 2] }, 'hconcat').cols, 2);
+  // facet with data → grid
+  const f = fit.gridShape(
+    { facet: { field: 'r' }, columns: 2, spec: {},
+      data: { values: [{ r: 'a' }, { r: 'b' }, { r: 'c' }] } }, 'facet');
+  assert.deepStrictEqual({ rows: f.rows, cols: f.cols }, { rows: 2, cols: 2 }); // ceil(3/2)=2
+  // facet without data → null (width-only fallback)
+  assert.strictEqual(fit.gridShape({ facet: { field: 'r' }, spec: {} }, 'facet'), null);
+  // repeat → grid from array length
+  assert.strictEqual(fit.gridShape({ repeat: { row: ['a', 'b'] }, spec: {} }, 'repeat').rows, 2);
+});
+
+// ── KAN-294: facet/repeat grid shape + sizing ────────────────────────────────
+
+test('distinctCount: counts distinct non-null values', () => {
+  const v = [{ r: 'A' }, { r: 'B' }, { r: 'A' }, { r: 'C' }, { r: 'B' }];
+  assert.strictEqual(fit.distinctCount(v, 'r'), 3);
+});
+
+test('distinctCount: null/undefined field and non-arrays are 0', () => {
+  assert.strictEqual(fit.distinctCount(null, 'r'), 0);
+  assert.strictEqual(fit.distinctCount([{ x: 1 }], 'r'), 1); // one distinct value: undefined
+  assert.strictEqual(fit.distinctCount([], 'r'), 0);
+});
+
+test('facetGrid: wrap facet uses columns and distinct(field)', () => {
+  const spec = {
+    facet: { field: 'region', type: 'nominal' },
+    columns: 2,
+    spec: { mark: 'bar', encoding: {} },
+    data: { values: [{ region: 'N' }, { region: 'S' }, { region: 'E' }, { region: 'W' }, { region: 'C' }] },
+  };
+  assert.deepStrictEqual(fit.facetGrid(spec), { rows: 3, cols: 2 }); // ceil(5/2)=3
+});
+
+test('facetGrid: row facet → rows=distinct, cols=1', () => {
+  const spec = {
+    facet: { row: { field: 'cat', type: 'nominal' } },
+    spec: {},
+    data: { values: [{ cat: 'a' }, { cat: 'b' }, { cat: 'c' }, { cat: 'a' }] },
+  };
+  assert.deepStrictEqual(fit.facetGrid(spec), { rows: 3, cols: 1 });
+});
+
+test('facetGrid: column facet → rows=1, cols=distinct', () => {
+  const spec = {
+    facet: { column: { field: 'cat', type: 'nominal' } },
+    spec: {},
+    data: { values: [{ cat: 'a' }, { cat: 'b' }, { cat: 'c' }] },
+  };
+  assert.deepStrictEqual(fit.facetGrid(spec), { rows: 1, cols: 3 });
+});
+
+test('facetGrid: grid facet → rows=distinct(row), cols=distinct(column)', () => {
+  const spec = {
+    facet: { row: { field: 'r' }, column: { field: 'c' } },
+    spec: {},
+    data: { values: [
+      { r: 'x', c: '1' }, { r: 'x', c: '2' }, { r: 'x', c: '3' }, { r: 'y', c: '1' },
+    ] },
+  };
+  assert.deepStrictEqual(fit.facetGrid(spec), { rows: 2, cols: 3 });
+});
+
+test('facetGrid: missing data.values → null (caller falls back to width-only)', () => {
+  const spec = { facet: { field: 'region', type: 'nominal' }, columns: 2, spec: {} };
+  assert.strictEqual(fit.facetGrid(spec), null);
+});
+
+test('repeatGrid: row repeat → rows=len, cols=1', () => {
+  assert.deepStrictEqual(fit.repeatGrid({ repeat: { row: ['a', 'b', 'c'] }, spec: {} }),
+    { rows: 3, cols: 1 });
+});
+
+test('repeatGrid: column repeat → rows=1, cols=len', () => {
+  assert.deepStrictEqual(fit.repeatGrid({ repeat: { column: ['a', 'b'] }, spec: {} }),
+    { rows: 1, cols: 2 });
+});
+
+test('withCellSizes: facet sets spec.spec width/height + object spacing', () => {
+  const src = { facet: { field: 'r' }, columns: 2, spec: { mark: 'bar', encoding: {} } };
+  const out = fit.withCellSizes(src, 'facet', 380, 180, { row: 9, column: 20 });
+  assert.strictEqual(out.spec.width, 380);
+  assert.strictEqual(out.spec.height, 180);
+  assert.deepStrictEqual(out.spacing, { row: 9, column: 20 });
+  // facet keeps bounds:"full" so each cell's header is reserved (flush would let a
+  // row's headers overlap the cells above).
+  assert.strictEqual(out.bounds, 'full');
+  // source not mutated (deep clone)
+  assert.strictEqual(src.spec.width, undefined);
+});
+
+test('withCellSizes: concat still sizes the panel list with flush bounds (regression)', () => {
+  const src = { vconcat: [{ mark: 'bar' }, { mark: 'bar' }] };
+  const out = fit.withCellSizes(src, 'vconcat', 300, 120, 10);
+  assert.strictEqual(out.vconcat[0].width, 300);
+  assert.strictEqual(out.vconcat[1].height, 120);
+  assert.strictEqual(out.spacing, 10);
+  assert.strictEqual(out.bounds, 'flush');
+});
+
+test('baseSpacingFor: concat default 10, facet default 20, config + explicit override', () => {
+  assert.strictEqual(fit.baseSpacingFor({ vconcat: [] }, 'vconcat'), 10);
+  assert.strictEqual(fit.baseSpacingFor({ facet: {}, spec: {} }, 'facet'), 20);
+  assert.strictEqual(
+    fit.baseSpacingFor({ facet: {}, spec: {}, config: { facet: { spacing: 15 } } }, 'facet'), 15);
+  assert.strictEqual(fit.baseSpacingFor({ vconcat: [], spacing: 4 }, 'vconcat'), 4);
+});
+
+test('computeGridFit: 3x2 facet grid fits the box with chrome', () => {
+  const f = fit.computeGridFit({
+    containerW: 780, containerH: 580, rows: 3, cols: 2,
+    chromeW: 40, chromeH: 90, baseSpacing: 20,
+  });
+  const usedW = 2 * f.cellW + f.spacingX + 40;
+  const usedH = 3 * f.cellH + 2 * f.spacingY + 90;
+  assert.ok(usedW <= 780 && usedH <= 580);
+  assert.ok(f.cellW > 0 && f.cellH > 0);
 });

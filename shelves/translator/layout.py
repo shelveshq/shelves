@@ -269,7 +269,7 @@ def wrap_html_page(
         specs_obj = {}
         # sheet id -> {width, height}: compound specs are sized in the browser.
         # The sizer measures real axis/title extents in the DOM and fits the spec
-        # to this solved box — concat fully, facet/repeat width-only for now.
+        # to this solved box — concat (KAN-291) and facet/repeat grids (KAN-294).
         fit_targets: dict[str, dict[str, int]] = {}
         for sheet_name, spec in chart_specs.items():
             modified_spec = dict(spec)
@@ -284,12 +284,12 @@ def wrap_html_page(
             dims = content_dims.get(sheet_name)
 
             if compound and fit and dims:
+                # Every compound shape is sized in the browser now: concat (KAN-291)
+                # and facet/repeat grids (KAN-294). The sizer measures real chrome
+                # and fills the solved box in both axes, so route every compound
+                # sheet regardless of which axis `fit` names.
                 cw, ch = dims
-                is_concat = "vconcat" in modified_spec or "hconcat" in modified_spec
-                # Concat fits in any direction; facet/repeat are width-only (height
-                # is data-dependent — full browser-side facet fit is KAN-294).
-                if is_concat or fit in ("width", "fill"):
-                    fit_targets[sheet_id] = {"width": cw, "height": ch}
+                fit_targets[sheet_id] = {"width": cw, "height": ch}
             elif not compound:
                 uses_container = False
                 if fit in ("width", "fill"):

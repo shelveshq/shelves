@@ -920,6 +920,102 @@ root:
         # config.padding still zeroed out
         assert spec.get("config", {}).get("padding") == 0
 
+    def test_faceted_chart_emitted_unsized_both_axes(self):
+        """The browser owns facet sizing on BOTH axes (KAN-294): Python emits the
+        facet spec with no width/height on the spec or its inner spec, and records
+        the full solved content box for the browser to fill."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: faceted
+      fit: fill
+      padding: 10
+""",
+            chart_specs={
+                "faceted": {
+                    "facet": {"field": "region", "type": "nominal"},
+                    "columns": 2,
+                    "spec": {"mark": "bar", "encoding": {}},
+                }
+            },
+        )
+
+        specs = json.loads(re.search(r"const specs = ({.*?});", html, re.DOTALL).group(1))
+        spec = specs["sheet-faceted"]
+        assert "width" not in spec and "height" not in spec
+        assert "width" not in spec["spec"] and "height" not in spec["spec"]
+        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        assert targets["sheet-faceted"] == {"width": 780, "height": 580}
+
+    def test_faceted_chart_routes_for_fit_height(self):
+        """A faceted chart with fit: height now routes to the browser sizer too
+        (KAN-294 sizes height); previously facet only routed for width/fill."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: faceted
+      fit: height
+      padding: 10
+""",
+            chart_specs={
+                "faceted": {
+                    "facet": {"field": "region", "type": "nominal"},
+                    "columns": 2,
+                    "spec": {"mark": "bar", "encoding": {}},
+                }
+            },
+        )
+
+        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        assert targets["sheet-faceted"] == {"width": 780, "height": 580}
+
+    def test_rowcol_facet_routed(self):
+        """A row/column/grid facet is emitted unsized and routed with its solved
+        box; the grid shape is resolved in the browser from the bound data."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: faceted
+      fit: fill
+      padding: 10
+""",
+            chart_specs={
+                "faceted": {
+                    "facet": {"row": {"field": "category", "type": "nominal"}},
+                    "spec": {"mark": "bar", "encoding": {}},
+                }
+            },
+        )
+
+        specs = json.loads(re.search(r"const specs = ({.*?});", html, re.DOTALL).group(1))
+        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        assert targets["sheet-faceted"] == {"width": 780, "height": 580}
+        assert "height" not in specs["sheet-faceted"]["spec"]
+
     def test_no_fit_chart_keeps_original_dimensions(self):
         """A chart without fit should keep its authored width/height untouched."""
         html = _translate(
@@ -2168,7 +2264,7 @@ class TestCompoundFitWiring:
         assert spec["height"] == "container"
         assert spec["autosize"] == {"type": "fit"}
 
-    def test_facet_routed_to_browser_fit_width_only(self):
+    def test_facet_routed_to_browser_fit(self):
         facet_spec = {
             "facet": {"field": "region", "type": "nominal"},
             "columns": 2,
@@ -2176,11 +2272,11 @@ class TestCompoundFitWiring:
         }
         html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": facet_spec})
         spec = _specs_from_html(html)["sheet-stacked"]
-        # facet is sized in the browser too (width-only for now, KAN-294 for height):
-        # routed with its box, NOT sized in Python.
+        # facet is sized in the browser on both axes (KAN-294): routed with its box,
+        # NOT sized in Python (neither the spec nor its inner spec).
         assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}
-        assert "width" not in spec.get("spec", {})
-        assert "width" not in spec
+        assert "width" not in spec.get("spec", {}) and "height" not in spec.get("spec", {})
+        assert "width" not in spec and "height" not in spec
 
     def test_repeat_routed_to_browser_fit(self):
         repeat_spec = {
@@ -2193,12 +2289,13 @@ class TestCompoundFitWiring:
         assert "width" not in spec.get("spec", {})
         assert "width" not in spec
 
-    def test_facet_height_only_not_routed(self):
-        # facet/repeat are width-only; a height-only fit doesn't size them.
+    def test_facet_routed_for_fit_height(self):
+        # KAN-294: facet is now sized on both axes, so a height-only fit routes it
+        # to the browser sizer too (previously facet was width-only and skipped).
         facet_spec = {
             "facet": {"field": "region", "type": "nominal"},
             "columns": 2,
             "spec": {"mark": "bar", "encoding": {}},
         }
         html = _translate(_concat_sheet_yaml(fit="height"), chart_specs={"stacked": facet_spec})
-        assert self._fit_targets(html) == {}
+        assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}
