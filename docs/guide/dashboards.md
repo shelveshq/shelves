@@ -288,6 +288,22 @@ only, never to the sheet's padding. A chart that overflows is clipped (or
 scrolled) at the inner content edge, so the configured padding stays visible on
 all sides regardless of chart size.
 
+**Stacked multi-measure charts:** a sheet whose chart stacks several measures
+(`rows`/`cols` authored as a list) renders as multiple panels — stacked vertically
+when the measures are on `rows`, horizontally when they're on `cols`. Each panel is
+given the **same** plot size (even rectangles), and the whole stack is sized to fit
+the sheet exactly: the panels fill the sheet, the shared axis, the per-panel value
+axes, and the chart title all get the room they actually need, and nothing is
+clipped. The gap between panels shrinks proportionally as the panels are compressed,
+so a tightly-fit stack keeps its spacing in proportion to the panel size rather than
+leaving an oversized gap (the chart's natural spacing is the upper bound — the gap
+only shrinks, never grows past it). Suppressing the chart title with
+`show_title: false` returns that space to the panels.
+
+This sizing is measured in the browser at render time — the actual rendered size of
+the axes and title is read back and the panels are sized to match — so it stays
+correct regardless of orientation, font sizes, or how long the axis labels are.
+
 **`show_title`:** When `false`, the chart's Vega-Lite title is suppressed. Useful when the dashboard provides its own section headings and the chart title would be redundant.
 
 ### Text

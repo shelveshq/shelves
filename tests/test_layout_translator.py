@@ -879,16 +879,10 @@ root:
         spec = specs["sheet-plain"]
         assert spec.get("config", {}).get("background") == "transparent"
 
-    def test_faceted_chart_fits_cell_width_to_container(self):
-        """A faceted chart with fit: fill should get per-cell pixel width on
-        the inner spec, calculated from the container width and column count.
-
-        Vega-Lite doesn't support width:"container" for compound specs, and
-        top-level width sets the per-cell size, not total.  So cell width
-        must be derived: (container - padding*2 - spacing*(cols-1)) / cols.
-
-        Hot-fix: height is left to Vega (row count is data-dependent).
-        TODO: revisit with a proper facet sizing strategy.
+    def test_faceted_chart_routed_to_browser_fit(self):
+        """A faceted chart with fit: fill is sized in the browser: it is emitted
+        UNSIZED and routed through compoundFit.fit with its solved content box
+        (the browser applies the per-cell width). Height stays data-dependent.
         """
         import json
         import re
@@ -915,19 +909,15 @@ root:
             },
         )
 
-        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
-        specs = json.loads(m.group(1))
+        specs = json.loads(re.search(r"const specs = ({.*?});", html, re.DOTALL).group(1))
         spec = specs["sheet-faceted"]
-        # Width should be on the inner spec (per-cell), not top-level
-        assert "width" not in spec, "top-level width should not be set for faceted specs"
-        inner = spec["spec"]
-        assert isinstance(inner["width"], int)
-        # content_dims=(780,580) [solver subtracts padding=10 from 800x600]
-        # cell = (780 - 20) / 2 = 380  (20 = default facet spacing)
-        assert inner["width"] == 380
-        # No padding transferred to Vega spec — padding is CSS on outer wrapper
-        assert "padding" not in spec
-        # config.padding zeroed out
+        # Python does NOT size the cell — the browser does.
+        assert "width" not in spec
+        assert "width" not in spec["spec"]
+        # Routed with its solved content box (780x580 from 800x600 minus padding 10).
+        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        assert targets["sheet-faceted"] == {"width": 780, "height": 580}
+        # config.padding still zeroed out
         assert spec.get("config", {}).get("padding") == 0
 
     def test_no_fit_chart_keeps_original_dimensions(self):
@@ -1367,8 +1357,9 @@ root:
         assert "box-sizing: border-box" in html
         assert "Child" in html
 
-    def test_faceted_chart_cell_width_uses_content_dims(self):
-        """Faceted chart with fit:fill uses content_dims (already padding-subtracted)."""
+    def test_faceted_chart_fit_target_uses_content_dims(self):
+        """Faceted chart with fit:fill is routed to the browser sizer with its
+        content_dims box (already padding-subtracted by the solver)."""
         import json
         import re
 
@@ -1392,15 +1383,9 @@ root:
                 }
             },
         )
-        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
-        specs = json.loads(m.group(1))
-        spec = specs["sheet-faceted"]
-        assert "padding" not in spec
-        inner = spec["spec"]
-        assert isinstance(inner["width"], int)
+        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
         # content_dims is (780, 580) [800-2*10, 600-2*10]
-        # cell = (780 - 20) / 2 = 380
-        assert inner["width"] == 380
+        assert targets["sheet-faceted"] == {"width": 780, "height": 580}
 
     def test_asymmetric_padding_on_wrapper(self):
         """Asymmetric padding renders as CSS shorthand on the wrapper; no Vega padding."""
@@ -2031,3 +2016,189 @@ root:
             _translate(yaml_str)
         assert not any("available space" in str(w.message) for w in record)
         assert not any("does not fit in container" in str(w.message) for w in record)
+
+
+# ─── Concat (stacked multi-measure) sizing — KAN-291 ──────────────
+
+
+def _concat_sheet_yaml(fit=None):
+    """Dashboard YAML with a single stacked sheet named 'stacked'.
+
+    canvas 800x600, padding 10 -> solver content_dims = (780, 580).
+    """
+    fit_str = f"      fit: {fit}\n" if fit else ""
+    return (
+        'dashboard: "Test"\n'
+        "canvas: { width: 800, height: 600 }\n"
+        "root:\n"
+        "  orientation: vertical\n"
+        "  contains:\n"
+        "    - sheet: charts/stacked.yaml\n"
+        "      name: stacked\n"
+        f"{fit_str}"
+        "      padding: 10\n"
+    )
+
+
+def _vconcat_spec():
+    """Two measures on rows -> vconcat; x-axis shown only on the last panel."""
+    return {
+        "vconcat": [
+            {
+                "mark": "bar",
+                "encoding": {
+                    "x": {"field": "order_date", "type": "temporal", "axis": None},
+                    "y": {"field": "revenue", "type": "quantitative"},
+                },
+            },
+            {
+                "mark": "bar",
+                "encoding": {
+                    "x": {"field": "order_date", "type": "temporal"},
+                    "y": {"field": "profit", "type": "quantitative"},
+                },
+            },
+        ],
+        "spacing": 10,
+        "bounds": "flush",
+    }
+
+
+def _hconcat_spec():
+    """Two measures on cols -> hconcat; y-axis shown only on the first panel."""
+    return {
+        "hconcat": [
+            {
+                "mark": "bar",
+                "encoding": {
+                    "y": {"field": "category", "type": "nominal"},
+                    "x": {"field": "revenue", "type": "quantitative"},
+                },
+            },
+            {
+                "mark": "bar",
+                "encoding": {
+                    "y": {"field": "category", "type": "nominal", "axis": None},
+                    "x": {"field": "profit", "type": "quantitative"},
+                },
+            },
+        ],
+        "spacing": 10,
+        "bounds": "flush",
+    }
+
+
+def _specs_from_html(html):
+    import json
+
+    m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+    assert m is not None, "vegaEmbed specs block not found"
+    return json.loads(m.group(1))
+
+
+class TestCompoundFitWiring:
+    """Compound (stacked multi-measure) specs are sized in the BROWSER (KAN-291).
+
+    Python no longer computes per-panel pixels — it emits the compound spec
+    unsized and hands compoundFit the solved content box, which measures axis/
+    title extents in the DOM and sizes the panels. These tests assert that
+    wiring; the pure sizing math is unit-tested in compound_fit.test.js and the
+    rendered result is verified manually via PNG.
+    """
+
+    def _fit_targets(self, html):
+        import json
+
+        m = re.search(r"const fitTargets = ({.*?});", html, re.DOTALL)
+        return json.loads(m.group(1)) if m else {}
+
+    def test_vconcat_routed_to_browser_fit(self):
+        html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": _vconcat_spec()})
+        spec = _specs_from_html(html)["sheet-stacked"]
+        panels = spec["vconcat"]
+        # Python does NOT size the panels — the browser does.
+        for panel in panels:
+            assert "width" not in panel and "height" not in panel
+        assert "width" not in spec and "height" not in spec
+        # The solved content box (canvas 800x600, padding 10 -> 780x580) is the target.
+        assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}
+        # Flush bounds + emitted spacing are preserved for the browser sizer.
+        assert spec["bounds"] == "flush"
+        assert spec["spacing"] == 10
+        # The browser sizer is inlined and invoked.
+        assert "compoundFit" in html
+        assert "compoundFit.fit(" in html
+
+    def test_hconcat_routed_to_browser_fit(self):
+        # The SAME path handles the swapped orientation (no orientation-specific
+        # Python heuristic) — this is the regression the rewrite fixes.
+        html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": _hconcat_spec()})
+        spec = _specs_from_html(html)["sheet-stacked"]
+        for panel in spec["hconcat"]:
+            assert "width" not in panel and "height" not in panel
+        assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}
+
+    def test_fit_target_used_for_any_fit_mode(self):
+        # width/height/fill all hand the box to the browser sizer.
+        for mode in ("width", "height", "fill"):
+            html = _translate(
+                _concat_sheet_yaml(fit=mode), chart_specs={"stacked": _vconcat_spec()}
+            )
+            assert "sheet-stacked" in self._fit_targets(html)
+
+    def test_concat_without_fit_not_routed(self):
+        # No fit mode -> no target; falls through to a plain vegaEmbed, unsized.
+        html = _translate(_concat_sheet_yaml(fit=None), chart_specs={"stacked": _vconcat_spec()})
+        assert self._fit_targets(html) == {}
+        panels = _specs_from_html(html)["sheet-stacked"]["vconcat"]
+        assert all("width" not in p and "height" not in p for p in panels)
+
+    def test_fit_js_inlined_only_when_a_concat_needs_it(self):
+        # A single-view (non-compound) sheet doesn't pull in the browser sizer.
+        single = {"mark": "bar", "encoding": {"x": {"field": "a"}, "y": {"field": "b"}}}
+        html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": single})
+        assert self._fit_targets(html) == {}
+        assert "compoundFit" not in html
+
+    def test_single_view_uses_container_sizing(self):
+        single = {"mark": "bar", "encoding": {"x": {"field": "a"}, "y": {"field": "b"}}}
+        html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": single})
+        spec = _specs_from_html(html)["sheet-stacked"]
+        assert spec["width"] == "container"
+        assert spec["height"] == "container"
+        assert spec["autosize"] == {"type": "fit"}
+
+    def test_facet_routed_to_browser_fit_width_only(self):
+        facet_spec = {
+            "facet": {"field": "region", "type": "nominal"},
+            "columns": 2,
+            "spec": {"mark": "bar", "encoding": {}},
+        }
+        html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": facet_spec})
+        spec = _specs_from_html(html)["sheet-stacked"]
+        # facet is sized in the browser too (width-only for now, KAN-294 for height):
+        # routed with its box, NOT sized in Python.
+        assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}
+        assert "width" not in spec.get("spec", {})
+        assert "width" not in spec
+
+    def test_repeat_routed_to_browser_fit(self):
+        repeat_spec = {
+            "repeat": {"row": ["a", "b"]},
+            "spec": {"mark": "bar", "encoding": {}},
+        }
+        html = _translate(_concat_sheet_yaml(fit="width"), chart_specs={"stacked": repeat_spec})
+        spec = _specs_from_html(html)["sheet-stacked"]
+        assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}
+        assert "width" not in spec.get("spec", {})
+        assert "width" not in spec
+
+    def test_facet_height_only_not_routed(self):
+        # facet/repeat are width-only; a height-only fit doesn't size them.
+        facet_spec = {
+            "facet": {"field": "region", "type": "nominal"},
+            "columns": 2,
+            "spec": {"mark": "bar", "encoding": {}},
+        }
+        html = _translate(_concat_sheet_yaml(fit="height"), chart_specs={"stacked": facet_spec})
+        assert self._fit_targets(html) == {}

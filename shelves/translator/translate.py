@@ -91,7 +91,7 @@ def translate_chart(
     top_level["$schema"] = VEGA_LITE_SCHEMA
 
     if label_intents:
-        top_level["usermeta"] = {"charter": {"labels": label_intents}}
+        top_level["usermeta"] = {"shelves": {"labels": label_intents}}
 
     if spec.description:
         top_level["title"] = {"text": spec.sheet, "subtitle": spec.description}

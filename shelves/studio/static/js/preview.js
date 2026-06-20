@@ -145,7 +145,7 @@ async function renderChart(result) {
     const { view } = await window.vegaEmbed(buf, containerSpec, {
       actions: false,
       renderer: 'canvas',
-      patch: window.charterPatch,
+      patch: window.labelPatch,
     });
     if (state.vegaView) {
       try { state.vegaView.finalize(); } catch (_) {}

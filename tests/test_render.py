@@ -63,8 +63,8 @@ class TestRenderHTML:
     def test_patch_callback_in_output(self):
         spec = {"mark": "bar", "encoding": {}}
         html = render_html(spec)
-        assert "function charterPatch(vgSpec)" in html
-        assert "patch: charterPatch" in html
+        assert "function labelPatch(vgSpec)" in html
+        assert "patch: labelPatch" in html
 
     def test_patch_function_returns_spec(self):
         spec = {"mark": "bar", "encoding": {}}
@@ -79,19 +79,19 @@ class TestRenderHTML:
     def test_patch_labels_bars_only(self):
         # Bars and ticks both compile to rect; the patch must label only bars,
         # distinguished by ariaRoleDescription.
-        from shelves.render.to_html import CHARTER_PATCH_JS
+        from shelves.render.to_html import LABEL_PATCH_JS
 
-        assert "ariaRoleDescription" in CHARTER_PATCH_JS
-        assert "!== 'bar'" in CHARTER_PATCH_JS
+        assert "ariaRoleDescription" in LABEL_PATCH_JS
+        assert "!== 'bar'" in LABEL_PATCH_JS
 
     def test_patch_unclips_faceted_bar_groups(self):
         # Stacked/rounded bars are wrapped in a facet group clipped to the bar
         # bounding box; the patch must drop that clip so tip labels aren't
         # clipped away.
-        from shelves.render.to_html import CHARTER_PATCH_JS
+        from shelves.render.to_html import LABEL_PATCH_JS
 
-        assert "from.facet" in CHARTER_PATCH_JS
-        assert "clip = { value: false }" in CHARTER_PATCH_JS
+        assert "from.facet" in LABEL_PATCH_JS
+        assert "clip = { value: false }" in LABEL_PATCH_JS
 
     def test_patch_creates_text_marks(self):
         html = render_html({"mark": "bar"})
@@ -112,79 +112,79 @@ class TestRenderHTML:
         assert "!== 'rect'" in html
 
     def test_inlines_canonical_patch_source(self):
-        # The standalone page must inline the canonical charter_patch.js
+        # The standalone page must inline the canonical label_patch.js
         # verbatim — never a stale copy. This guards against drift with the
         # studio pipeline, which serves the same file.
-        from shelves.render.to_html import CHARTER_PATCH_JS, PATCH_JS_PATH
+        from shelves.render.to_html import LABEL_PATCH_JS, LABEL_PATCH_JS_PATH
 
-        source = PATCH_JS_PATH.read_text(encoding="utf-8")
-        assert source == CHARTER_PATCH_JS
-        assert CHARTER_PATCH_JS in render_html({"mark": "bar"})
+        source = LABEL_PATCH_JS_PATH.read_text(encoding="utf-8")
+        assert source == LABEL_PATCH_JS
+        assert LABEL_PATCH_JS in render_html({"mark": "bar"})
 
     def test_patch_uses_label_transform(self):
-        from shelves.render.to_html import CHARTER_PATCH_JS
+        from shelves.render.to_html import LABEL_PATCH_JS
 
-        assert "type: 'label'" in CHARTER_PATCH_JS
-        assert "size: { signal: labelSizeSignal(path) }" in CHARTER_PATCH_JS
-        assert "as: ['x', 'y', 'opacity', 'align', 'baseline']" in CHARTER_PATCH_JS
+        assert "type: 'label'" in LABEL_PATCH_JS
+        assert "size: { signal: labelSizeSignal(path) }" in LABEL_PATCH_JS
+        assert "as: ['x', 'y', 'opacity', 'align', 'baseline']" in LABEL_PATCH_JS
 
     def test_patch_size_resolves_from_enclosing_group(self):
         # Concat/faceted layouts have no top-level width/height signal; the label
         # transform size must come from the enclosing child group, falling back
         # to the global signals for a top-level unit spec. (KAN-283 follow-up.)
-        from shelves.render.to_html import CHARTER_PATCH_JS
+        from shelves.render.to_html import LABEL_PATCH_JS
 
-        assert "function labelSizeSignal(path)" in CHARTER_PATCH_JS
-        assert "from.facet" in CHARTER_PATCH_JS
-        assert "return '[width, height]';" in CHARTER_PATCH_JS
+        assert "function labelSizeSignal(path)" in LABEL_PATCH_JS
+        assert "from.facet" in LABEL_PATCH_JS
+        assert "return '[width, height]';" in LABEL_PATCH_JS
 
     def test_patch_stacked_segments_default_center(self):
         # A real multi-segment stack (fill bound to a field other than the band
         # field) defaults to inside-center placement so inner segments aren't
         # auto-hidden by the outside anchor. (KAN-283 follow-up.)
-        from shelves.render.to_html import CHARTER_PATCH_JS
+        from shelves.render.to_html import LABEL_PATCH_JS
 
-        assert "isSegmented" in CHARTER_PATCH_JS
-        assert "enc.fill.field !== bandField" in CHARTER_PATCH_JS
-        assert "isSegmented ? 'center' : outsideDefault" in CHARTER_PATCH_JS
+        assert "isSegmented" in LABEL_PATCH_JS
+        assert "enc.fill.field !== bandField" in LABEL_PATCH_JS
+        assert "isSegmented ? 'center' : outsideDefault" in LABEL_PATCH_JS
 
     def test_patch_maps_side_to_anchors(self):
-        from shelves.render.to_html import CHARTER_PATCH_JS
+        from shelves.render.to_html import LABEL_PATCH_JS
 
-        assert "function anchorCandidates(side)" in CHARTER_PATCH_JS
-        assert "['top', 'bottom']" in CHARTER_PATCH_JS
-        assert "['bottom', 'top']" in CHARTER_PATCH_JS
-        assert "['left', 'right']" in CHARTER_PATCH_JS
-        assert "['right', 'left']" in CHARTER_PATCH_JS
-        assert "['middle']" in CHARTER_PATCH_JS
+        assert "function anchorCandidates(side)" in LABEL_PATCH_JS
+        assert "['top', 'bottom']" in LABEL_PATCH_JS
+        assert "['bottom', 'top']" in LABEL_PATCH_JS
+        assert "['left', 'right']" in LABEL_PATCH_JS
+        assert "['right', 'left']" in LABEL_PATCH_JS
+        assert "['middle']" in LABEL_PATCH_JS
 
     def test_patch_sources_labels_from_mark(self):
-        from shelves.render.to_html import CHARTER_PATCH_JS
+        from shelves.render.to_html import LABEL_PATCH_JS
 
-        assert "from: { data: mark.name }" in CHARTER_PATCH_JS
+        assert "from: { data: mark.name }" in LABEL_PATCH_JS
         # outside labels read the bar scene item's backing tuple at datum.datum
-        assert "'datum.datum'" in CHARTER_PATCH_JS
+        assert "'datum.datum'" in LABEL_PATCH_JS
 
     def test_patch_center_placed_deterministically(self):
         # Inside/center labels (stacked segments) are NOT routed through the
         # label transform — its ['middle'] anchor drops most stacked labels.
         # They are placed by hand (band center + measure midpoint), sourced from
         # the data, while outside labels still use the transform.
-        from shelves.render.to_html import CHARTER_PATCH_JS
+        from shelves.render.to_html import LABEL_PATCH_JS
 
-        assert "function bandCenter(enc, dim)" in CHARTER_PATCH_JS
-        assert "function midSignal(enc, axis)" in CHARTER_PATCH_JS
-        assert "if (isCenter) {" in CHARTER_PATCH_JS
-        assert "from: clone(mark.from)" in CHARTER_PATCH_JS
+        assert "function bandCenter(enc, dim)" in LABEL_PATCH_JS
+        assert "function midSignal(enc, axis)" in LABEL_PATCH_JS
+        assert "if (isCenter) {" in LABEL_PATCH_JS
+        assert "from: clone(mark.from)" in LABEL_PATCH_JS
         # outside placement still avoids the base mark via the transform
-        assert "avoidBaseMark: true" in CHARTER_PATCH_JS
+        assert "avoidBaseMark: true" in LABEL_PATCH_JS
 
     def test_patch_keeps_headroom(self):
-        from shelves.render.to_html import CHARTER_PATCH_JS
+        from shelves.render.to_html import LABEL_PATCH_JS
 
-        assert "applyHeadroom" in CHARTER_PATCH_JS
+        assert "applyHeadroom" in LABEL_PATCH_JS
         # headroom is gated to outside placement (the non-center branch)
-        assert "isCenter" in CHARTER_PATCH_JS
+        assert "isCenter" in LABEL_PATCH_JS
 
 
 # ─── Theme Merge ─────────────────────────────────────────────────

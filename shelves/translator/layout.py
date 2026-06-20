@@ -245,46 +245,6 @@ def _is_compound_spec(spec: dict) -> bool:
     return any(k in spec for k in ("facet", "hconcat", "vconcat", "concat", "repeat"))
 
 
-# Vega-Lite's default gap between facet cells.
-_VL_FACET_SPACING_DEFAULT = 20
-
-
-def _fit_compound_width(spec: dict, container_width: int, padding: int | dict[str, int]) -> None:
-    """Hot-fix: calculate per-cell width for faceted specs so the chart
-    fits horizontally in its container.
-
-    Vega-Lite compound specs don't support width:"container".  For faceted
-    specs we know `columns` at compile time, so we can derive the per-cell
-    width.  Height is left to Vega's default because the number of rows
-    depends on the data (unknown at layout time).
-
-    TODO: revisit with a proper facet sizing strategy.
-    """
-    columns = spec.get("columns", 1)
-    spacing = _VL_FACET_SPACING_DEFAULT
-    # Check for user-specified spacing in config
-    cfg = spec.get("config", {})
-    facet_cfg = cfg.get("facet", {})
-    if isinstance(facet_cfg.get("spacing"), (int, float)):
-        spacing = facet_cfg["spacing"]
-
-    if isinstance(padding, dict):
-        h_pad = padding.get("left", 0) + padding.get("right", 0)
-    else:
-        h_pad = int(padding) * 2
-    available = container_width - h_pad
-    cell_width = max(1, (available - spacing * (columns - 1)) // columns)
-
-    # Set width on the inner spec (cell-level), not top-level
-    if "spec" in spec:
-        inner = dict(spec["spec"])
-        inner["width"] = cell_width
-        spec["spec"] = inner
-    else:
-        # Non-facet compound (concat/repeat) — best-effort top-level
-        spec["width"] = cell_width
-
-
 def wrap_html_page(
     dashboard_name: str,
     body_html: str,
@@ -302,25 +262,35 @@ def wrap_html_page(
     body_font = theme.layout.font.family.body
 
     # Build vegaEmbed script
+    fit_js = ""
     script_lines = []
     if chart_specs:
         # Serialize specs, applying fit modes and show_title
         specs_obj = {}
+        # sheet id -> {width, height}: compound specs are sized in the browser.
+        # The sizer measures real axis/title extents in the DOM and fits the spec
+        # to this solved box — concat fully, facet/repeat width-only for now.
+        fit_targets: dict[str, dict[str, int]] = {}
         for sheet_name, spec in chart_specs.items():
             modified_spec = dict(spec)
             fit = fit_modes.get(sheet_name)
+            sheet_id = f"sheet-{sheet_name}"
+
+            # show_title: false → null the title before any sizing.
+            if show_titles.get(sheet_name) is False:
+                modified_spec["title"] = None
 
             compound = _is_compound_spec(modified_spec)
             dims = content_dims.get(sheet_name)
 
             if compound and fit and dims:
-                # Hot-fix: compound specs don't support width:"container".
-                # content_dims already has padding subtracted by the solver,
-                # so pass padding=0.
-                cw, _ch = dims
-                if fit in ("width", "fill"):
-                    _fit_compound_width(modified_spec, cw, 0)
-            else:
+                cw, ch = dims
+                is_concat = "vconcat" in modified_spec or "hconcat" in modified_spec
+                # Concat fits in any direction; facet/repeat are width-only (height
+                # is data-dependent — full browser-side facet fit is KAN-294).
+                if is_concat or fit in ("width", "fill"):
+                    fit_targets[sheet_id] = {"width": cw, "height": ch}
+            elif not compound:
                 uses_container = False
                 if fit in ("width", "fill"):
                     modified_spec["width"] = "container"
@@ -339,20 +309,38 @@ def wrap_html_page(
             cfg["padding"] = 0
             cfg["background"] = "transparent"
 
-            # show_title: false → null out the title
-            if show_titles.get(sheet_name) is False:
-                modified_spec["title"] = None
-            specs_obj[f"sheet-{sheet_name}"] = modified_spec
+            specs_obj[sheet_id] = modified_spec
 
         specs_json = json.dumps(specs_obj, indent=2).replace("</", r"<\/")
         script_lines.append(f"    const specs = {specs_json};")
-        script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
-        script_lines.append(
-            "      vegaEmbed(`#${id}`, spec, { actions: false }).catch(console.error);"
-        )
-        script_lines.append("    });")
+
+        if fit_targets:
+            # Compound concat sheets need the browser sizer: inline it and route
+            # those ids through compoundFit.fit; everything else stays a plain embed.
+            from shelves.render.to_html import load_compound_fit_js
+
+            fit_js = load_compound_fit_js()
+            fit_json = json.dumps(fit_targets).replace("</", r"<\/")
+            script_lines.append(f"    const fitTargets = {fit_json};")
+            script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
+            script_lines.append("      const box = fitTargets[id];")
+            script_lines.append("      if (box && window.compoundFit) {")
+            script_lines.append("        compoundFit.fit(`#${id}`, spec, box, { actions: false });")
+            script_lines.append("      } else {")
+            script_lines.append(
+                "        vegaEmbed(`#${id}`, spec, { actions: false }).catch(console.error);"
+            )
+            script_lines.append("      }")
+            script_lines.append("    });")
+        else:
+            script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
+            script_lines.append(
+                "      vegaEmbed(`#${id}`, spec, { actions: false }).catch(console.error);"
+            )
+            script_lines.append("    });")
 
     script_block = "\n".join(script_lines)
+    fit_block = f"  <script>\n{fit_js}\n  </script>\n" if fit_js else ""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -370,7 +358,7 @@ def wrap_html_page(
 </head>
 <body>
   {body_html}
-  <script>
+{fit_block}  <script>
 {script_block}
   </script>
 </body>

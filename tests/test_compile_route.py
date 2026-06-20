@@ -116,16 +116,16 @@ class TestCharterPatchAsset:
     """The studio must serve the same label-patch JS the CLI renderer inlines."""
 
     def test_serves_canonical_patch_js(self, tmp_path: Path):
-        from shelves.render.to_html import CHARTER_PATCH_JS
+        from shelves.render.to_html import LABEL_PATCH_JS
 
         client = _make_client(tmp_path)
-        resp = client.get("/charter-patch.js")
+        resp = client.get("/label-patch.js")
 
         assert resp.status_code == 200
         assert "javascript" in resp.headers["content-type"]
         # Byte-identical to the source the standalone renderer inlines.
-        assert resp.text == CHARTER_PATCH_JS
-        assert "window.charterPatch" in resp.text
+        assert resp.text == LABEL_PATCH_JS
+        assert "window.labelPatch" in resp.text
 
     def test_index_loads_patch_and_preview_uses_it(self):
         from pathlib import Path as _Path
@@ -134,8 +134,8 @@ class TestCharterPatchAsset:
         index_html = (static / "index.html").read_text()
         preview_js = (static / "js" / "preview.js").read_text()
 
-        assert "/charter-patch.js" in index_html
-        assert "patch: window.charterPatch" in preview_js
+        assert "/label-patch.js" in index_html
+        assert "patch: window.labelPatch" in preview_js
 
 
 class TestFriendlyErrors:

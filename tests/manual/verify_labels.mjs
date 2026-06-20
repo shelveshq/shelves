@@ -10,7 +10,7 @@
 //        npx -p vega-lite@6 -p vega vl2vg /tmp/vl.json > /tmp/vg.json
 //   2. node verify_labels.mjs /tmp/vg.json
 //
-// It injects sample data, runs charterPatch, renders headless, then prints every
+// It injects sample data, runs labelPatch, renders headless, then prints every
 // label's resolved text/x/y/opacity and checks two invariants:
 //   (1) no two VISIBLE labels overlap, (2) the harness reports any auto-hidden
 //   labels (opacity 0) so you can confirm they are the expected dense/small ones.
@@ -22,7 +22,7 @@ const [, , vgPath] = process.argv;
 
 globalThis.window = globalThis;
 new Function(
-  fs.readFileSync(new URL('../../shelves/render/charter_patch.js', import.meta.url), 'utf8')
+  fs.readFileSync(new URL('../../shelves/render/label_patch.js', import.meta.url), 'utf8')
 )();
 
 const SAMPLE = [
@@ -49,7 +49,7 @@ function overlaps(a, b) {
 }
 
 const raw = JSON.parse(fs.readFileSync(vgPath, 'utf8'));
-const patched = window.charterPatch(withData(raw));
+const patched = window.labelPatch(withData(raw));
 const view = new vega.View(vega.parse(patched), { renderer: 'none' });
 await view.runAsync();
 

@@ -18,16 +18,25 @@ from pathlib import Path
 # The JS lives in exactly one file (no f-string brace escaping, no copy to keep
 # in sync). It is read fresh on every render so a long-running dev/studio server
 # picks up edits without a restart.
-PATCH_JS_PATH = Path(__file__).parent / "charter_patch.js"
+LABEL_PATCH_JS_PATH = Path(__file__).parent / "label_patch.js"
+
+# Canonical browser-side compound-spec sizer (window.compoundFit), shared with the
+# dashboard render path the same way label_patch.js is. Read fresh per render.
+COMPOUND_FIT_JS_PATH = Path(__file__).parent / "compound_fit.js"
 
 
-def load_charter_patch_js() -> str:
+def load_label_patch_js() -> str:
     """Read the canonical label-patch JS from disk (fresh, no import-time cache)."""
-    return PATCH_JS_PATH.read_text(encoding="utf-8")
+    return LABEL_PATCH_JS_PATH.read_text(encoding="utf-8")
 
 
-# Snapshot for tests/back-compat; render paths call load_charter_patch_js().
-CHARTER_PATCH_JS = load_charter_patch_js()
+def load_compound_fit_js() -> str:
+    """Read the canonical compound-fit JS from disk (fresh, no import-time cache)."""
+    return COMPOUND_FIT_JS_PATH.read_text(encoding="utf-8")
+
+
+# Snapshot for tests/back-compat; render paths call load_label_patch_js().
+LABEL_PATCH_JS = load_label_patch_js()
 
 
 def render_html(spec: dict, title: str | None = None) -> str:
@@ -35,7 +44,7 @@ def render_html(spec: dict, title: str | None = None) -> str:
     spec_json = json.dumps(spec, indent=2).replace("</", r"<\/")
     page_title = title or spec.get("title", "Charter -- Chart Preview")
     page_title = html.escape(str(page_title), quote=True)
-    patch_js = load_charter_patch_js()
+    patch_js = load_label_patch_js()
 
     head = f"""<!DOCTYPE html>
 <html lang="en">
@@ -66,7 +75,7 @@ def render_html(spec: dict, title: str | None = None) -> str:
     const spec = {spec_json};
     vegaEmbed('#chart', spec, {{
       renderer: 'canvas',
-      patch: charterPatch,
+      patch: labelPatch,
       actions: {{ export: true, source: true, compiled: false, editor: true }}
     }}).catch(console.error);
   </script>

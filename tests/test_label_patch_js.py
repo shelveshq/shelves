@@ -1,7 +1,7 @@
 """
-charter_patch.js behavior tests.
+label_patch.js behavior tests.
 
-The compile-then-patch label renderer lives in the browser (charter_patch.js).
+The compile-then-patch label renderer lives in the browser (label_patch.js).
 Python tests can only assert the *intent* emitted into usermeta; the actual
 value/placement logic is JS. These tests run the patch in node against a minimal
 hand-built compiled-Vega spec and assert the inserted text mark — exercising the
@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-RUNNER = Path(__file__).parent / "support" / "run_charter_patch.mjs"
+RUNNER = Path(__file__).parent / "support" / "run_label_patch.mjs"
 
 
 def run_patch(spec: dict[str, Any]) -> dict[str, Any]:
@@ -38,7 +38,7 @@ def run_patch(spec: dict[str, Any]) -> dict[str, Any]:
         )
     finally:
         Path(spec_path).unlink(missing_ok=True)
-    assert proc.returncode == 0, f"charterPatch failed: {proc.stderr}"
+    assert proc.returncode == 0, f"labelPatch failed: {proc.stderr}"
     return json.loads(proc.stdout)
 
 
@@ -75,7 +75,7 @@ def _bar_spec(*, intent: dict[str, Any], fill: dict[str, Any] | None = None) -> 
             }
         ],
         "data": [{"name": "data_0"}],
-        "usermeta": {"charter": {"labels": [intent]}},
+        "usermeta": {"shelves": {"labels": [intent]}},
     }
 
 
