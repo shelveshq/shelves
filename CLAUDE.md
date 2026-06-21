@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-Charter is a declarative visual analytics platform that translates a Tableau-inspired YAML DSL into Vega-Lite JSON specifications. The pipeline: YAML → Pydantic validation → Vega-Lite translation → Theme merge → Data binding → HTML rendering.
+Shelves is a declarative visual analytics platform that translates a Tableau-inspired YAML DSL into Vega-Lite JSON specifications. The pipeline: YAML → Pydantic validation → Vega-Lite translation → Theme merge → Data binding → HTML rendering.
 
 ## Git Workflow
 
@@ -66,7 +66,7 @@ Branch names follow: `KAN-{ticket}/description-in-kebab-case` (e.g. `KAN-100/sem
 
 ## Planning Workflow
 
-- When using charter-planner, check for existing plan files FIRST and ask whether to update vs. recreate before reading context repeatedly
+- When using shelves-planner, check for existing plan files FIRST and ask whether to update vs. recreate before reading context repeatedly
 - For Jira tickets, use the Atlassian MCP with cloud ID already configured; if MCP unavailable, ask the user to paste ticket details upfront
 
 ## Testing & Type Checking

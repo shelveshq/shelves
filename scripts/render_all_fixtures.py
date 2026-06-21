@@ -16,11 +16,11 @@ import html
 import json
 from pathlib import Path
 
-from shelves.schema.chart_schema import parse_chart
-from shelves.translator.translate import translate_chart
-from shelves.theme.merge import merge_theme, load_theme
 from shelves.data.bind import bind_data
 from shelves.render.to_html import render_html
+from shelves.schema.chart_schema import parse_chart
+from shelves.theme.merge import load_theme, merge_theme
+from shelves.translator.translate import translate_chart
 
 FIXTURES_DIR = Path("tests/fixtures/yaml")
 DATA_PATH = Path("tests/fixtures/data/orders.json")
@@ -79,11 +79,15 @@ def build_index(results: list[tuple[str, str]]) -> str:
             )
         cards = "\n      ".join(card_items)
 
+    subtitle = (
+        f"{len(results)} fixture{'s' if len(results) != 1 else ''} rendered with default theme"
+    )
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Charter Theme QA — Fixture Gallery</title>
+  <title>Shelves Theme QA — Fixture Gallery</title>
   <style>
     body {{
       margin: 0; padding: 32px;
@@ -123,8 +127,8 @@ def build_index(results: list[tuple[str, str]]) -> str:
   </style>
 </head>
 <body>
-  <h1>Charter Theme QA</h1>
-  <p class="subtitle">{len(results)} fixture{"s" if len(results) != 1 else ""} rendered with default theme</p>
+  <h1>Shelves Theme QA</h1>
+  <p class="subtitle">{subtitle}</p>
   <div class="grid">
       {cards}
   </div>

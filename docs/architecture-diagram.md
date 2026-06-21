@@ -1,4 +1,4 @@
-# Charter Architecture — Complete System Diagram
+# Shelves Architecture — Complete System Diagram
 
 ## 1. End-to-End Pipeline
 

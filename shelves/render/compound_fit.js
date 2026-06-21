@@ -112,7 +112,7 @@
     return null;
   }
 
-  // Top-level bound data rows, or null. Charter binds data on the TOP-LEVEL facet
+  // Top-level bound data rows, or null. Shelves binds data on the TOP-LEVEL facet
   // spec (bind.py), so values live at spec.data.values.
   function dataValues(spec) {
     return (spec && spec.data && Array.isArray(spec.data.values)) ? spec.data.values : null;

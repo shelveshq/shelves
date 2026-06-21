@@ -112,7 +112,7 @@ class TestCompileRoute:
         }
 
 
-class TestCharterPatchAsset:
+class TestLabelPatchAsset:
     """The studio must serve the same label-patch JS the CLI renderer inlines."""
 
     def test_serves_canonical_patch_js(self, tmp_path: Path):

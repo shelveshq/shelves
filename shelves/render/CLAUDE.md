@@ -169,7 +169,7 @@ is surprising in ways that have repeatedly broken labels:
 
 7. **A real stack defaults to inside-center; a plain bar defaults to outside.**
    `isSegmented` = the bar has a `fill` bound to a field **different** from the
-   band/category field (`enc.fill.field !== bandField`). Charter has no grouped
+   band/category field (`enc.fill.field !== bandField`). Shelves has no grouped
    (xOffset) bars, so fill≠band ⟹ a true multi-segment stack — those default to
    `center` (deterministic, inside each segment) because the outside anchor only
    fits the outermost segment. An un-segmented bar defaults to `top` (vertical) /

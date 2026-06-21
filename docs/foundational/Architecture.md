@@ -1,4 +1,4 @@
-# Architecture: Charter — AI-Native Declarative Visual Analytics Platform
+# Architecture: Shelves — AI-Native Declarative Visual Analytics Platform
 
 ## 1. System Overview
 
@@ -51,7 +51,7 @@ User Input (natural language or DSL)
 
 The system serves two user types through the same underlying pipeline:
 
-- **BI Analysts** use Charter Studio — a local dev server with Monaco editor, live Vega-Lite preview, and integrated terminal. They write the YAML DSL directly, get instant visual feedback, and version-control with git.
+- **BI Analysts** use Shelves Studio — a local dev server with Monaco editor, live Vega-Lite preview, and integrated terminal. They write the YAML DSL directly, get instant visual feedback, and version-control with git.
 - **Business Users** use natural language prompts (in the future hosted web app). The LLM translates their request into the same YAML DSL. The LLM's job is constrained to producing valid DSL — a much smaller, more reliable translation task than generating raw Vega-Lite.
 
 ---
@@ -351,16 +351,16 @@ StyleDictionary.registerFormat({
 
 ---
 
-## 6. Charter Studio — Analyst Interface
+## 6. Shelves Studio — Analyst Interface
 
-Charter Studio is the analyst-facing authoring environment: a local dev server with a split-pane HTML interface launched via `charter dev`. See the **Charter Studio Design** document for the full specification.
+Shelves Studio is the analyst-facing authoring environment: a local dev server with a split-pane HTML interface launched via `shelves-dev`. See the **Shelves Studio Design** document for the full specification.
 
 **Architecture:**
 ```
-charter dev
+shelves-dev
     → FastAPI server on localhost:5173
     → Serves single HTML page with:
-        - Monaco editor (YAML + Charter schema validation)
+        - Monaco editor (YAML + Shelves schema validation)
         - Vega-Lite live preview pane (hot-reload on keystroke)
         - Integrated terminal (xterm.js + PTY — run Claude Code, Codex, Aider, or any CLI)
         - File explorer sidebar
@@ -374,7 +374,7 @@ charter dev
 - Real PTY-backed terminal, not a custom AI chat UI — tool-agnostic, works with any CLI agent
 - Single HTML page, no build step, no React, no `node_modules`
 - Optional Tauri v2 native macOS app wrapper (Stage 2) — uses WebKit, ~5MB bundle vs Electron's 150MB+
-- The web app (Phase 6) and Charter Studio coexist as two entry points for different user types
+- The web app (Phase 6) and Shelves Studio coexist as two entry points for different user types
 
 ---
 
@@ -390,8 +390,8 @@ charter dev
 | **Chart Rendering** | Vega-Lite (Canvas mode) | Declarative chart compilation and rendering |
 | **Server-side Scaling** | VegaFusion | Pushes transforms/aggregation to server |
 | **LLM** | Claude / GPT-4 / Gemini | Translates natural language → YAML DSL |
-| **Analyst Interface** | Charter Studio (FastAPI + Monaco + Vega-Lite preview) | Local dev server with live preview and integrated terminal |
-| **Native App** | Tauri v2 (optional) | macOS wrapper around Charter Studio |
+| **Analyst Interface** | Shelves Studio (FastAPI + Monaco + Vega-Lite preview) | Local dev server with live preview and integrated terminal |
+| **Native App** | Tauri v2 (optional) | macOS wrapper around Shelves Studio |
 | **Config Format** | YAML (authored) / JSON (compiled) | Human-readable authoring, machine-readable execution |
 | **Version Control** | GitHub | All configs (charts, layouts, themes, semantic models) are code |
 | **Testing** | pytest + syrupy (snapshot testing) | DSL → Vega-Lite pair validation |
@@ -406,7 +406,7 @@ charter dev
 - Chart DSL → Pydantic → Vega-Lite → theme merge → data bind → HTML render
 - Single-measure charts + multi-measure stacked panels
 - All encoding channels, filters, sort, faceting
-- CLI: `charter render chart.yaml -o chart.html`
+- CLI: `shelves-render chart.yaml -o chart.html`
 
 ### Phase 1a: Layers (Multi-Axis)
 - Layer compilation, stacked layers, triple/quad axis
@@ -424,7 +424,7 @@ charter dev
 - Layout DSL → CSS flexbox translator
 - Static dashboard composition
 
-### Phase 5: Charter Studio
+### Phase 5: Shelves Studio
 - Local dev server: FastAPI + Monaco + live preview + terminal
 - Optional Tauri native app
 
