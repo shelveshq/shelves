@@ -272,10 +272,13 @@ def resolve_inner_styles(
               fit == "width"  -> overflow-y: auto
               fit == "height" -> overflow-x: auto
               fit in ("fill", None) -> overflow: hidden
-    Text:   + overflow:hidden, and flex column centering so the text is
-            vertically centered within its box (KAN-293).  Column direction
-            keeps the text a full-width block so the outer div's text-align
-            (horizontal alignment) still applies.
+    Text:   + overflow:hidden and flex column centering so the text is
+            vertically centered within its box (KAN-293).  The ellipsis clipping
+            (KAN-295) does NOT live here — text-overflow:ellipsis is inert on a
+            flex container, so it is carried by a block holder div that
+            _render_text nests inside this flex-centering div.
+    Other:  + overflow:hidden so wrapped containers/images/blanks clip at their
+            content box (the outer wrapper no longer carries overflow).
 
     `fit` is ignored for all non-sheet components.
     """
@@ -293,17 +296,21 @@ def resolve_inner_styles(
         else:  # "fill" or None
             css["overflow"] = "hidden"
     elif isinstance(component, TextComponent):
-        # Clip overflow and degrade gracefully with an ellipsis instead of
-        # silently swallowing text that exceeds the fixed-size box (KAN-295).
+        # Clip overflow within the box.  The ellipsis itself is applied on the
+        # block holder div (see _render_text) because text-overflow:ellipsis has
+        # no effect on a flex container.
         css["overflow"] = "hidden"
-        css["text-overflow"] = "ellipsis"
-        css["white-space"] = "nowrap"
         # Vertically center the text within its box.  flex-direction:column with
         # justify-content:center centers on the block (vertical) axis while the
-        # text stays a full-width item so text-align (horizontal) is preserved.
+        # holder stays a full-width item so text-align (horizontal) is preserved.
         css["display"] = "flex"
         css["flex-direction"] = "column"
         css["justify-content"] = "center"
+    else:
+        # Container/Image/Blank: clip child content at the content box.  The
+        # outer wrapper dropped overflow when clipping moved to the inner div,
+        # so without this, child overflow would bleed past the component.
+        css["overflow"] = "hidden"
 
     parts = [f"{k}: {v}" for k, v in css.items()]
     return "; ".join(parts)

@@ -63,9 +63,23 @@ def _outer_wrapper_style(html: str, sheet_name: str) -> str:
 
 
 def _inner_text_style(html: str, content: str) -> str:
-    """Extract the style attribute of the inner div directly wrapping a text node."""
+    """Extract the style attribute of the block div directly wrapping a text node.
+
+    This is the ellipsis "holder" in the <flex-center><holder>{text}</holder></flex-center>
+    structure — the innermost div that actually contains the text node.
+    """
     m = re.search(rf'style="([^"]+)">{re.escape(content)}</div>', html)
     assert m is not None, f"inner text div for {content!r} not found"
+    return m.group(1)
+
+
+def _text_flex_parent_style(html: str, content: str) -> str:
+    """Extract the style of the flex-centering div that wraps the text holder.
+
+    Structure: <div FLEX-CENTER><div HOLDER>{content}</div></div>
+    """
+    m = re.search(rf'<div style="([^"]+)"><div style="[^"]*">{re.escape(content)}</div>', html)
+    assert m is not None, f"flex-centering parent for {content!r} not found"
     return m.group(1)
 
 
@@ -1348,13 +1362,14 @@ root:
         # Outer div has overflow:hidden and box-sizing:border-box even without padding
         inline_styles = re.findall(r'style="([^"]+)"', html)
         assert any("box-sizing: border-box" in s for s in inline_styles)
-        # Inner div contains the text
+        # Inner flex-centering div wraps a block holder that contains the text
         m = re.search(
             r'<div style="[^"]*box-sizing: border-box[^"]*">'
-            r'<div style="[^"]*">No padding here</div></div>',
+            r'<div style="[^"]*">'
+            r'<div style="[^"]*">No padding here</div></div></div>',
             html,
         )
-        assert m is not None, "Expected outer+inner div structure around text"
+        assert m is not None, "Expected outer+flex+holder div structure around text"
 
     def test_no_fit_sheet_padding_stays_css(self):
         """Non-fitted sheet with padding uses div-in-div; Vega config.padding zeroed."""
@@ -1724,6 +1739,25 @@ root:
         assert "width: 100%" in inner
         assert "height: 100%" in inner
 
+    def test_container_inner_div_clips_overflow(self):
+        """Non-sheet/text wrappers (container/image/blank) clip at the content
+        box: the outer wrapper no longer carries overflow, so the inner content
+        div must, or child content bleeds past the component boundary."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        padding: 20
+        contains:
+          - text: "Child"
+""")
+        m = re.search(r'<div style="[^"]*padding: 20px[^"]*"><div style="([^"]+)">', html)
+        assert m is not None, "container outer+inner div structure not found"
+        assert "overflow: hidden" in m.group(1)
+
     def test_padding_preserved_on_outer_wrapper(self):
         html = _translate(
             """\
@@ -1834,24 +1868,19 @@ root:
 """,
             chart_specs={},
         )
-        # Text inner div keeps overflow:hidden (the sheet-overflow refactor did not
-        # leak position:relative into the text branch).  Ellipsis clipping (KAN-295)
-        # and vertical centering (KAN-293) are additive on top of this.
+        # Text inner div keeps overflow:hidden and the KAN-293 flex centering
+        # (no position:relative leaked from the sheet branch).  The KAN-295
+        # ellipsis clipping lives on the nested block holder, not the flex div.
         assert (
             "width: 100%; height: 100%; overflow: hidden; "
-            "text-overflow: ellipsis; white-space: nowrap; "
             "display: flex; flex-direction: column; justify-content: center" in html
         )
+        assert "overflow: hidden; text-overflow: ellipsis; white-space: nowrap" in html
 
 
 class TestTextVerticalCentering:
     """KAN-293: text content is vertically centered within its box so small and
     large text presets sit on the same vertical center (not top-aligned)."""
-
-    def _text_inner_style(self, html: str, content: str) -> str:
-        m = re.search(rf'<div style="([^"]+)">{re.escape(content)}</div>', html)
-        assert m is not None, f"inner text div for '{content}' not found"
-        return m.group(1)
 
     def test_text_inner_div_vertically_centers(self):
         html = _translate("""\
@@ -1862,7 +1891,7 @@ root:
   contains:
     - text: "Hello"
 """)
-        inner = self._text_inner_style(html, "Hello")
+        inner = _text_flex_parent_style(html, "Hello")
         assert "display: flex" in inner
         assert "flex-direction: column" in inner
         assert "justify-content: center" in inner
@@ -1876,10 +1905,12 @@ root:
   contains:
     - text: "Clip me"
 """)
-        inner = self._text_inner_style(html, "Clip me")
+        # Sizing + clip on the flex-centering div; the ellipsis clip on the holder.
+        inner = _text_flex_parent_style(html, "Clip me")
         assert "overflow: hidden" in inner
         assert "width: 100%" in inner
         assert "height: 100%" in inner
+        assert "overflow: hidden" in _inner_text_style(html, "Clip me")
 
     def test_sheet_inner_div_not_centered(self):
         """Sheets must NOT get text flex-centering — only their fit-aware overflow."""
@@ -1995,7 +2026,7 @@ root:
       width: 120
       height: 40
 """)
-        style = _inner_text_style(html, self._LONG_TEXT)
+        style = _text_flex_parent_style(html, self._LONG_TEXT)
         assert "display: flex" in style
         assert "flex-direction: column" in style
         assert "justify-content: center" in style
@@ -2013,6 +2044,28 @@ root:
         style = _inner_text_style(html, "Auto sized")
         assert "text-overflow: ellipsis" in style
         assert "white-space: nowrap" in style
+
+    def test_text_ellipsis_holder_is_block_not_flex(self):
+        """KAN-295/KAN-293: the ellipsis lives on a block child, not the
+        flex-centering parent — text-overflow:ellipsis is inert on a flex
+        container, so it must not be co-located with display:flex."""
+        html = _translate(f"""\
+dashboard: "Test"
+canvas: {{ width: 800, height: 600 }}
+root:
+  orientation: vertical
+  contains:
+    - text: "{self._LONG_TEXT}"
+      width: 120
+      height: 40
+""")
+        holder = _inner_text_style(html, self._LONG_TEXT)
+        assert "text-overflow: ellipsis" in holder
+        assert "display: flex" not in holder  # ellipsis only renders on a block box
+        parent = _text_flex_parent_style(html, self._LONG_TEXT)
+        assert "display: flex" in parent
+        assert "justify-content: center" in parent
+        assert "text-overflow" not in parent  # inert here; must live on the holder
 
     def test_non_text_leaf_no_ellipsis(self):
         """Only the text branch changes — sheet inner divs get no text-overflow."""

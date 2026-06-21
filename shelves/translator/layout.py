@@ -30,6 +30,11 @@ from shelves.translator.layout_flatten import flatten_dashboard
 from shelves.translator.layout_solver import ResolvedNode, solve_layout
 from shelves.translator.layout_styles import RenderContext, resolve_inner_styles, resolve_styles
 
+# Block holder that carries the ellipsis clipping for text (KAN-295).  Kept off
+# the flex-centering inner div because text-overflow:ellipsis is inert on a flex
+# container.  Static, escape-safe CSS.
+_TEXT_HOLDER_STYLE = "overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
+
 
 def translate_dashboard(
     dashboard: DashboardSpec,
@@ -143,7 +148,16 @@ def _render_sheet(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
 
 def _render_text(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
     escaped_content = html.escape(node.component.content)  # type: ignore[union-attr]
-    return f'<div style="{safe_outer}"><div style="{safe_inner}">{escaped_content}</div></div>'
+    # The inner div (safe_inner) flex-centers the text vertically (KAN-293).
+    # text-overflow:ellipsis is inert on a flex container, so the ellipsis
+    # clipping (KAN-295) lives on a block holder div nested inside it.  With the
+    # flex column's default align-items:stretch the holder spans the full width,
+    # so the ellipsis clips and the outer div's text-align is preserved.
+    return (
+        f'<div style="{safe_outer}"><div style="{safe_inner}">'
+        f'<div style="{_TEXT_HOLDER_STYLE}">{escaped_content}</div>'
+        f"</div></div>"
+    )
 
 
 def _render_button_link(
