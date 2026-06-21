@@ -18,6 +18,7 @@ from typing import Any
 
 from shelves.schema.chart_schema import (
     HEX_COLOR_RE,
+    AxisChannelConfig,
     ChartSpec,
     ColorSpec,
     TooltipSpec,
@@ -60,26 +61,12 @@ def build_encodings(spec: ChartSpec, resolver: FieldTypeResolver) -> dict[str, A
     # X (cols) — must be a string for single-measure path
     if spec.cols and isinstance(spec.cols, str):
         enc["x"] = build_field_encoding(spec.cols, resolver)
-        _apply_axis_config(enc["x"], spec.axis.x if spec.axis else None)
-        _auto_inject_from_model(
-            enc["x"],
-            spec.cols,
-            resolver,
-            spec.axis.x if spec.axis else None,
-            channel="x",
-        )
+        _apply_channel_axis(enc["x"], spec.cols, spec.axis.x if spec.axis else None, resolver, "x")
 
     # Y (rows) — must be a string for single-measure path
     if spec.rows and isinstance(spec.rows, str):
         enc["y"] = build_field_encoding(spec.rows, resolver)
-        _apply_axis_config(enc["y"], spec.axis.y if spec.axis else None)
-        _auto_inject_from_model(
-            enc["y"],
-            spec.rows,
-            resolver,
-            spec.axis.y if spec.axis else None,
-            channel="y",
-        )
+        _apply_channel_axis(enc["y"], spec.rows, spec.axis.y if spec.axis else None, resolver, "y")
 
     # Color — with legend title auto-injection
     if spec.color is not None:
@@ -176,11 +163,44 @@ def build_tooltip(
 # ─── Private helpers ──────────────────────────────────────────────
 
 
+def _apply_channel_axis(
+    encoding_channel: dict[str, Any],
+    field_ref: str,
+    raw_cfg: bool | AxisChannelConfig | None,
+    resolver: FieldTypeResolver,
+    channel: str,
+) -> None:
+    """Resolve one axis channel: granular config, bool shorthand, or default.
+
+    - raw_cfg is False             → encoding_channel["axis"] = None; skip auto-inject
+    - raw_cfg is True or None      → run auto-inject with no overrides
+    - raw_cfg is AxisChannelConfig → apply granular toggles, then auto-inject
+    """
+    # Whole-axis-off shorthand: drop the axis entirely, skip auto-injection.
+    if raw_cfg is False:
+        encoding_channel["axis"] = None
+        return
+
+    # True normalizes to "no config" (show with theme defaults); a config
+    # object stays as-is for granular toggles.
+    cfg = raw_cfg if isinstance(raw_cfg, AxisChannelConfig) else None
+
+    # Granular toggles first, then auto-inject so the model format merges into
+    # the same axis dict.
+    _apply_axis_config(encoding_channel, cfg)
+    _auto_inject_from_model(encoding_channel, field_ref, resolver, cfg, channel=channel)
+
+
 def _apply_axis_config(
     encoding_channel: dict[str, Any],
-    axis_cfg: Any | None,
+    axis_cfg: AxisChannelConfig | None,
 ) -> None:
-    """Merge axis config (title, format, grid) into an encoding channel."""
+    """Merge a granular axis config (title + boolean toggles) into an encoding
+    channel. Caller is responsible for the bool-shorthand case (axis off / on);
+    this function only ever receives an AxisChannelConfig or None.
+
+    Mutates encoding_channel in place. None → no-op.
+    """
     if axis_cfg is None:
         return
 
@@ -192,6 +212,12 @@ def _apply_axis_config(
         axis_props["format"] = axis_cfg.format
     if axis_cfg.grid is not None:
         axis_props["grid"] = axis_cfg.grid
+    if axis_cfg.ruler is not None:
+        axis_props["domain"] = axis_cfg.ruler  # ruler → domain
+    if axis_cfg.ticks is not None:
+        axis_props["ticks"] = axis_cfg.ticks
+    if axis_cfg.labels is not None:
+        axis_props["labels"] = axis_cfg.labels
 
     if axis_props:
         encoding_channel["axis"] = axis_props
@@ -205,8 +231,7 @@ def _auto_inject_from_model(
     channel: str,
 ) -> None:
     """
-    Auto-inject title, format, and grid defaults from the model into an
-    encoding channel dict.
+    Auto-inject title and format from the model into an encoding channel dict.
 
     Injection rules (each skipped if chart spec already sets it):
       1. title ← resolver.resolve_label(field_ref)
@@ -214,8 +239,10 @@ def _auto_inject_from_model(
       2. axis.format ← resolver.resolve_format(field_ref)
          Skipped if axis_cfg.format is set.
          (This is the existing _auto_inject_format logic.)
-      3. axis.grid ← True for y-axis, False for x-axis
-         Skipped if axis_cfg.grid is not None.
+
+    Grid (and the other axis-line toggles) are NOT injected here — their
+    defaults live in the theme (config.axisX / config.axisY). The ``channel``
+    parameter documents which axis this is for callers' sake.
 
     Mutates encoding_channel in place.
     """
@@ -232,9 +259,8 @@ def _auto_inject_from_model(
             axis_props["format"] = model_format
             encoding_channel["axis"] = axis_props
 
-    # Step 3: Auto-inject grid defaults
-    if axis_cfg is None or axis_cfg.grid is None:
-        default_grid = channel == "y"  # y-axis grid on, x-axis grid off
-        axis_props = encoding_channel.get("axis", {})
-        axis_props["grid"] = default_grid
-        encoding_channel["axis"] = axis_props
+    # Future per-channel branching seam. v1 injects title/format uniformly; when
+    # legend-bearing channels (color first, then size) get their own
+    # auto-injection, branch on `channel` here instead of threading a new flag
+    # through the call sites. Explicit no-op keeps it part of the call contract.
+    _ = channel

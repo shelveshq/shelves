@@ -29,7 +29,7 @@ def _clear_cache():
 
 class TestAutoInject:
     def test_axis_titles_from_model(self):
-        """Axis titles auto-injected from model labels; grid defaults applied."""
+        """Axis titles auto-injected from model labels; grid no longer at encoding level."""
         yaml_str = load_yaml("auto_inject_titles.yaml")
         spec = parse_chart(yaml_str)
         vl = translate_chart(spec, models_dir=MODELS_DIR)
@@ -38,14 +38,14 @@ class TestAutoInject:
         assert x["field"] == "country"
         assert x["type"] == "nominal"
         assert x["title"] == "Country"
-        assert x["axis"]["grid"] is False
+        assert "grid" not in x.get("axis", {})
 
         y = vl["encoding"]["y"]
         assert y["field"] == "revenue"
         assert y["type"] == "quantitative"
         assert y["title"] == "Revenue"
         assert y["axis"]["format"] == "$,.0f"
-        assert y["axis"]["grid"] is True
+        assert "grid" not in y["axis"]
 
     def test_explicit_title_overrides_model(self):
         """Explicit axis.y.title overrides model label; format still auto-injected."""
@@ -56,7 +56,7 @@ class TestAutoInject:
         y = vl["encoding"]["y"]
         assert y["title"] == "Total Rev ($)"
         assert y["axis"]["format"] == "$,.0f"
-        assert y["axis"]["grid"] is True
+        assert "grid" not in y["axis"]
 
     def test_measure_format_auto_injected(self):
         """encoding.y.axis.format is auto-injected from model's revenue format."""

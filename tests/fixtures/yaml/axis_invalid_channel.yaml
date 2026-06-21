@@ -1,0 +1,7 @@
+sheet: "Invalid Channel"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+axis:
+  x: [1, 2]

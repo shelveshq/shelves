@@ -17,6 +17,17 @@ chart:
     subtitleFontWeight: 400
     offset: 24
     anchor: "start"
+  # Per-orientation axis defaults (themeable; per-chart axis.x/.y overrides win).
+  # Grid is asymmetric (migrated from the old hardcoded encoding default);
+  # ruler (domain) and ticks are shown on both axes to preserve today's look.
+  axisX:
+    grid: false
+    domain: true
+    ticks: true
+  axisY:
+    grid: true
+    domain: true
+    ticks: true
   axis:
     labelFont: "Inter, system-ui, sans-serif"
     labelFontSize: 11

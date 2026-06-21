@@ -72,7 +72,7 @@ class TestAutoFormat:
         enc = build_field_encoding("week.month", resolver)
         _auto_inject_from_model(enc, "week.month", resolver, None, channel="x")
         assert enc["axis"]["format"] == "%b %Y"
-        assert enc["axis"]["grid"] is False
+        assert "grid" not in enc["axis"]
         assert enc["title"] == "Week"
 
     def test_format_not_injected_with_override(self, orders_model):

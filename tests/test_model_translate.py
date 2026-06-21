@@ -39,7 +39,7 @@ class TestModelParse:
         assert isinstance(spec.data, str)
 
     def test_dsl_version(self):
-        assert DSL_VERSION == "0.8.0"
+        assert DSL_VERSION == "0.9.0"
 
 
 class TestModelTranslate:
@@ -61,8 +61,9 @@ class TestModelTranslate:
         assert vl["encoding"]["x"]["title"] == "Country"
         assert vl["encoding"]["y"]["title"] == "Revenue"
         assert vl["encoding"]["y"]["axis"]["format"] == "$,.0f"
-        assert vl["encoding"]["y"]["axis"]["grid"] is True
-        assert vl["encoding"]["x"]["axis"]["grid"] is False
+        # Grid no longer injected at the encoding level — sourced from the theme
+        assert "grid" not in vl["encoding"]["y"]["axis"]
+        assert "grid" not in vl["encoding"]["x"].get("axis", {})
 
         # NEW: default sort from model (country has sortOrder)
         assert vl["encoding"]["x"]["sort"] == ["US", "UK", "FR", "DE", "JP"]
@@ -82,7 +83,7 @@ class TestModelTranslate:
         assert x_enc["axis"]["format"] == "%b %Y"
         # NEW
         assert x_enc["title"] == "Week"
-        assert x_enc["axis"]["grid"] is False
+        assert "grid" not in x_enc["axis"]
 
         y_enc = vl["encoding"]["y"]
         assert y_enc["field"] == "revenue"
@@ -90,7 +91,7 @@ class TestModelTranslate:
         # NEW
         assert y_enc["title"] == "Revenue"
         assert y_enc["axis"]["format"] == "$,.0f"
-        assert y_enc["axis"]["grid"] is True
+        assert "grid" not in y_enc["axis"]
 
     def test_model_stacked_panels(self):
         yaml_str = load_yaml("model_stacked.yaml")

@@ -38,6 +38,22 @@ class TestThemeLoading:
         assert chart["bar"]["cornerRadius"] == 2
         assert chart["padding"] == 16
 
+    def test_axis_orientation_defaults(self):
+        """Default theme carries per-orientation grid/ruler/tick defaults."""
+        chart = load_theme().chart.model_dump()
+        # grid: asymmetric (the migrated hardcode)
+        assert chart["axisX"]["grid"] is False
+        assert chart["axisY"]["grid"] is True
+        # ruler (domain) + ticks: visible on both axes (preserves today's look)
+        assert chart["axisX"]["domain"] is True
+        assert chart["axisX"]["ticks"] is True
+        assert chart["axisY"]["domain"] is True
+        assert chart["axisY"]["ticks"] is True
+        # shared styling still present on the generic axis key
+        assert chart["axis"]["gridColor"] == "#f0f0f0"
+        assert chart["axis"]["domainColor"] == "#9ca3af"
+        assert chart["axis"]["tickColor"] == "#9ca3af"
+
     def test_layout_presets_match_spec(self):
         theme = load_theme()
         presets = theme.layout.presets

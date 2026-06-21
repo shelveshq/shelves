@@ -40,11 +40,11 @@ class TestStackedPanels:
         assert "title" not in panel_0["encoding"]["x"]
         assert panel_1["encoding"]["x"]["title"] == "Week"
         assert panel_1["encoding"]["x"]["axis"]["format"] == "%b %d"
-        assert panel_1["encoding"]["x"]["axis"]["grid"] is False
+        # Grid no longer injected at the encoding level — sourced from the theme
+        assert "grid" not in panel_1["encoding"]["x"]["axis"]
 
-        # NEW: measure axis grid defaults
-        assert panel_0["encoding"]["y"]["axis"]["grid"] is True  # y-axis grid default
-        assert panel_1["encoding"]["y"]["axis"]["grid"] is True
+        assert "grid" not in panel_0["encoding"]["y"]["axis"]
+        assert "grid" not in panel_1["encoding"]["y"]["axis"]
 
         # NEW: color legend title
         assert panel_0["encoding"]["color"]["legend"]["title"] == "Country"
@@ -161,9 +161,9 @@ class TestStackedPanels:
         panels = vl["hconcat"]
         assert len(panels) == 2
 
-        # Left panel (revenue): shared y shown
+        # Left panel (revenue): shared y shown (axis not suppressed to null)
         assert panels[0]["encoding"]["y"]["field"] == "country"
-        assert panels[0]["encoding"]["y"]["axis"] is not None
+        assert panels[0]["encoding"]["y"].get("axis", {}) is not None
 
         # Right panel (order_count): shared y hidden
         assert panels[1]["encoding"]["y"]["field"] == "country"

@@ -25,9 +25,9 @@ class TestSingleMarkCharts:
         # NEW: auto-injected formats
         assert vl["encoding"]["y"]["axis"]["format"] == "$,.0f"
 
-        # NEW: auto-injected grid defaults
-        assert vl["encoding"]["x"]["axis"]["grid"] is False
-        assert vl["encoding"]["y"]["axis"]["grid"] is True
+        # Grid no longer injected at the encoding level — sourced from the theme
+        assert "grid" not in vl["encoding"]["x"].get("axis", {})
+        assert "grid" not in vl["encoding"]["y"]["axis"]
 
         # NEW: legend title on color
         assert vl["encoding"]["color"]["legend"]["title"] == "Country"
@@ -66,7 +66,7 @@ class TestSingleMarkCharts:
         # NEW: y-axis auto-inject
         assert vl["encoding"]["y"]["title"] == "Revenue"
         assert vl["encoding"]["y"]["axis"]["format"] == "$,.0f"
-        assert vl["encoding"]["y"]["axis"]["grid"] is True
+        assert "grid" not in vl["encoding"]["y"]["axis"]
 
     def test_multi_line(self):
         vl = compile_fixture("multi_line.yaml")
@@ -91,9 +91,9 @@ class TestSingleMarkCharts:
         assert vl["encoding"]["x"]["axis"]["format"] == "$,.0f"
         assert vl["encoding"]["y"]["axis"]["format"] == ",.0f"
 
-        # NEW: grid defaults
-        assert vl["encoding"]["x"]["axis"]["grid"] is False
-        assert vl["encoding"]["y"]["axis"]["grid"] is True
+        # Grid no longer injected at the encoding level — sourced from the theme
+        assert "grid" not in vl["encoding"]["x"]["axis"]
+        assert "grid" not in vl["encoding"]["y"]["axis"]
 
         # NEW: legend title
         assert vl["encoding"]["color"]["legend"]["title"] == "Country"

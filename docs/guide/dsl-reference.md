@@ -1,6 +1,6 @@
 # Shelves DSL Reference
 
-**DSL Version: 0.7.0**
+**DSL Version: 0.9.0**
 
 This document is the authoritative reference for the Shelves YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -430,19 +430,46 @@ facet:
 
 ## Axis configuration
 
-Customize axis appearance for single-measure charts:
+Customize axis appearance for single-measure charts. Each channel (`x`/`y`)
+takes an object of toggles, or a bare boolean.
 
 ```yaml
 axis:
   x:
-    title: "Country"
-    format: "%b %Y"
-    grid: false
+    title: "Country"   # axis title (overrides model label)
+    format: "%b %Y"    # d3 format (overrides model format)
+    grid: false        # gridlines       → Vega-Lite axis.grid
+    ruler: true        # axis baseline   → Vega-Lite axis.domain
+    ticks: true        # tick marks      → Vega-Lite axis.ticks
+    labels: true       # tick labels     → Vega-Lite axis.labels
   y:
-    title: "Revenue ($)"
-    format: "$,.0f"
+    grid: true
+    ruler: false
+    ticks: false
+```
+
+Each toggle is a passthrough into that channel's Vega-Lite `axis` object.
+**Omitting** a toggle inherits the theme default — the DSL only controls
+*visibility*; line **styling** (color, width, dash) stays in the theme
+(`axis.gridColor`, `axis.domainColor`, `axis.tickColor`, …).
+
+> **Naming:** `ruler` follows Tableau's "Axis Ruler" and maps to Vega-Lite's
+> `axis.domain` — the baseline line drawn along the axis.
+
+### Removing an axis
+
+Set a channel to `false` to drop it entirely:
+
+```yaml
+axis:
+  x: false      # no x-axis (line, ticks, labels, title all removed)
+  y:
     grid: true
 ```
+
+`x: false` sets `encoding.x.axis = null`. `x: true` is the same as omitting the
+channel — the axis shows with all theme defaults. (This mirrors how `label`
+accepts `true`/`false` or a config object.)
 
 ### Auto-injection from model
 
@@ -451,7 +478,10 @@ When a chart references a data model (`data: orders`), the translator automatica
 - **Axis titles** from the model's field `label` (e.g. `revenue` → title "Revenue")
 - **Axis formats** from the model's `format` string (e.g. `"$,.0f"` for revenue)
 - **Temporal formats** from the model's per-grain format map (e.g. `"%b %Y"` for month grain)
-- **Grid defaults**: y-axis grid on, x-axis grid off
+- **Grid / ruler / tick defaults**: sourced from the theme's per-orientation
+  config (`axisX` / `axisY`) — by default y-axis grid on, x-axis grid off, with
+  rulers and ticks on both axes. A per-chart `axis.x.grid` (etc.) overrides the
+  theme (Vega-Lite precedence: encoding > config).
 - **Legend titles** from the model's dimension `label`
 - **Tooltip labels and formats** from the model's field `label` and `format`
 - **Default sort** from the model's `defaultSort` (measure) or `sortOrder` (dimension)
@@ -1105,7 +1135,9 @@ See the DSL version history below for what shipped in each version.
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.7.0** | Current | Labels: `label` property on charts (`true`, `false`, or config object). Two-axis position model (`vertical` + `horizontal`). Three-level cascade (chart → entry → layer). Label intents emitted in `usermeta` for compile-then-patch rendering. |
+| **0.9.0** | Current | Axis channel toggles: `AxisChannelConfig` gains `ruler` (→ VL `axis.domain`), `ticks` (→ `axis.ticks`), `labels` (→ `axis.labels`). Each axis channel also accepts a bare bool (`x: false` removes the axis). The x-off/y-on grid default moved from a hardcoded encoding injection to the theme (`axisX`/`axisY`), making grid/ruler/tick defaults themeable. |
+| **0.8.0** | Previous | **Breaking:** label grammar — `LabelConfig.position` replaced by `horizontal`/`vertical`; `color` now accepts `"match"`. |
+| **0.7.0** | Previous | Labels: `label` property on charts (`true`, `false`, or config object). Two-axis position model (`vertical` + `horizontal`). Three-level cascade (chart → entry → layer). Label intents emitted in `usermeta` for compile-then-patch rendering. |
 | **0.6.0** | Previous | KPI block schema: new `kpi` top-level property with `value`, `format`, `title`, `spacing`, and `comparison` sub-block. Replaces placeholder `KPIConfig`. |
 | **0.5.2** | Previous | Shared axis hiding: stacked panels hide repeating shared axes by default. New `shared_axis` property on measure entries. |
 | **0.5.1** | Previous | Stacked layers: multi-entry shelves with mixed layered and standalone entries compile to `vconcat`/`hconcat`. |

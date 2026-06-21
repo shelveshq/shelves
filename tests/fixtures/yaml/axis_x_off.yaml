@@ -1,0 +1,9 @@
+sheet: "X Axis Off"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+axis:
+  x: false
+  y:
+    grid: true

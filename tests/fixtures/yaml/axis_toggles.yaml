@@ -1,0 +1,15 @@
+sheet: "Axis Toggles"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+axis:
+  x:
+    grid: true
+    ruler: false
+    ticks: false
+    labels: false
+  y:
+    grid: false
+    ruler: true
+    ticks: true
