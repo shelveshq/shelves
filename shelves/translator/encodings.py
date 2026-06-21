@@ -258,3 +258,9 @@ def _auto_inject_from_model(
             axis_props = encoding_channel.get("axis", {})
             axis_props["format"] = model_format
             encoding_channel["axis"] = axis_props
+
+    # Future per-channel branching seam. v1 injects title/format uniformly; when
+    # legend-bearing channels (color first, then size) get their own
+    # auto-injection, branch on `channel` here instead of threading a new flag
+    # through the call sites. Explicit no-op keeps it part of the call contract.
+    _ = channel
