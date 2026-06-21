@@ -1,4 +1,4 @@
-# Project Vision: Charter — AI-Native Declarative Visual Analytics Platform
+# Project Vision: Shelves — AI-Native Declarative Visual Analytics Platform
 
 ## Vision
 
@@ -84,7 +84,7 @@ Canvas rendering is the default (2–10x faster than SVG for redraws). SVG is av
 
 ## Two User Types, Same Pipeline
 
-**BI Analysts** use Charter Studio — a local dev server with a split-pane interface: Monaco editor on the left, live Vega-Lite preview on the right, integrated terminal at the bottom for running CLI agents (Claude Code, Codex, Aider). They write YAML directly, get instant visual feedback, and version-control everything with git. Launched via `pip install charter[studio]` → `charter dev` → browser opens. Optionally wrapped in a native macOS app via Tauri.
+**BI Analysts** use Shelves Studio — a local dev server with a split-pane interface: Monaco editor on the left, live Vega-Lite preview on the right, integrated terminal at the bottom for running CLI agents (Claude Code, Codex, Aider). They write YAML directly, get instant visual feedback, and version-control everything with git. Launched via `pip install "shelves-bi[studio]"` → `shelves-dev` → browser opens. Optionally wrapped in a native macOS app via Tauri.
 
 **Business Users** use natural language prompts (in the future hosted web app). The LLM translates their request into the same YAML DSL. Because the DSL vocabulary is small and the output structure is rigid, this is a much more reliable translation task than generating raw Vega-Lite. The validation layer catches schema errors and prompts the LLM for corrections before anything reaches the renderer.
 
@@ -99,7 +99,7 @@ Both user types converge on the same intermediate representation (the YAML DSL) 
 - All encoding channels: color, detail, size, tooltip, sort
 - Shelf filters: in, not_in, eq, neq, gt, lt, gte, lte, between
 - Faceting: row, column, grid, wrap (combinable with all above)
-- CLI: `charter render chart.yaml -o chart.html`
+- CLI: `shelves-render chart.yaml -o chart.html`
 - Status: Bootstrap, schema, core translator, theme, data bind, render, CLI all done. Multi-measure stacked panels in progress.
 
 ### Phase 1a: Layers (Multi-Axis)
@@ -121,7 +121,7 @@ Both user types converge on the same intermediate representation (the YAML DSL) 
 - Dashboard composition: nested containers, sheets, text, images, navigation
 - Static output first; interactive filters deferred
 
-### Phase 5: Charter Studio
+### Phase 5: Shelves Studio
 - Local dev server: FastAPI + Monaco editor + live Vega-Lite preview + integrated terminal
 - Dashboard composition view for Layout DSL editing
 - File explorer sidebar
@@ -140,7 +140,7 @@ Both user types converge on the same intermediate representation (the YAML DSL) 
 
 ## Strategic Positioning
 
-Charter fills five identified gaps in the current BI landscape:
+Shelves fills five identified gaps in the current BI landscape:
 
 1. **A purpose-built intermediate DSL** between natural language and rendering — no other platform has a formal, constrained intermediate representation designed for both human authoring and LLM generation.
 2. **The Tableau shelf model formalized as a code-first grammar** — familiar vocabulary, but version-controlled, diffable, and reviewable.
@@ -170,8 +170,8 @@ Key competitive risks to monitor: Holistics (YAML scalability critique), Hex (cl
 | **Chart Rendering** | Vega-Lite (Canvas mode) | Declarative chart compilation and rendering |
 | **Server-side Scaling** | VegaFusion | Pushes transforms/aggregation to server |
 | **LLM** | Claude / GPT-4 / Gemini | Translates natural language → YAML DSL |
-| **Analyst Interface** | Charter Studio (FastAPI + Monaco + Vega-Lite preview) | Local dev server with live preview and integrated terminal |
-| **Native App** | Tauri v2 (optional) | macOS wrapper around Charter Studio |
+| **Analyst Interface** | Shelves Studio (FastAPI + Monaco + Vega-Lite preview) | Local dev server with live preview and integrated terminal |
+| **Native App** | Tauri v2 (optional) | macOS wrapper around Shelves Studio |
 | **Config Format** | YAML (authored) / JSON (compiled) | Human-readable authoring, machine-readable execution |
 | **Version Control** | GitHub | All configs (charts, layouts, themes, semantic models) are code |
 | **Testing** | pytest + syrupy (snapshot testing) | DSL → Vega-Lite pair validation |

@@ -15,9 +15,9 @@ KPI cards (BANs — Big Ass Numbers) are the most common dashboard component. Ev
 
 Power BI's Card visual solves this with a rigid, opinionated component — fast to create, but inflexible. Neither extreme is acceptable.
 
-### 1.2 The Charter Approach
+### 1.2 The Shelves Approach
 
-Charter treats KPI cards as a **Chart DSL pattern** — each KPI is a chart YAML file with a `kpi` property block that triggers a dedicated rendering path. The `kpi` block is a structured shorthand that handles value display, number formatting, comparison computation (delta), and polarity-based coloring.
+Shelves treats KPI cards as a **Chart DSL pattern** — each KPI is a chart YAML file with a `kpi` property block that triggers a dedicated rendering path. The `kpi` block is a structured shorthand that handles value display, number formatting, comparison computation (delta), and polarity-based coloring.
 
 **Key design decisions:**
 

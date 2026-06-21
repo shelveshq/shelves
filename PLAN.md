@@ -416,7 +416,7 @@ if rows is list (has layers):      → patterns/stacked.py (which calls layers.p
 - **Opus (architect):** Reads a Jira ticket + all context files, produces a detailed plan document to `docs/plans/TICKET-ID.md`. Plan includes schema changes, typed function signatures with pseudocode, translation rule lookup tables, inheritance resolution pseudocode, edge case tables, per-test fixture/expected-output pairs, verbatim documentation deltas, and an explicit Out of Scope section.
 - **Sonnet/Haiku (implementer):** Reads the plan document and executes it mechanically. No architectural decisions — the plan is the spec.
 
-### charter-planner Skill
+### shelves-planner Skill
 A Claude Code skill that automates the planning workflow: fetches the Jira ticket via MCP, ingests project context files, and outputs the structured plan document.
 
 ### Per-Ticket Plan Documents

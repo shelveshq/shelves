@@ -1,5 +1,5 @@
 """
-Charter — AI-Native Visual Analytics Platform
+Shelves — AI-Native Visual Analytics Platform
 
 Public API:
     parse_chart(yaml_string)       → validated ChartSpec model

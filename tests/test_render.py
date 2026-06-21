@@ -41,7 +41,7 @@ class TestRenderHTML:
 
     def test_default_title_when_none(self):
         html = render_html({"mark": "bar"})
-        assert "<title>Charter -- Chart Preview</title>" in html
+        assert "<title>Shelves -- Chart Preview</title>" in html
 
     def test_title_from_spec(self):
         html = render_html({"mark": "bar", "title": "From Spec"})

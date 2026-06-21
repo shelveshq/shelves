@@ -309,7 +309,7 @@
       // A real multi-segment stack carries a fill bound to a field DIFFERENT
       // from the band/category field (e.g. cols:category + color:sub_category).
       // A single bar merely colored by its own category has fill.field ===
-      // bandField. Charter has no grouped (xOffset) bars, so fill≠band ⟹ stack.
+      // bandField. Shelves has no grouped (xOffset) bars, so fill≠band ⟹ stack.
       // Stacked segments default to inside-center: an outside top/right anchor
       // only fits the outermost segment, so the inner ones would be auto-hidden.
       const bandField = (enc[isHBar ? 'y' : 'x'] || {}).field;

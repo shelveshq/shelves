@@ -92,7 +92,7 @@ def _build(
     except Exception as e:
         # Show error in browser instead of crashing
         state.html = f"""<!DOCTYPE html>
-<html><head><title>Charter Error</title></head>
+<html><head><title>Shelves Error</title></head>
 <body style="font-family:monospace;padding:24px;background:#fff0f0">
 <h2 style="color:#c00">Build Error</h2>
 <pre>{e}</pre>
@@ -250,7 +250,7 @@ def main():
     state = _State()
 
     # Initial build
-    print("Charter Dev Server")
+    print("Shelves Dev Server")
     print(f"  Watching: {yaml_path}")
     if is_dashboard:
         print("  Mode:     Dashboard")
