@@ -1,0 +1,8 @@
+sheet: "Invalid Toggle"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+axis:
+  y:
+    grid: "notabool"

@@ -1,0 +1,7 @@
+sheet: "Y Axis On"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+axis:
+  y: true

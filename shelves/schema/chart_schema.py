@@ -27,7 +27,11 @@ from pydantic import BaseModel, Field, model_validator
 # 0.8.0: label grammar changed — LabelConfig.position replaced by
 # horizontal/vertical, and color now accepts "match" (KAN-281). Breaking for
 # specs that used the old `position` key (now silently ignored by Pydantic).
-DSL_VERSION = "0.8.0"  # Labels: label property on charts (KAN-281)
+# 0.9.0: axis channel toggles — AxisChannelConfig gains ruler/ticks/labels
+# booleans; AxisConfig.x/.y accept a bare bool (false drops the axis). The
+# x-off/y-on grid default moved from a hardcoded encoding injection to the
+# theme (axisX/axisY). Additive → minor.
+DSL_VERSION = "0.9.0"  # Axis toggles + themeable grid default (KAN-306)
 
 # ─── Primitives ────────────────────────────────────────────────────
 
@@ -204,14 +208,32 @@ FacetSpec = WrapFacet | RowColumnFacet
 
 
 class AxisChannelConfig(BaseModel):
+    """Per-channel axis customization for single-measure charts.
+
+    Booleans are passthroughs into the channel's Vega-Lite ``axis`` object.
+    Each is None by default → the property is omitted from the encoding so it
+    inherits the theme default (config.axisX / config.axisY).
+
+    Naming: ``ruler`` (Tableau's "Axis Ruler") maps to VL ``axis.domain`` —
+    the baseline drawn along the axis. Line *styling* stays theme-only.
+    """
+
     title: str | None = None
     format: str | None = None
-    grid: bool | None = None
+    grid: bool | None = None  # → VL axis.grid
+    ruler: bool | None = None  # → VL axis.domain (Tableau "Axis Ruler")
+    ticks: bool | None = None  # → VL axis.ticks
+    labels: bool | None = None  # → VL axis.labels
 
 
 class AxisConfig(BaseModel):
-    x: AxisChannelConfig | None = None
-    y: AxisChannelConfig | None = None
+    # Each channel may be a bare bool or a granular config object.
+    #   False  → encoding.<channel>.axis = null (drop the axis entirely)
+    #   True   → show the axis with all theme defaults (no overrides)
+    #   object → granular per-property toggles
+    # Mirrors how LabelSpec accepts ``bool | LabelConfig``.
+    x: bool | AxisChannelConfig | None = None
+    y: bool | AxisChannelConfig | None = None
 
 
 # ─── Label Configuration ─────────────────────────────────────────

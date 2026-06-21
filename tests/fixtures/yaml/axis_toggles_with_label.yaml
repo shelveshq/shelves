@@ -1,0 +1,11 @@
+sheet: "Labeled + Axis Off"
+data: orders
+cols: country
+rows: revenue
+marks: bar
+label: true
+axis:
+  x: false
+  y:
+    grid: false
+    ticks: true
