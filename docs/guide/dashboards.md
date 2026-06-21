@@ -228,6 +228,28 @@ Containers arrange their children along a main axis. The layout solver computes 
 
 All children pack to the start (top-left origin). There are no `align` or `justify` keywords — the solver uses fixed-size inline blocks, not flexbox distribution.
 
+**Cross-axis sizing follows the Tableau model: children always fill the container on the cross axis.** Only the *main axis* (the container's flow direction) is sized per child:
+
+- In a **horizontal** container, `width` sizes a child along the row; its `height` is ignored — the child fills the row's height.
+- In a **vertical** container, `height` sizes a child down the column; its `width` is ignored — the child fills the column's width.
+
+Setting a cross-axis size emits a warning and has no effect. To center or inset a child, use `padding` on the container or a `blank` spacer object — there is no cross-axis alignment keyword.
+
+```yaml
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/kpi.yaml
+      height: 120        # main-axis size — a 120px-tall band
+      # `width` here would be ignored; the card fills the column width
+    - horizontal:
+        height: 300      # main-axis size of this row within the column
+        contains:
+          - sheet: charts/a.yaml
+            width: 400   # main-axis size — 400px wide within the row
+            # `height` here would be ignored; the chart fills the row height
+```
+
 ### Sheet (chart embed)
 
 Embeds a Chart DSL visualization.
@@ -261,6 +283,36 @@ Embeds a Chart DSL visualization.
 | `width` | Chart fills container width. Vertical scrolling if content overflows. |
 | `height` | Chart fills container height. Horizontal scrolling if content overflows. |
 
+Padding is always preserved: clipping and scrolling apply to the chart content
+only, never to the sheet's padding. A chart that overflows is clipped (or
+scrolled) at the inner content edge, so the configured padding stays visible on
+all sides regardless of chart size.
+
+**Stacked multi-measure charts:** a sheet whose chart stacks several measures
+(`rows`/`cols` authored as a list) renders as multiple panels — stacked vertically
+when the measures are on `rows`, horizontally when they're on `cols`. Each panel is
+given the **same** plot size (even rectangles), and the whole stack is sized to fit
+the sheet exactly: the panels fill the sheet, the shared axis, the per-panel value
+axes, and the chart title all get the room they actually need, and nothing is
+clipped. The gap between panels shrinks proportionally as the panels are compressed,
+so a tightly-fit stack keeps its spacing in proportion to the panel size rather than
+leaving an oversized gap (the chart's natural spacing is the upper bound — the gap
+only shrinks, never grows past it). Suppressing the chart title with
+`show_title: false` returns that space to the panels.
+
+This sizing is measured in the browser at render time — the actual rendered size of
+the axes and title is read back and the panels are sized to match — so it stays
+correct regardless of orientation, font sizes, or how long the axis labels are.
+
+**Faceted charts:** a sheet whose chart facets a measure across a dimension
+(`facet.field` + `columns`, or `facet.row` / `facet.column`) renders as a grid of
+small multiples. Like stacked panels, the grid is sized in the browser to fill the
+sheet in **both** directions: the number of rows and columns is determined from the
+chart's data, the real size of the facet headers, axes, and title is measured, and
+every cell is given the same size so the grid fills the sheet without overflowing
+its height. Inter-cell spacing shrinks proportionally when the grid is compressed,
+exactly as it does for stacked panels.
+
 **`show_title`:** When `false`, the chart's Vega-Lite title is suppressed. Useful when the dashboard provides its own section headings and the chart title would be redundant.
 
 ### Text
@@ -287,6 +339,12 @@ Static text blocks with optional presets for quick styling.
 | `style` | No | — | Reference to a shared style |
 | `html` | No | — | Raw CSS escape hatch |
 
+**Overflow:** text is clipped to its box and rendered on a single line; text that
+is too long for the box is truncated with an ellipsis (`…`). Size the box (via
+`width`/`height` on the component or its container) to fit the content, or shorten
+the text. Multi-line wrapping inside a fixed-size text box is not supported — each
+text component renders on one line.
+
 **Text presets** (values come from your theme):
 
 | Preset | Default size | Weight | Color |
@@ -298,13 +356,18 @@ Static text blocks with optional presets for quick styling.
 | `caption` | 12px | normal | tertiary |
 | `label` | 11px | 500 | secondary |
 
-Multi-line text uses YAML block scalars:
+A text component renders on a single line (see **Overflow** above). YAML block
+scalars and other newlines are collapsed to spaces — they do not produce visible
+line breaks. To stack multiple lines, use a separate `text` component for each
+line inside a vertical container:
 
 ```yaml
-- text: |
-    Revenue metrics for Q4 2024.
-    All figures in USD thousands.
-  preset: caption
+- vertical:
+    contains:
+      - text: "Revenue metrics for Q4 2024."
+        preset: caption
+      - text: "All figures in USD thousands."
+        preset: caption
 ```
 
 ### Navigation — `button`, `link`
@@ -398,6 +461,8 @@ root:
 ```
 
 The root does **not** use type-led syntax — it is always `root:` with an explicit `orientation` field. This is the one exception to the type-led pattern, because the root is a fixed structural element, not a child in a `contains` list.
+
+The root container follows the same cross-axis rule as any container: its direct children always fill the cross axis, and only their main-axis size is honored.
 
 ---
 
@@ -530,7 +595,7 @@ Along the **main axis**, the solver resolves sizes in priority order:
 2. **Fixed pixels** — reserved at their exact value
 3. **Auto** — remaining space divided equally among auto children
 
-Along the **cross axis**, components default to 100% of the parent (minus their own margins) unless an explicit size is set.
+Along the **cross axis**, components always fill 100% of the parent (minus their own margins). A cross-axis size is ignored (and warns) — only main-axis sizing is a per-child concept. See [Containers](#containers) for the Tableau-model rationale.
 
 ### Gap
 

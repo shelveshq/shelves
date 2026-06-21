@@ -36,6 +36,11 @@ from shelves.translator.sort import apply_sort
 
 VegaLiteSpec = dict[str, Any]
 
+# Top-level gap (px) emitted between vconcat/hconcat panels. Read back by the
+# layout sizer (`layout._fit_concat`) so the spacing used in the per-panel size
+# math equals the spacing rendered (KAN-291).
+STACKED_CONCAT_SPACING = 10
+
 
 def _resolve_shared_axis(
     entries: list[MeasureEntry],
@@ -260,7 +265,16 @@ def _compile_concat(
 
         panels.append(panel)
 
-    result: VegaLiteSpec = {concat_key: panels, "spacing": 10}
+    # bounds:"flush" packs the panels' PLOT areas with exactly `spacing` between
+    # them, instead of Vega-Lite's default "full" which spaces the full bounding
+    # boxes (plot + axis labels). Full bounds make the inter-panel gaps absorb a
+    # varying amount of axis-label overhang -> visually uneven gaps; flush keeps
+    # them uniform and makes the layout sizer's height math exact (KAN-291).
+    result: VegaLiteSpec = {
+        concat_key: panels,
+        "spacing": STACKED_CONCAT_SPACING,
+        "bounds": "flush",
+    }
     if label_intents:
         result["_label_intents"] = label_intents
     return result

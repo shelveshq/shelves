@@ -8,6 +8,11 @@ HTML output, and integration with the solver.
 These tests define expected behavior for the implementation to follow.
 """
 
+import re
+import warnings
+
+import pytest
+
 from shelves.schema.layout_schema import (
     parse_dashboard,
 )
@@ -40,6 +45,42 @@ def _translate(yaml_str, theme=None, chart_specs=None):
     """Parse, solve, and translate a dashboard YAML to HTML."""
     spec = parse_dashboard(yaml_str)
     return translate_dashboard(spec, theme or _default_theme(), chart_specs=chart_specs)
+
+
+def _inner_sheet_style(html: str, sheet_name: str) -> str:
+    """Extract the style attribute of the inner div id="sheet-{name}"."""
+    m = re.search(rf'id="sheet-{re.escape(sheet_name)}" style="([^"]+)"', html)
+    assert m is not None, f"inner sheet div for '{sheet_name}' not found"
+    return m.group(1)
+
+
+def _outer_wrapper_style(html: str, sheet_name: str) -> str:
+    """Extract the outer wrapper div style for a sheet (the div immediately
+    wrapping id="sheet-{name}")."""
+    m = re.search(rf'<div style="([^"]+)"><div id="sheet-{re.escape(sheet_name)}"', html)
+    assert m is not None, f"outer wrapper for '{sheet_name}' not found"
+    return m.group(1)
+
+
+def _inner_text_style(html: str, content: str) -> str:
+    """Extract the style attribute of the block div directly wrapping a text node.
+
+    This is the ellipsis "holder" in the <flex-center><holder>{text}</holder></flex-center>
+    structure — the innermost div that actually contains the text node.
+    """
+    m = re.search(rf'style="([^"]+)">{re.escape(content)}</div>', html)
+    assert m is not None, f"inner text div for {content!r} not found"
+    return m.group(1)
+
+
+def _text_flex_parent_style(html: str, content: str) -> str:
+    """Extract the style of the flex-centering div that wraps the text holder.
+
+    Structure: <div FLEX-CENTER><div HOLDER>{content}</div></div>
+    """
+    m = re.search(rf'<div style="([^"]+)"><div style="[^"]*">{re.escape(content)}</div>', html)
+    assert m is not None, f"flex-centering parent for {content!r} not found"
+    return m.group(1)
 
 
 # ─── Style Resolution: Cascade ──────────────────────────────────────
@@ -852,16 +893,10 @@ root:
         spec = specs["sheet-plain"]
         assert spec.get("config", {}).get("background") == "transparent"
 
-    def test_faceted_chart_fits_cell_width_to_container(self):
-        """A faceted chart with fit: fill should get per-cell pixel width on
-        the inner spec, calculated from the container width and column count.
-
-        Vega-Lite doesn't support width:"container" for compound specs, and
-        top-level width sets the per-cell size, not total.  So cell width
-        must be derived: (container - padding*2 - spacing*(cols-1)) / cols.
-
-        Hot-fix: height is left to Vega (row count is data-dependent).
-        TODO: revisit with a proper facet sizing strategy.
+    def test_faceted_chart_routed_to_browser_fit(self):
+        """A faceted chart with fit: fill is sized in the browser: it is emitted
+        UNSIZED and routed through compoundFit.fit with its solved content box
+        (the browser applies the per-cell width). Height stays data-dependent.
         """
         import json
         import re
@@ -888,20 +923,112 @@ root:
             },
         )
 
-        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
-        specs = json.loads(m.group(1))
+        specs = json.loads(re.search(r"const specs = ({.*?});", html, re.DOTALL).group(1))
         spec = specs["sheet-faceted"]
-        # Width should be on the inner spec (per-cell), not top-level
-        assert "width" not in spec, "top-level width should not be set for faceted specs"
-        inner = spec["spec"]
-        assert isinstance(inner["width"], int)
-        # content_dims=(780,580) [solver subtracts padding=10 from 800x600]
-        # cell = (780 - 20) / 2 = 380  (20 = default facet spacing)
-        assert inner["width"] == 380
-        # No padding transferred to Vega spec — padding is CSS on outer wrapper
-        assert "padding" not in spec
-        # config.padding zeroed out
+        # Python does NOT size the cell — the browser does.
+        assert "width" not in spec
+        assert "width" not in spec["spec"]
+        # Routed with its solved content box (780x580 from 800x600 minus padding 10).
+        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        assert targets["sheet-faceted"] == {"width": 780, "height": 580}
+        # config.padding still zeroed out
         assert spec.get("config", {}).get("padding") == 0
+
+    def test_faceted_chart_emitted_unsized_both_axes(self):
+        """The browser owns facet sizing on BOTH axes (KAN-294): Python emits the
+        facet spec with no width/height on the spec or its inner spec, and records
+        the full solved content box for the browser to fill."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: faceted
+      fit: fill
+      padding: 10
+""",
+            chart_specs={
+                "faceted": {
+                    "facet": {"field": "region", "type": "nominal"},
+                    "columns": 2,
+                    "spec": {"mark": "bar", "encoding": {}},
+                }
+            },
+        )
+
+        specs = json.loads(re.search(r"const specs = ({.*?});", html, re.DOTALL).group(1))
+        spec = specs["sheet-faceted"]
+        assert "width" not in spec and "height" not in spec
+        assert "width" not in spec["spec"] and "height" not in spec["spec"]
+        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        assert targets["sheet-faceted"] == {"width": 780, "height": 580}
+
+    def test_faceted_chart_routes_for_fit_height(self):
+        """A faceted chart with fit: height now routes to the browser sizer too
+        (KAN-294 sizes height); previously facet only routed for width/fill."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: faceted
+      fit: height
+      padding: 10
+""",
+            chart_specs={
+                "faceted": {
+                    "facet": {"field": "region", "type": "nominal"},
+                    "columns": 2,
+                    "spec": {"mark": "bar", "encoding": {}},
+                }
+            },
+        )
+
+        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        assert targets["sheet-faceted"] == {"width": 780, "height": 580}
+
+    def test_rowcol_facet_routed(self):
+        """A row/column/grid facet is emitted unsized and routed with its solved
+        box; the grid shape is resolved in the browser from the bound data."""
+        import json
+        import re
+
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: faceted
+      fit: fill
+      padding: 10
+""",
+            chart_specs={
+                "faceted": {
+                    "facet": {"row": {"field": "category", "type": "nominal"}},
+                    "spec": {"mark": "bar", "encoding": {}},
+                }
+            },
+        )
+
+        specs = json.loads(re.search(r"const specs = ({.*?});", html, re.DOTALL).group(1))
+        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        assert targets["sheet-faceted"] == {"width": 780, "height": 580}
+        assert "height" not in specs["sheet-faceted"]["spec"]
 
     def test_no_fit_chart_keeps_original_dimensions(self):
         """A chart without fit should keep its authored width/height untouched."""
@@ -1235,13 +1362,14 @@ root:
         # Outer div has overflow:hidden and box-sizing:border-box even without padding
         inline_styles = re.findall(r'style="([^"]+)"', html)
         assert any("box-sizing: border-box" in s for s in inline_styles)
-        # Inner div contains the text
+        # Inner flex-centering div wraps a block holder that contains the text
         m = re.search(
             r'<div style="[^"]*box-sizing: border-box[^"]*">'
-            r'<div style="[^"]*">No padding here</div></div>',
+            r'<div style="[^"]*">'
+            r'<div style="[^"]*">No padding here</div></div></div>',
             html,
         )
-        assert m is not None, "Expected outer+inner div structure around text"
+        assert m is not None, "Expected outer+flex+holder div structure around text"
 
     def test_no_fit_sheet_padding_stays_css(self):
         """Non-fitted sheet with padding uses div-in-div; Vega config.padding zeroed."""
@@ -1340,8 +1468,9 @@ root:
         assert "box-sizing: border-box" in html
         assert "Child" in html
 
-    def test_faceted_chart_cell_width_uses_content_dims(self):
-        """Faceted chart with fit:fill uses content_dims (already padding-subtracted)."""
+    def test_faceted_chart_fit_target_uses_content_dims(self):
+        """Faceted chart with fit:fill is routed to the browser sizer with its
+        content_dims box (already padding-subtracted by the solver)."""
         import json
         import re
 
@@ -1365,15 +1494,9 @@ root:
                 }
             },
         )
-        m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
-        specs = json.loads(m.group(1))
-        spec = specs["sheet-faceted"]
-        assert "padding" not in spec
-        inner = spec["spec"]
-        assert isinstance(inner["width"], int)
+        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
         # content_dims is (780, 580) [800-2*10, 600-2*10]
-        # cell = (780 - 20) / 2 = 380
-        assert inner["width"] == 380
+        assert targets["sheet-faceted"] == {"width": 780, "height": 580}
 
     def test_asymmetric_padding_on_wrapper(self):
         """Asymmetric padding renders as CSS shorthand on the wrapper; no Vega padding."""
@@ -1590,3 +1713,642 @@ root:
         )
         json_area = html.split("const specs = ")[1].split("Object.entries")[0]
         assert "</script>" not in json_area
+
+
+class TestSheetInnerOverflow:
+    """KAN-292: clipping/scroll lives on the inner content div so the clip
+    boundary is the content box (inside padding), not the padding box."""
+
+    def test_inner_div_overflow_hidden_default(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: s1
+      padding: 24
+""",
+            chart_specs={"s1": {"mark": "bar"}},
+        )
+        inner = _inner_sheet_style(html, "s1")
+        assert "overflow: hidden" in inner
+        assert "position: relative" in inner
+        assert "width: 100%" in inner
+        assert "height: 100%" in inner
+
+    def test_container_inner_div_clips_overflow(self):
+        """Non-sheet/text wrappers (container/image/blank) clip at the content
+        box: the outer wrapper no longer carries overflow, so the inner content
+        div must, or child content bleeds past the component boundary."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        padding: 20
+        contains:
+          - text: "Child"
+""")
+        m = re.search(r'<div style="[^"]*padding: 20px[^"]*"><div style="([^"]+)">', html)
+        assert m is not None, "container outer+inner div structure not found"
+        assert "overflow: hidden" in m.group(1)
+
+    def test_padding_preserved_on_outer_wrapper(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: s1
+      padding: 24
+""",
+            chart_specs={"s1": {"mark": "bar"}},
+        )
+        outer = _outer_wrapper_style(html, "s1")
+        assert "padding: 24px" in outer
+        assert "box-sizing: border-box" in outer
+
+    def test_outer_wrapper_no_overflow_when_no_fit(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: s1
+      padding: 24
+""",
+            chart_specs={"s1": {"mark": "bar"}},
+        )
+        outer = _outer_wrapper_style(html, "s1")
+        assert "overflow" not in outer
+
+    def test_fit_width_scroll_on_inner_div(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: wide
+      fit: width
+      padding: 24
+""",
+            chart_specs={"wide": {"mark": "bar"}},
+        )
+        inner = _inner_sheet_style(html, "wide")
+        assert "overflow-y: auto" in inner
+        assert "overflow: hidden" not in inner
+        outer = _outer_wrapper_style(html, "wide")
+        assert "overflow-y" not in outer
+        assert "padding: 24px" in outer
+
+    def test_fit_height_scroll_on_inner_div(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: tall
+      fit: height
+      padding: 24
+""",
+            chart_specs={"tall": {"mark": "line"}},
+        )
+        inner = _inner_sheet_style(html, "tall")
+        assert "overflow-x: auto" in inner
+        assert "overflow: hidden" not in inner
+        outer = _outer_wrapper_style(html, "tall")
+        assert "overflow-x" not in outer
+
+    def test_fit_fill_clips_on_inner_div(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: full
+      fit: fill
+      padding: 24
+""",
+            chart_specs={"full": {"mark": "area"}},
+        )
+        inner = _inner_sheet_style(html, "full")
+        assert "overflow: hidden" in inner
+        outer = _outer_wrapper_style(html, "full")
+        assert "overflow" not in outer
+
+    def test_non_sheet_inner_styles_unchanged(self):
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Hello"
+""",
+            chart_specs={},
+        )
+        # Text inner div keeps overflow:hidden and the KAN-293 flex centering
+        # (no position:relative leaked from the sheet branch).  The KAN-295
+        # ellipsis clipping lives on the nested block holder, not the flex div.
+        assert (
+            "width: 100%; height: 100%; overflow: hidden; "
+            "display: flex; flex-direction: column; justify-content: center" in html
+        )
+        assert "overflow: hidden; text-overflow: ellipsis; white-space: nowrap" in html
+
+
+class TestTextVerticalCentering:
+    """KAN-293: text content is vertically centered within its box so small and
+    large text presets sit on the same vertical center (not top-aligned)."""
+
+    def test_text_inner_div_vertically_centers(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Hello"
+""")
+        inner = _text_flex_parent_style(html, "Hello")
+        assert "display: flex" in inner
+        assert "flex-direction: column" in inner
+        assert "justify-content: center" in inner
+
+    def test_text_inner_div_keeps_overflow_and_size(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Clip me"
+""")
+        # Sizing + clip on the flex-centering div; the ellipsis clip on the holder.
+        inner = _text_flex_parent_style(html, "Clip me")
+        assert "overflow: hidden" in inner
+        assert "width: 100%" in inner
+        assert "height: 100%" in inner
+        assert "overflow: hidden" in _inner_text_style(html, "Clip me")
+
+    def test_sheet_inner_div_not_centered(self):
+        """Sheets must NOT get text flex-centering — only their fit-aware overflow."""
+        html = _translate(
+            """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: s1
+      fit: fill
+""",
+            chart_specs={"s1": {"mark": "bar"}},
+        )
+        inner = _inner_sheet_style(html, "s1")
+        assert "display: flex" not in inner
+        assert "position: relative" in inner
+
+    def test_image_inner_not_centered(self):
+        """Images keep object-fit:contain sizing — no flex centering injected."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: "logo.png"
+      alt: "Logo"
+""")
+        assert "object-fit: contain" in html
+        m = re.search(r'<img src="logo.png"[^>]*style="([^"]+)"', html)
+        assert m is not None
+        assert "justify-content: center" not in m.group(1)
+
+    def test_link_in_horizontal_centers_anchor(self):
+        """A link in a horizontal bar uses inline-flex + align-items:center so the
+        <a> is vertically centered alongside centered text (KAN-293)."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        height: 60
+        contains:
+          - text: "Title"
+          - link: "Nav"
+            href: "/about"
+""")
+        m = re.search(r'<div style="([^"]+)"><a href="/about"', html)
+        assert m is not None, "outer wrapper around link <a> not found"
+        outer = m.group(1)
+        assert "display: inline-flex" in outer
+        assert "align-items: center" in outer
+
+    def test_button_in_vertical_centers_anchor(self):
+        """A button placed in a vertical container flex-centers its <a> so a fixed
+        box height (e.g. a sidebar nav item) centers the label vertically."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - button: "Menu"
+      href: "/x"
+      height: 40
+""")
+        m = re.search(r'<div style="([^"]+)"><a href="/x"', html)
+        assert m is not None, "outer wrapper around button <a> not found"
+        outer = m.group(1)
+        assert "display: flex" in outer
+        assert "align-items: center" in outer
+
+
+# ─── Text Overflow (KAN-295) ────────────────────────────────────────
+
+
+class TestTextOverflow:
+    """Text boxes clip with an ellipsis instead of silently swallowing content."""
+
+    _LONG_TEXT = "A very long string that would overflow its fixed-size box"
+
+    def test_text_inner_div_has_ellipsis(self):
+        """Inner text div degrades clipped text with ellipsis + nowrap."""
+        html = _translate(f"""\
+dashboard: "Test"
+canvas: {{ width: 800, height: 600 }}
+root:
+  orientation: vertical
+  contains:
+    - text: "{self._LONG_TEXT}"
+      width: 120
+      height: 40
+""")
+        style = _inner_text_style(html, self._LONG_TEXT)
+        assert "overflow: hidden" in style
+        assert "text-overflow: ellipsis" in style
+        assert "white-space: nowrap" in style
+
+    def test_text_inner_div_keeps_flex_centering(self):
+        """The ellipsis change is additive — KAN-293 vertical centering is kept."""
+        html = _translate(f"""\
+dashboard: "Test"
+canvas: {{ width: 800, height: 600 }}
+root:
+  orientation: vertical
+  contains:
+    - text: "{self._LONG_TEXT}"
+      width: 120
+      height: 40
+""")
+        style = _text_flex_parent_style(html, self._LONG_TEXT)
+        assert "display: flex" in style
+        assert "flex-direction: column" in style
+        assert "justify-content: center" in style
+
+    def test_text_no_explicit_size_gets_ellipsis(self):
+        """Ellipsis default applies regardless of explicit width/height."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Auto sized"
+""")
+        style = _inner_text_style(html, "Auto sized")
+        assert "text-overflow: ellipsis" in style
+        assert "white-space: nowrap" in style
+
+    def test_text_ellipsis_holder_is_block_not_flex(self):
+        """KAN-295/KAN-293: the ellipsis lives on a block child, not the
+        flex-centering parent — text-overflow:ellipsis is inert on a flex
+        container, so it must not be co-located with display:flex."""
+        html = _translate(f"""\
+dashboard: "Test"
+canvas: {{ width: 800, height: 600 }}
+root:
+  orientation: vertical
+  contains:
+    - text: "{self._LONG_TEXT}"
+      width: 120
+      height: 40
+""")
+        holder = _inner_text_style(html, self._LONG_TEXT)
+        assert "text-overflow: ellipsis" in holder
+        assert "display: flex" not in holder  # ellipsis only renders on a block box
+        parent = _text_flex_parent_style(html, self._LONG_TEXT)
+        assert "display: flex" in parent
+        assert "justify-content: center" in parent
+        assert "text-overflow" not in parent  # inert here; must live on the holder
+
+    def test_non_text_leaf_no_ellipsis(self):
+        """Only the text branch changes — sheet inner divs get no text-overflow."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: chart_a
+""")
+        style = _inner_sheet_style(html, "chart_a")
+        assert "text-overflow" not in style
+        assert "white-space" not in style
+
+
+# ─── Gap Warning Consolidation (KAN-295) ────────────────────────────
+
+
+class TestGapWarningConsolidation:
+    """Gap-overflow is warned exactly once, by the solver (single owner)."""
+
+    def test_gap_overflow_warns_once(self):
+        """Gap alone exceeding the box warns once (solver), not twice."""
+        yaml_str = """\
+dashboard: "Test"
+canvas: { width: 200, height: 200 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        gap: 300
+        contains:
+          - text: "A"
+          - text: "B"
+"""
+        with pytest.warns(UserWarning) as record:
+            _translate(yaml_str)
+        gap_warnings = [w for w in record if "exceeds available space" in str(w.message)]
+        assert len(gap_warnings) == 1  # solver only
+        # old renderer message is gone
+        assert not any("does not fit in container" in str(w.message) for w in record)
+
+    def test_gap_fits_no_warning(self):
+        """A fitting gap produces no gap-overflow warning from either layer."""
+        yaml_str = """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        gap: 16
+        contains:
+          - text: "A"
+          - text: "B"
+"""
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            _translate(yaml_str)
+        assert not any("available space" in str(w.message) for w in record)
+        assert not any("does not fit in container" in str(w.message) for w in record)
+
+    def test_vertical_gap_overflow_warns_once_and_renders_spacer(self):
+        """Vertical gap overflow warns once; spacer divs are still emitted."""
+        yaml_str = """\
+dashboard: "Test"
+canvas: { width: 200, height: 200 }
+root:
+  orientation: vertical
+  gap: 300
+  contains:
+    - text: "A"
+    - text: "B"
+"""
+        with pytest.warns(UserWarning) as record:
+            html = _translate(yaml_str)
+        gap_warnings = [w for w in record if "exceeds available space" in str(w.message)]
+        assert len(gap_warnings) == 1
+        # Removing the warning must not remove spacer rendering.
+        assert '<div style="height: 300px;"></div>' in html
+
+    def test_single_child_large_gap_no_warning(self):
+        """A single child means total_gap=0, so no gap warning fires."""
+        yaml_str = """\
+dashboard: "Test"
+canvas: { width: 200, height: 200 }
+root:
+  orientation: vertical
+  gap: 300
+  contains:
+    - text: "Only"
+"""
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter("always")
+            _translate(yaml_str)
+        assert not any("available space" in str(w.message) for w in record)
+        assert not any("does not fit in container" in str(w.message) for w in record)
+
+
+# ─── Concat (stacked multi-measure) sizing — KAN-291 ──────────────
+
+
+def _concat_sheet_yaml(fit=None):
+    """Dashboard YAML with a single stacked sheet named 'stacked'.
+
+    canvas 800x600, padding 10 -> solver content_dims = (780, 580).
+    """
+    fit_str = f"      fit: {fit}\n" if fit else ""
+    return (
+        'dashboard: "Test"\n'
+        "canvas: { width: 800, height: 600 }\n"
+        "root:\n"
+        "  orientation: vertical\n"
+        "  contains:\n"
+        "    - sheet: charts/stacked.yaml\n"
+        "      name: stacked\n"
+        f"{fit_str}"
+        "      padding: 10\n"
+    )
+
+
+def _vconcat_spec():
+    """Two measures on rows -> vconcat; x-axis shown only on the last panel."""
+    return {
+        "vconcat": [
+            {
+                "mark": "bar",
+                "encoding": {
+                    "x": {"field": "order_date", "type": "temporal", "axis": None},
+                    "y": {"field": "revenue", "type": "quantitative"},
+                },
+            },
+            {
+                "mark": "bar",
+                "encoding": {
+                    "x": {"field": "order_date", "type": "temporal"},
+                    "y": {"field": "profit", "type": "quantitative"},
+                },
+            },
+        ],
+        "spacing": 10,
+        "bounds": "flush",
+    }
+
+
+def _hconcat_spec():
+    """Two measures on cols -> hconcat; y-axis shown only on the first panel."""
+    return {
+        "hconcat": [
+            {
+                "mark": "bar",
+                "encoding": {
+                    "y": {"field": "category", "type": "nominal"},
+                    "x": {"field": "revenue", "type": "quantitative"},
+                },
+            },
+            {
+                "mark": "bar",
+                "encoding": {
+                    "y": {"field": "category", "type": "nominal", "axis": None},
+                    "x": {"field": "profit", "type": "quantitative"},
+                },
+            },
+        ],
+        "spacing": 10,
+        "bounds": "flush",
+    }
+
+
+def _specs_from_html(html):
+    import json
+
+    m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+    assert m is not None, "vegaEmbed specs block not found"
+    return json.loads(m.group(1))
+
+
+class TestCompoundFitWiring:
+    """Compound (stacked multi-measure) specs are sized in the BROWSER (KAN-291).
+
+    Python no longer computes per-panel pixels — it emits the compound spec
+    unsized and hands compoundFit the solved content box, which measures axis/
+    title extents in the DOM and sizes the panels. These tests assert that
+    wiring; the pure sizing math is unit-tested in compound_fit.test.js and the
+    rendered result is verified manually via PNG.
+    """
+
+    def _fit_targets(self, html):
+        import json
+
+        m = re.search(r"const fitTargets = ({.*?});", html, re.DOTALL)
+        return json.loads(m.group(1)) if m else {}
+
+    def test_vconcat_routed_to_browser_fit(self):
+        html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": _vconcat_spec()})
+        spec = _specs_from_html(html)["sheet-stacked"]
+        panels = spec["vconcat"]
+        # Python does NOT size the panels — the browser does.
+        for panel in panels:
+            assert "width" not in panel and "height" not in panel
+        assert "width" not in spec and "height" not in spec
+        # The solved content box (canvas 800x600, padding 10 -> 780x580) is the target.
+        assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}
+        # Flush bounds + emitted spacing are preserved for the browser sizer.
+        assert spec["bounds"] == "flush"
+        assert spec["spacing"] == 10
+        # The browser sizer is inlined and invoked.
+        assert "compoundFit" in html
+        assert "compoundFit.fit(" in html
+
+    def test_hconcat_routed_to_browser_fit(self):
+        # The SAME path handles the swapped orientation (no orientation-specific
+        # Python heuristic) — this is the regression the rewrite fixes.
+        html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": _hconcat_spec()})
+        spec = _specs_from_html(html)["sheet-stacked"]
+        for panel in spec["hconcat"]:
+            assert "width" not in panel and "height" not in panel
+        assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}
+
+    def test_fit_target_used_for_any_fit_mode(self):
+        # width/height/fill all hand the box to the browser sizer.
+        for mode in ("width", "height", "fill"):
+            html = _translate(
+                _concat_sheet_yaml(fit=mode), chart_specs={"stacked": _vconcat_spec()}
+            )
+            assert "sheet-stacked" in self._fit_targets(html)
+
+    def test_concat_without_fit_not_routed(self):
+        # No fit mode -> no target; falls through to a plain vegaEmbed, unsized.
+        html = _translate(_concat_sheet_yaml(fit=None), chart_specs={"stacked": _vconcat_spec()})
+        assert self._fit_targets(html) == {}
+        panels = _specs_from_html(html)["sheet-stacked"]["vconcat"]
+        assert all("width" not in p and "height" not in p for p in panels)
+
+    def test_fit_js_inlined_only_when_a_concat_needs_it(self):
+        # A single-view (non-compound) sheet doesn't pull in the browser sizer.
+        single = {"mark": "bar", "encoding": {"x": {"field": "a"}, "y": {"field": "b"}}}
+        html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": single})
+        assert self._fit_targets(html) == {}
+        assert "compoundFit" not in html
+
+    def test_single_view_uses_container_sizing(self):
+        single = {"mark": "bar", "encoding": {"x": {"field": "a"}, "y": {"field": "b"}}}
+        html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": single})
+        spec = _specs_from_html(html)["sheet-stacked"]
+        assert spec["width"] == "container"
+        assert spec["height"] == "container"
+        assert spec["autosize"] == {"type": "fit"}
+
+    def test_facet_routed_to_browser_fit(self):
+        facet_spec = {
+            "facet": {"field": "region", "type": "nominal"},
+            "columns": 2,
+            "spec": {"mark": "bar", "encoding": {}},
+        }
+        html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": facet_spec})
+        spec = _specs_from_html(html)["sheet-stacked"]
+        # facet is sized in the browser on both axes (KAN-294): routed with its box,
+        # NOT sized in Python (neither the spec nor its inner spec).
+        assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}
+        assert "width" not in spec.get("spec", {}) and "height" not in spec.get("spec", {})
+        assert "width" not in spec and "height" not in spec
+
+    def test_repeat_routed_to_browser_fit(self):
+        repeat_spec = {
+            "repeat": {"row": ["a", "b"]},
+            "spec": {"mark": "bar", "encoding": {}},
+        }
+        html = _translate(_concat_sheet_yaml(fit="width"), chart_specs={"stacked": repeat_spec})
+        spec = _specs_from_html(html)["sheet-stacked"]
+        assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}
+        assert "width" not in spec.get("spec", {})
+        assert "width" not in spec
+
+    def test_facet_routed_for_fit_height(self):
+        # KAN-294: facet is now sized on both axes, so a height-only fit routes it
+        # to the browser sizer too (previously facet was width-only and skipped).
+        facet_spec = {
+            "facet": {"field": "region", "type": "nominal"},
+            "columns": 2,
+            "spec": {"mark": "bar", "encoding": {}},
+        }
+        html = _translate(_concat_sheet_yaml(fit="height"), chart_specs={"stacked": facet_spec})
+        assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}

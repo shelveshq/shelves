@@ -332,7 +332,7 @@ class TestLabelCompilation:
         assert vl["mark"] == "bar"
         assert "layer" not in vl
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 1
         assert labels[0] == {
             "markName": "mark_0",
@@ -348,7 +348,7 @@ class TestLabelCompilation:
     def test_bar_horizontal(self):
         vl = compile_fixture("label_bar_horizontal.yaml")
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert labels[0]["field"] == "revenue"
         assert labels[0]["format"] == "$,.0f"
         assert labels[0]["horizontal"] is None
@@ -357,7 +357,7 @@ class TestLabelCompilation:
     def test_bar_config_overrides(self):
         vl = compile_fixture("label_bar_config.yaml")
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert labels[0] == {
             "markName": "mark_0",
             "field": "revenue",
@@ -372,7 +372,7 @@ class TestLabelCompilation:
     def test_bar_custom_field(self):
         vl = compile_fixture("label_bar_custom_field.yaml")
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert labels[0]["field"] == "order_count"
         assert labels[0]["type"] == "quantitative"
         assert labels[0]["format"] == ",.0f"
@@ -380,13 +380,13 @@ class TestLabelCompilation:
     def test_bar_match_color(self):
         vl = compile_fixture("label_bar_match_color.yaml")
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert labels[0]["color"] == "match"
 
     def test_line_emits_intent(self):
         vl = compile_fixture("label_line.yaml")
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 1
         assert labels[0]["markName"] == "mark_0"
         assert labels[0]["field"] == "revenue"
@@ -432,7 +432,7 @@ class TestLabelCompilation:
         from shelves.translator.translate import translate_chart
 
         vl = translate_chart(spec, models_dir=MODELS_DIR)
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert labels[0]["vertical"] == "top"
         assert labels[0]["horizontal"] == "right"
 
@@ -447,7 +447,7 @@ class TestLabelCompilation:
         assert vl["vconcat"][0]["name"] == "mark_0"
         assert vl["vconcat"][1]["name"] == "mark_1"
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 2
         assert labels[0] == {
             "markName": "mark_0",
@@ -482,7 +482,7 @@ class TestLabelCompilation:
         assert vl["vconcat"][0]["name"] == "mark_0"
         assert "name" not in vl["vconcat"][1]
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 1
         assert labels[0]["markName"] == "mark_0"
         assert labels[0]["field"] == "revenue"
@@ -494,7 +494,7 @@ class TestLabelCompilation:
         assert "repeat" not in vl
         assert len(vl["vconcat"]) == 2
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 2
         assert labels[0]["field"] == "revenue"
         assert labels[0]["format"] == "$,.0f"
@@ -512,7 +512,7 @@ class TestLabelCompilation:
         assert vl["layer"][0]["name"] == "mark_0"
         assert vl["layer"][1]["name"] == "mark_1"
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 2
         assert labels[0]["markName"] == "mark_0"
         assert labels[0]["field"] == "revenue"
@@ -554,7 +554,7 @@ class TestLabelCompilation:
 
         assert vl["vconcat"][1]["name"] == "mark_2"
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 3
         assert labels[0]["field"] == "revenue"
         assert labels[1]["field"] == "arpu"
@@ -583,7 +583,7 @@ class TestLabelCompilation:
 
         vl = translate_chart(spec, models_dir=MODELS_DIR)
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert {lbl["markName"] for lbl in labels} == {"mark_0"}
         assert labels[0]["field"] == "revenue"
         # The suppressed layer still gets a name, just no intent referencing it.
@@ -611,7 +611,7 @@ class TestLabelCompilation:
 
         assert "transform" in vl  # filter survived
         assert vl["name"] == "mark_0"
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 1
         assert labels[0]["markName"] == "mark_0"
         assert labels[0]["field"] == "revenue"
@@ -629,7 +629,7 @@ class TestPointMarkLabels:
         assert vl["mark"] == "circle"
         assert vl["name"] == "mark_0"
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 1
         assert labels[0] == {
             "markName": "mark_0",
@@ -645,7 +645,7 @@ class TestPointMarkLabels:
     def test_circle_custom_field(self):
         vl = compile_fixture("label_scatter_field.yaml")
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 1
         assert labels[0] == {
             "markName": "mark_0",
@@ -664,7 +664,7 @@ class TestPointMarkLabels:
         assert vl["mark"] == "point"
         assert vl["name"] == "mark_0"
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 1
         assert labels[0]["field"] == "order_count"
         assert labels[0]["markName"] == "mark_0"
@@ -675,7 +675,7 @@ class TestPointMarkLabels:
         assert vl["mark"] == "tick"
         assert vl["name"] == "mark_0"
 
-        labels = vl["usermeta"]["charter"]["labels"]
+        labels = vl["usermeta"]["shelves"]["labels"]
         assert len(labels) == 1
         assert labels[0] == {
             "markName": "mark_0",

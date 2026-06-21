@@ -542,40 +542,79 @@ class TestCrossAxis:
         assert tree.children[0].outer_height == 800
 
     def test_explicit_cross_axis_px(self):
-        tree = _solve(
-            _simple_dashboard(
-                orientation="horizontal",
-                contains_yaml="""\
+        # Tableau model: a cross-axis height in a horizontal container is ignored;
+        # the child fills the full cross axis.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tree = _solve(
+                _simple_dashboard(
+                    orientation="horizontal",
+                    contains_yaml="""\
     - sheet: charts/a.yaml
       width: 500
       height: 300""",
+                )
             )
-        )
-        assert tree.children[0].outer_height == 300
+        assert tree.children[0].outer_height == 800
 
     def test_explicit_cross_axis_percentage(self):
+        # Cross-axis percentage is ignored too; the child stretches to fill.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tree = _solve(
+                _simple_dashboard(
+                    orientation="horizontal",
+                    contains_yaml="""\
+    - sheet: charts/a.yaml
+      width: 500
+      height: "50%\"""",
+                )
+            )
+        assert tree.children[0].outer_height == 800
+
+    def test_vertical_cross_axis(self):
+        # In a vertical container, width is the cross axis and is ignored;
+        # height: 200 is the main-axis size and is irrelevant here.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            tree = _solve(
+                _simple_dashboard(
+                    orientation="vertical",
+                    contains_yaml="""\
+    - sheet: charts/a.yaml
+      height: 200
+      width: 600""",
+                )
+            )
+        assert tree.children[0].outer_width == 1000
+
+    def test_cross_axis_stretch_minus_margins(self):
+        # Cross-axis stretch fills cross_content minus the child's cross-axis margins.
         tree = _solve(
             _simple_dashboard(
                 orientation="horizontal",
                 contains_yaml="""\
     - sheet: charts/a.yaml
       width: 500
-      height: "50%\"""",
+      margin: 20""",
             )
         )
-        assert tree.children[0].outer_height == 400
+        assert tree.children[0].outer_height == 760  # 800 - 20 - 20
 
-    def test_vertical_cross_axis(self):
-        tree = _solve(
-            _simple_dashboard(
-                orientation="vertical",
-                contains_yaml="""\
+    def test_cross_axis_size_ignored_warns(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _solve(
+                _simple_dashboard(
+                    orientation="horizontal",
+                    contains_yaml="""\
     - sheet: charts/a.yaml
-      height: 200
-      width: 600""",
+      width: 500
+      height: 300""",
+                )
             )
-        )
-        assert tree.children[0].outer_width == 600
+            warning_msgs = [str(x.message).lower() for x in w]
+            assert any("cross-axis" in msg and "height" in msg for msg in warning_msgs)
 
 
 # ─── Nested Containers ──────────────────────────────────────────────
@@ -1073,7 +1112,9 @@ root:
         nav = header.children[3]
 
         assert logo.outer_width == 120
-        assert logo.outer_height == 28
+        # Tableau model: the image's cross-axis `height: 28` is ignored; it fills
+        # the 56px header height. (`width: 120` is the main-axis size and is honored.)
+        assert logo.outer_height == 56
         assert nav.outer_width == 140
         assert nav.content_width == 108  # 140 - 32
         assert nav.content_height == 44  # 56 - 12

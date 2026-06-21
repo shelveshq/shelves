@@ -9,21 +9,68 @@ doc describes compile-then-patch only.
 ## Files
 
 - `to_html.py` — builds the standalone HTML page (used by the `render` and
-  `dev` CLIs). Inlines `charter_patch.js` and calls `vegaEmbed(..., {patch})`.
-- `charter_patch.js` — **the single source of truth** for browser-side label
-  rendering (`window.charterPatch`). Read fresh on every render via
-  `load_charter_patch_js()`.
+  `dev` CLIs). Inlines `label_patch.js` and calls `vegaEmbed(..., {patch})`.
+  Also exposes `load_compound_fit_js()`.
+- `label_patch.js` — **the single source of truth** for browser-side label
+  rendering (`window.labelPatch`). Read fresh on every render via
+  `load_label_patch_js()`.
+- `compound_fit.js` — browser-side sizer for **compound** Vega-Lite specs
+  (`window.compoundFit`). See "Compound-spec sizing" below.
+
+## Compound-spec sizing (compound_fit.js)
+
+Compound specs (`vconcat`/`hconcat`/facet/repeat) don't support
+`width/height:"container"`, so they can't responsively fit a box. Estimating the
+per-panel pixels in Python is brittle — it needs the rendered size of axes and
+titles, which depends on real text metrics we cannot measure without a browser
+(swapping a stacked chart between `vconcat` and `hconcat` broke the old Python
+heuristic: a y-axis reserves *width*, an x-axis reserves *height*, and each panel
+also has a cross-axis measure axis).
+
+So `compound_fit.js` measures in the browser, same split as the label patch —
+**Python owns intent (emit the compound spec + the solved target box); JS owns
+mechanics (measure + size)**:
+
+1. `layout.wrap_html_page` emits the compound spec **unsized** (it keeps the
+   compiler's `bounds:"flush"` + `spacing`) and records the sheet's solved
+   `content_dims` in a `fitTargets` map, then calls `compoundFit.fit('#id', spec,
+   box, opts)`.
+2. `compoundFit.fit` does a **two-pass measure → resize → re-render**: render with
+   a probe cell size, read `view.scenegraph().root.bounds` for the *real* total
+   size, derive the "chrome" (axes + title + spacing, invariant to cell size),
+   compute even cell sizes via the pure `computeGridFit`, then re-embed exactly.
+
+`computeGridFit`/`solveAxis` are **pure** (no DOM): concat is a degenerate grid
+(`vconcat`=rows×1, `hconcat`=1×cols), and facet/repeat pass their real `rows×cols`
+— the facet grid is counted in JS from the bound `data.values` (`facetGrid`), the
+repeat grid from its array lengths (`repeatGrid`). The same `withCellSizes` then
+sizes either the concat panel list or the facet/repeat inner `spec.spec`. When a
+facet spec carries no bound data the grid can't be counted, so `fit` degrades to
+the width-only `fitFacet` fallback.
+
+Bounds differ by kind. Concat uses `bounds:"flush"` (emitted by
+`patterns/stacked.py`) so its header-less panels pack tightly and uniformly.
+Facet/repeat use `bounds:"full"` instead: each cell has a header drawn *above* it,
+and under `"flush"` the inter-row spacing reserves no room for it, so a row's
+headers overlap the cells of the row above (the collapsed-row-gap bug). `"full"`
+reserves each cell's header/axis in the layout, turning the proportionally-reduced
+spacing into a clean gap. The chrome math is unchanged either way (the header is
+size-invariant and cancels out of `chromeH = total − gridPlot`).
+
+Reused like the patch: `compound_fit.js` is a plain global script, read fresh per
+render, inlined by `wrap_html_page` (which serves both the CLI dashboard HTML and
+the studio, whose preview renders that HTML in an `iframe.srcdoc`).
 
 ## The three render paths share ONE patch file
 
-Labels render in the browser, not Python. The same `charter_patch.js` must reach
+Labels render in the browser, not Python. The same `label_patch.js` must reach
 all three pipelines or they drift:
 
 | Path | How it gets the patch |
 |---|---|
 | `render` CLI | `to_html.py` inlines the file |
 | `dev` CLI | same `render_html()` |
-| **studio** | `server.py` serves it at `GET /charter-patch.js`; `static/js/preview.js` passes `patch: window.charterPatch` to vegaEmbed |
+| **studio** | `server.py` serves it at `GET /label-patch.js`; `static/js/preview.js` passes `patch: window.labelPatch` to vegaEmbed |
 
 If you change labels, **none** of these may go stale:
 - It is authored as a plain global script (not an ES module) so it works both
@@ -36,7 +83,7 @@ If you change labels, **none** of these may go stale:
 
 ## How labels work
 
-Python emits **intent** in `usermeta.charter.labels` (one descriptor per
+Python emits **intent** in `usermeta.shelves.labels` (one descriptor per
 labelable mark, with `markName`, `field`, `format`, `vertical`/`horizontal`
 side, `size`, `color`). The JS patch reads the intent, finds the named mark in
 the **compiled Vega** scenegraph, and inserts a sibling `text` mark. There are
@@ -142,7 +189,7 @@ is surprising in ways that have repeatedly broken labels:
      source (`<scale>_hr`) computing the field extent, exposes
      `<scale>_dmax`/`_dmin` signals, and sets `scale.domainMax`/`domainMin` to
      a signal adding `factor * span`. The factors live in the `HEADROOM`
-     constant at the top of `charter_patch.js` (default 0.12 horizontal, 0.10
+     constant at the top of `label_patch.js` (default 0.12 horizontal, 0.10
      vertical) — tweak there.
    It only touches **top-level linear scales** whose domain data is also
    top-level (concat/grouped keep both top-level; true faceting nests them and
@@ -151,22 +198,25 @@ is surprising in ways that have repeatedly broken labels:
    rounds the expanded endpoint further outward — that is expected (more room,
    never less), so assertions on the new domain must use inequalities.
 
-## Debugging the patch: render to PNG and LOOK
+## Verifying browser-rendered output (labels and sizing)
 
 Python tests cannot see browser output, and the Vega **scenegraph `item.bounds`
 are group-local in faceted layouts** — they will lie to you (bars and labels can
 appear stacked at y≈0 when they actually render distributed). Do not trust a
-scene walk for position. The reliable harness:
+scene walk for position. Verify in a **real browser** and look:
 
-1. `compile_chart(...)` → write the VL spec (give panels fixed `width`/`height`;
-   `'container'` sizing has no DOM in node and collapses facets).
-2. `npx -p vega-lite@6 -p vega vl2vg spec.json > vg.json` (VL → Vega).
-3. In node: load `vg.json`, run `charterPatch` (set `globalThis.window` then
-   `new Function(fs.readFileSync('charter_patch.js'))()`), then
-   `new vega.View(vega.parse(vg), {renderer:'canvas'})` → `view.toCanvas()` →
-   write a PNG (needs the `canvas` package). **Read the PNG and look at it.**
-4. To locate where labels land, temporarily paint them red/large in a copy of
-   the patch.
+- **Labels / single charts:** `python -m shelves.cli.render <chart>.yaml
+  --data ...` (or `shelves.cli.dev` for live reload) → open the HTML in a
+  browser and screenshot. To locate where labels land, temporarily paint them
+  red/large in a copy of the patch.
+- **Dashboards / compound sizing:** `python -m shelves.cli.render <dashboard>.yaml`
+  (or the studio preview, which renders the same HTML in an `iframe.srcdoc`) →
+  screenshot. Check both `vconcat` and `hconcat` (swap a stacked chart's
+  `rows`/`cols`): even cells, no axis/title clipping, fits the canvas.
 
-PNG ground truth is what caught every bug above after scenegraph inspection
-sent us in circles.
+There is **no node/canvas PNG harness** — it is intentionally avoided to keep the
+repo free of node/npm dependencies. The only JS that runs under node is the pure
+sizing math in `compound_fit.js`, exercised by **`node --test
+shelves/render/compound_fit.test.js`** (node's built-in runner, zero deps). DOM
+measurement in `compoundFit.fit` is browser-only and is checked by the manual
+screenshots above.

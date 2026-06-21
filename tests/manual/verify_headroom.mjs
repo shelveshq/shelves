@@ -4,7 +4,7 @@
 //   1. Build a compiled-Vega file for a fixture (see steps below).
 //   2. node verify_headroom.mjs <vg.json> <scaleName> <factor> <max|min>
 //
-// It injects sample data (max revenue = 1000), runs charterPatch, then prints
+// It injects sample data (max revenue = 1000), runs labelPatch, then prints
 // the resolved scale domain BEFORE and AFTER the patch and PASS/FAIL against
 // the expected expansion. Requires `vega` (npm i vega@5 in a scratch dir).
 import fs from 'fs';
@@ -14,10 +14,10 @@ const [, , vgPath, scaleName, factorStr, dir] = process.argv;
 const factor = parseFloat(factorStr);
 const extendMax = dir === 'max';
 
-// Load charter_patch.js as a global script (same trick the PNG harness uses).
+// Load label_patch.js as a global script (same trick the PNG harness uses).
 globalThis.window = globalThis;
 new Function(
-  fs.readFileSync(new URL('../../shelves/render/charter_patch.js', import.meta.url), 'utf8')
+  fs.readFileSync(new URL('../../shelves/render/label_patch.js', import.meta.url), 'utf8')
 )();
 
 const SAMPLE = [
@@ -39,7 +39,7 @@ async function domainOf(spec, name) {
 
 const raw = JSON.parse(fs.readFileSync(vgPath, 'utf8'));
 const before = await domainOf(withData(raw), scaleName);
-const patched = window.charterPatch(withData(raw)); // patch mutates+returns
+const patched = window.labelPatch(withData(raw)); // patch mutates+returns
 const after = await domainOf(patched, scaleName);
 
 const rawExtent = 1000; // max revenue in SAMPLE

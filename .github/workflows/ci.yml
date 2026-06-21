@@ -47,3 +47,13 @@ jobs:
 
       - name: Pyright
         run: pyright shelves
+
+  js-test:
+    # Pure sizing math for the browser-side compound sizer (charter_fit.js).
+    # Uses node's built-in test runner — no package.json, no npm install.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JS math unit tests
+        run: node --test shelves/render/*.test.js

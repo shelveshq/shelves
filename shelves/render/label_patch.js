@@ -1,10 +1,10 @@
-// charter_patch.js — single source of truth for compile-then-patch labels.
+// label_patch.js — single source of truth for compile-then-patch labels.
 //
 // Canonical browser-side label renderer shared by every rendering pipeline:
 //   - shelves/render/to_html.py inlines this file into standalone HTML
 //     (used by the `render` and `dev` CLIs).
-//   - shelves/studio serves this file verbatim at /charter-patch.js and the
-//     studio preview passes window.charterPatch to vegaEmbed.
+//   - shelves/studio serves this file verbatim at /label-patch.js and the
+//     studio preview passes window.labelPatch to vegaEmbed.
 //
 // Authored as a plain (non-module) global script on purpose: it must work both
 // when inlined into a file:// HTML page and when loaded via <script src> in the
@@ -258,8 +258,8 @@
     }
   }
 
-  function charterPatch(vgSpec) {
-    const labels = vgSpec.usermeta?.charter?.labels;
+  function labelPatch(vgSpec) {
+    const labels = vgSpec.usermeta?.shelves?.labels;
     if (!labels || labels.length === 0) return vgSpec;
 
     for (const intent of labels) {
@@ -411,5 +411,5 @@
     return vgSpec;
   }
 
-  global.charterPatch = charterPatch;
+  global.labelPatch = labelPatch;
 })(typeof window !== 'undefined' ? window : globalThis);

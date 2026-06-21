@@ -70,8 +70,10 @@ class TestStackedPanels:
         # Bottom panel: shared x shown with full axis
         assert panels[1]["encoding"]["x"]["title"] == "Week"
         assert panels[1]["encoding"]["x"]["axis"]["format"] == "%b %d"
-        # Spacing added
+        # Spacing added; flush bounds keep inter-panel gaps uniform (plot-to-plot,
+        # not bounding-box-to-bounding-box) — see _compile_concat (KAN-291).
         assert vl["spacing"] == 10
+        assert vl["bounds"] == "flush"
 
     def test_repeat_degrades_to_vconcat_with_axis_hiding(self):
         """KAN-232: same-mark repeat degrades to vconcat when axis hiding is active (default)."""

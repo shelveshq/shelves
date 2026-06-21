@@ -30,6 +30,11 @@ from shelves.translator.layout_flatten import flatten_dashboard
 from shelves.translator.layout_solver import ResolvedNode, solve_layout
 from shelves.translator.layout_styles import RenderContext, resolve_inner_styles, resolve_styles
 
+# Block holder that carries the ellipsis clipping for text (KAN-295).  Kept off
+# the flex-centering inner div because text-overflow:ellipsis is inert on a flex
+# container.  Static, escape-safe CSS.
+_TEXT_HOLDER_STYLE = "overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
+
 
 def translate_dashboard(
     dashboard: DashboardSpec,
@@ -77,24 +82,9 @@ def _render_children(
     child_htmls = [render_node(c, ctx, parent_orientation=orientation) for c in node.children]
 
     if gap and len(child_htmls) > 1:
-        if orientation == "horizontal":
-            children_total = sum(c.outer_width for c in node.children)
-            available = node.content_width
-        else:
-            children_total = sum(c.outer_height for c in node.children)
-            available = node.content_height
-        total_gap = gap * (len(child_htmls) - 1)
-
-        if children_total + total_gap > available:
-            import warnings
-
-            warnings.warn(
-                f"Gap of {gap}px ({total_gap}px total) does not fit in container "
-                f"'{node.name or 'root'}': children use {children_total}px, "
-                f"content area is {available}px",
-                stacklevel=2,
-            )
-
+        # Gap-overflow is warned by the solver (the single owner of layout
+        # invariants); by render time it has already shrunk children to fit, so
+        # a renderer-side check would only duplicate that warning (KAN-295).
         if orientation == "horizontal":
             spacer = f'<div style="display: inline-block; width: {gap}px; height: 1px;"></div>'
         else:
@@ -158,7 +148,16 @@ def _render_sheet(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
 
 def _render_text(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
     escaped_content = html.escape(node.component.content)  # type: ignore[union-attr]
-    return f'<div style="{safe_outer}"><div style="{safe_inner}">{escaped_content}</div></div>'
+    # The inner div (safe_inner) flex-centers the text vertically (KAN-293).
+    # text-overflow:ellipsis is inert on a flex container, so the ellipsis
+    # clipping (KAN-295) lives on a block holder div nested inside it.  With the
+    # flex column's default align-items:stretch the holder spans the full width,
+    # so the ellipsis clips and the outer div's text-align is preserved.
+    return (
+        f'<div style="{safe_outer}"><div style="{safe_inner}">'
+        f'<div style="{_TEXT_HOLDER_STYLE}">{escaped_content}</div>'
+        f"</div></div>"
+    )
 
 
 def _render_button_link(
@@ -239,7 +238,10 @@ def render_node(
     )
     safe_outer = html.escape(outer_css, quote=True)
 
-    inner_css = "" if isinstance(defn, RootComponent) else resolve_inner_styles(defn, ctx)
+    inner_fit = defn.fit if isinstance(defn, SheetComponent) else None
+    inner_css = (
+        "" if isinstance(defn, RootComponent) else resolve_inner_styles(defn, ctx, fit=inner_fit)
+    )
     safe_inner = html.escape(inner_css, quote=True)
 
     renderer = _RENDERERS.get(type(defn))
@@ -255,46 +257,6 @@ def _is_compound_spec(spec: dict) -> bool:
     single-view and layered specs do.
     """
     return any(k in spec for k in ("facet", "hconcat", "vconcat", "concat", "repeat"))
-
-
-# Vega-Lite's default gap between facet cells.
-_VL_FACET_SPACING_DEFAULT = 20
-
-
-def _fit_compound_width(spec: dict, container_width: int, padding: int | dict[str, int]) -> None:
-    """Hot-fix: calculate per-cell width for faceted specs so the chart
-    fits horizontally in its container.
-
-    Vega-Lite compound specs don't support width:"container".  For faceted
-    specs we know `columns` at compile time, so we can derive the per-cell
-    width.  Height is left to Vega's default because the number of rows
-    depends on the data (unknown at layout time).
-
-    TODO: revisit with a proper facet sizing strategy.
-    """
-    columns = spec.get("columns", 1)
-    spacing = _VL_FACET_SPACING_DEFAULT
-    # Check for user-specified spacing in config
-    cfg = spec.get("config", {})
-    facet_cfg = cfg.get("facet", {})
-    if isinstance(facet_cfg.get("spacing"), (int, float)):
-        spacing = facet_cfg["spacing"]
-
-    if isinstance(padding, dict):
-        h_pad = padding.get("left", 0) + padding.get("right", 0)
-    else:
-        h_pad = int(padding) * 2
-    available = container_width - h_pad
-    cell_width = max(1, (available - spacing * (columns - 1)) // columns)
-
-    # Set width on the inner spec (cell-level), not top-level
-    if "spec" in spec:
-        inner = dict(spec["spec"])
-        inner["width"] = cell_width
-        spec["spec"] = inner
-    else:
-        # Non-facet compound (concat/repeat) — best-effort top-level
-        spec["width"] = cell_width
 
 
 def wrap_html_page(
@@ -314,25 +276,35 @@ def wrap_html_page(
     body_font = theme.layout.font.family.body
 
     # Build vegaEmbed script
+    fit_js = ""
     script_lines = []
     if chart_specs:
         # Serialize specs, applying fit modes and show_title
         specs_obj = {}
+        # sheet id -> {width, height}: compound specs are sized in the browser.
+        # The sizer measures real axis/title extents in the DOM and fits the spec
+        # to this solved box — concat (KAN-291) and facet/repeat grids (KAN-294).
+        fit_targets: dict[str, dict[str, int]] = {}
         for sheet_name, spec in chart_specs.items():
             modified_spec = dict(spec)
             fit = fit_modes.get(sheet_name)
+            sheet_id = f"sheet-{sheet_name}"
+
+            # show_title: false → null the title before any sizing.
+            if show_titles.get(sheet_name) is False:
+                modified_spec["title"] = None
 
             compound = _is_compound_spec(modified_spec)
             dims = content_dims.get(sheet_name)
 
             if compound and fit and dims:
-                # Hot-fix: compound specs don't support width:"container".
-                # content_dims already has padding subtracted by the solver,
-                # so pass padding=0.
-                cw, _ch = dims
-                if fit in ("width", "fill"):
-                    _fit_compound_width(modified_spec, cw, 0)
-            else:
+                # Every compound shape is sized in the browser now: concat (KAN-291)
+                # and facet/repeat grids (KAN-294). The sizer measures real chrome
+                # and fills the solved box in both axes, so route every compound
+                # sheet regardless of which axis `fit` names.
+                cw, ch = dims
+                fit_targets[sheet_id] = {"width": cw, "height": ch}
+            elif not compound:
                 uses_container = False
                 if fit in ("width", "fill"):
                     modified_spec["width"] = "container"
@@ -351,20 +323,38 @@ def wrap_html_page(
             cfg["padding"] = 0
             cfg["background"] = "transparent"
 
-            # show_title: false → null out the title
-            if show_titles.get(sheet_name) is False:
-                modified_spec["title"] = None
-            specs_obj[f"sheet-{sheet_name}"] = modified_spec
+            specs_obj[sheet_id] = modified_spec
 
         specs_json = json.dumps(specs_obj, indent=2).replace("</", r"<\/")
         script_lines.append(f"    const specs = {specs_json};")
-        script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
-        script_lines.append(
-            "      vegaEmbed(`#${id}`, spec, { actions: false }).catch(console.error);"
-        )
-        script_lines.append("    });")
+
+        if fit_targets:
+            # Compound concat sheets need the browser sizer: inline it and route
+            # those ids through compoundFit.fit; everything else stays a plain embed.
+            from shelves.render.to_html import load_compound_fit_js
+
+            fit_js = load_compound_fit_js()
+            fit_json = json.dumps(fit_targets).replace("</", r"<\/")
+            script_lines.append(f"    const fitTargets = {fit_json};")
+            script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
+            script_lines.append("      const box = fitTargets[id];")
+            script_lines.append("      if (box && window.compoundFit) {")
+            script_lines.append("        compoundFit.fit(`#${id}`, spec, box, { actions: false });")
+            script_lines.append("      } else {")
+            script_lines.append(
+                "        vegaEmbed(`#${id}`, spec, { actions: false }).catch(console.error);"
+            )
+            script_lines.append("      }")
+            script_lines.append("    });")
+        else:
+            script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
+            script_lines.append(
+                "      vegaEmbed(`#${id}`, spec, { actions: false }).catch(console.error);"
+            )
+            script_lines.append("    });")
 
     script_block = "\n".join(script_lines)
+    fit_block = f"  <script>\n{fit_js}\n  </script>\n" if fit_js else ""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -382,7 +372,7 @@ def wrap_html_page(
 </head>
 <body>
   {body_html}
-  <script>
+{fit_block}  <script>
 {script_block}
   </script>
 </body>
