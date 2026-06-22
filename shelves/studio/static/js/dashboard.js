@@ -4,8 +4,13 @@
 import { state, updateStatusBar } from './state.js';
 import { highlightJson, showErrorOverlay, hideErrorOverlay, renderPreviewHeader } from './preview.js';
 
-const CANVAS_WIDTH = 1440;
-const CANVAS_HEIGHT = 900;
+const DEFAULT_CANVAS_W = 1440;
+const DEFAULT_CANVAS_H = 900;
+
+// Declared canvas size of the current dashboard (KAN-298). Updated from each
+// compile result; falls back to the defaults for error/empty results.
+let canvasW = DEFAULT_CANVAS_W;
+let canvasH = DEFAULT_CANVAS_H;
 
 const elPreview          = document.getElementById('preview');
 const elJsonView         = document.getElementById('json-view');
@@ -66,6 +71,14 @@ function renderDashboardPreview(result) {
 
   hideErrorOverlay();
   elDashboardPreview.style.display = 'flex';
+
+  // Pin the iframe to the dashboard's DECLARED canvas size (KAN-298). Falls
+  // back to defaults when the result omits canvas (error results).
+  canvasW = result.canvas?.width  ?? DEFAULT_CANVAS_W;
+  canvasH = result.canvas?.height ?? DEFAULT_CANVAS_H;
+  elDashboardIframe.style.width  = `${canvasW}px`;
+  elDashboardIframe.style.height = `${canvasH}px`;
+
   elDashboardIframe.removeAttribute('srcdoc');
   void elDashboardIframe.offsetHeight;
   elDashboardIframe.srcdoc = result.html;
@@ -84,7 +97,7 @@ function scaleDashboardIframe() {
   } else if (dashboardZoom === '50') {
     scale = 0.5;
   } else {
-    scale = Math.min(availW / CANVAS_WIDTH, availH / CANVAS_HEIGHT);
+    scale = Math.min(availW / canvasW, availH / canvasH);
   }
   elDashboardIframe.style.transform = `scale(${scale})`;
 }
