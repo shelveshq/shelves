@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from shelves.schema.chart_schema import ChartSpec, LabelConfig, LabelSpec
+from shelves.schema.chart_schema import (
+    ChartSpec,
+    ColorFieldMapping,
+    LabelConfig,
+    LabelSpec,
+)
 from shelves.schema.field_types import FieldTypeResolver
 
 
@@ -83,6 +88,14 @@ def resolve_measure_field(
         return spec.rows
     if isinstance(spec.cols, str) and resolver.is_measure(spec.cols):
         return spec.cols
+    # Heatmap case: both shelves are band fields and the measure rides on color.
+    # Checked before the band-field fallback so a heatmap labels its colour
+    # measure; bar/stacked charts hit the measure branches above and never reach
+    # here (KAN-307).
+    if isinstance(spec.color, ColorFieldMapping) and resolver.is_measure(spec.color.field):
+        return spec.color.field
+    if isinstance(spec.color, str) and resolver.is_measure(spec.color):
+        return spec.color
     if isinstance(spec.rows, str):
         return spec.rows
     if isinstance(spec.cols, str):

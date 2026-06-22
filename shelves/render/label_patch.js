@@ -18,6 +18,13 @@
     vertical: 0.1, // room above a vertical bar's top (label on top)
   };
 
+  // Heatmap label fit gate: estimate rendered text width as
+  //   charCount * (fontSize * HEATMAP_CHAR_WIDTH_RATIO) + 2*HEATMAP_PADDING
+  // and hide (opacity 0) any value wider than its cell's x band. No real font
+  // metrics exist outside the browser, so this errs toward hiding (never overflow).
+  const HEATMAP_CHAR_WIDTH_RATIO = 0.6;
+  const HEATMAP_PADDING = 6; // px each side
+
   function clone(o) {
     return JSON.parse(JSON.stringify(o));
   }
@@ -258,6 +265,57 @@
     }
   }
 
+  // ── Heatmap label mark (KAN-307) ───────────────────────────────────────────
+  // A heatmap cell is a rect with two band axes and the measure on color. Place
+  // the value at the band centre on BOTH axes (sourced from the DATA, like the
+  // stacked-segment centre path) and hide any value too wide for its cell via a
+  // runtime opacity fit gate — the Vega label transform has no inter-label
+  // spacing knob and culls inconsistently down a column, so it is not used here.
+  function buildHeatmapLabelMark(mark, enc, intent) {
+    // Sourced from the DATA: each datum is the tuple directly, so read the value
+    // as datum['<field>'] (datum.datum[...] is the sourced-from-mark form).
+    const valExpr = "datum['" + intent.field + "']";
+    const textSignal = intent.format
+      ? "format(" + valExpr + ", '" + intent.format + "')"
+      : valExpr;
+
+    // Deterministic centre on both axes (bandCenter adds band: 0.5 to the band ref).
+    const xc = bandCenter(enc, 'x');
+    const yc = bandCenter(enc, 'y');
+
+    // 'match' is meaningless on a heatmap (it would paint the text the same hue
+    // as its cell), so fall back to the static default.
+    const fill = intent.color && intent.color !== 'match' ? intent.color : '#333333';
+
+    // Fit gate: read the x scale name from the mark's own encoding (VL names a
+    // named unit spec's scales '<markName>_x') — never hardcode 'x'.
+    const xScale = enc.x && enc.x.scale;
+    const fontSize = intent.size || 11;
+    const widthExpr =
+      'length(' + textSignal + ') * (' + fontSize + ' * ' + HEATMAP_CHAR_WIDTH_RATIO + ')' +
+      ' + ' + 2 * HEATMAP_PADDING;
+    const opacityExpr = xScale
+      ? '(' + widthExpr + ") <= bandwidth('" + xScale + "') ? 1 : 0"
+      : '1';
+
+    const textEnc = {
+      text: { signal: textSignal },
+      fontSize: { value: fontSize },
+      fill: { value: fill },
+      align: { value: 'center' },
+      baseline: { value: 'middle' },
+      opacity: { signal: opacityExpr },
+    };
+    if (xc) textEnc.x = xc;
+    if (yc) textEnc.y = yc;
+
+    return {
+      type: 'text',
+      from: clone(mark.from),
+      encode: { update: textEnc },
+    };
+  }
+
   function labelPatch(vgSpec) {
     const labels = vgSpec.usermeta?.shelves?.labels;
     if (!labels || labels.length === 0) return vgSpec;
@@ -275,6 +333,16 @@
       // ── Point-family / tick path (KAN-285) ────────────────────────────────
       if (mark.type === 'symbol' || (mark.type === 'rect' && role === 'tick')) {
         insertAfterMark(vgSpec.marks, mark, buildPointLabelMark(mark, enc, intent, path));
+        continue;
+      }
+
+      // ── Heatmap path (KAN-307) ────────────────────────────────────────────
+      // A heatmap cell is a rect with TWO band axes and no measure axis. Detect
+      // by the absence of a measure axis (!enc.x2 && !enc.y2): every bar is VL
+      // stack-encoded with x2/y2, a heatmap cell has neither. Robust whether the
+      // compiled aria role is 'rect' or unset.
+      if (mark.type === 'rect' && !enc.x2 && !enc.y2 && role !== 'tick' && role !== 'bar') {
+        insertAfterMark(vgSpec.marks, mark, buildHeatmapLabelMark(mark, enc, intent));
         continue;
       }
 
