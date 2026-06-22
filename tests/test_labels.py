@@ -331,6 +331,32 @@ class TestLabelHelpers:
         resolver = ModelResolver(model)
         assert resolve_measure_field(spec, resolver) == "revenue"
 
+    def test_resolve_measure_field_color_measure_is_mark_agnostic(self):
+        # The colour-measure branch is NOT gated by mark type: per
+        # render/CLAUDE.md, Python resolves intent mark-agnostically and the JS
+        # patch decides what renders. The earlier test only covers a measure on
+        # rows/cols (which short-circuits before the colour branch); this one
+        # documents that a chart whose ONLY measure rides on colour resolves to
+        # that measure even when the mark is not a heatmap rect.
+        spec = parse_chart(
+            textwrap.dedent("""\
+            sheet: "Test"
+            data: orders
+            cols: product
+            rows: country
+            marks: bar
+            color:
+              field: revenue
+              type: quantitative
+        """)
+        )
+        from shelves.models.loader import load_model
+        from shelves.models.resolver import ModelResolver
+
+        model = load_model("orders", models_dir=MODELS_DIR)
+        resolver = ModelResolver(model)
+        assert resolve_measure_field(spec, resolver) == "revenue"
+
     def test_build_label_intent_defaults(self):
         from shelves.models.loader import load_model
         from shelves.models.resolver import ModelResolver

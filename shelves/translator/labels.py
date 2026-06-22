@@ -88,10 +88,12 @@ def resolve_measure_field(
         return spec.rows
     if isinstance(spec.cols, str) and resolver.is_measure(spec.cols):
         return spec.cols
-    # Heatmap case: both shelves are band fields and the measure rides on color.
-    # Checked before the band-field fallback so a heatmap labels its colour
-    # measure; bar/stacked charts hit the measure branches above and never reach
-    # here (KAN-307).
+    # A measure on color is the heatmap measure. Checked before the band-field
+    # fallback so a heatmap labels its colour measure rather than a band field.
+    # Deliberately NOT gated by mark type — per render/CLAUDE.md, Python emits
+    # intent mark-agnostically and the JS patch decides what renders. The only
+    # non-heatmap chart that reaches here is a degenerate two-band bar, for which
+    # the colour measure is still the most sensible label (KAN-307).
     if isinstance(spec.color, ColorFieldMapping) and resolver.is_measure(spec.color.field):
         return spec.color.field
     if isinstance(spec.color, str) and resolver.is_measure(spec.color):
