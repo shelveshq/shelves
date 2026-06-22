@@ -119,7 +119,13 @@ async def run_dashboard_pipeline(
 
     html = translate_dashboard(spec, theme, chart_specs)
 
-    return {"html": html, "errors": [], "warnings": warnings, "component_tree": component_tree}
+    return {
+        "html": html,
+        "errors": [],
+        "warnings": warnings,
+        "component_tree": component_tree,
+        "canvas": {"width": spec.canvas.width, "height": spec.canvas.height},
+    }
 
 
 def build_component_tree(flat_root: Any) -> list[dict]:

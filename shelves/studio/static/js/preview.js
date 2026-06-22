@@ -8,6 +8,14 @@ const elChartContainer = document.getElementById('chart-container');
 const elJsonView       = document.getElementById('json-view');
 const elErrorOverlay   = document.getElementById('error-overlay');
 
+// Mirror of shelves/translator/layout.py::_is_compound_spec. Compound specs
+// (facet/concat/repeat) ignore width/height:"container", so we render them at
+// natural size and let the card scroll instead of clipping them (KAN-298).
+const COMPOUND_KEYS = ['facet', 'hconcat', 'vconcat', 'concat', 'repeat'];
+function isCompoundSpec(spec) {
+  return COMPOUND_KEYS.some(k => k in spec);
+}
+
 // ─── Preview Header ───────────────────────────────────────
 export function renderPreviewHeader(mode) {
   const header = document.getElementById('preview-header');
@@ -131,18 +139,32 @@ async function renderChart(result) {
   hideErrorOverlay();
   elPreview.style.display = '';
 
-  const containerSpec = Object.assign({}, result.vega_lite_spec, {
-    width: 'container',
-    height: 'container',
-    autosize: { type: 'fit', contains: 'padding' },
-  });
+  const spec = result.vega_lite_spec;
+  const compound = isCompoundSpec(spec);
+  const card = document.getElementById('chart-card');
+
+  // Compound specs render at natural size and SCROLL; single-view/layered
+  // specs fit the container as before. Toggle scroll mode on the card so the
+  // CSS switches between clip-and-fit and scroll-at-natural-size (KAN-298).
+  card.classList.toggle('is-scroll', compound);
+
+  // Single-view specs: fit the container (no scrollbars when they fit).
+  // Compound specs: leave width/height untouched so Vega-Lite renders the
+  // panels at their natural size (container sizing is ignored anyway).
+  const embedSpec = compound
+    ? spec
+    : Object.assign({}, spec, {
+        width: 'container',
+        height: 'container',
+        autosize: { type: 'fit', contains: 'padding' },
+      });
 
   const buf = document.createElement('div');
   buf.style.cssText = 'position:absolute;inset:0;visibility:hidden;';
   elChartContainer.appendChild(buf);
 
   try {
-    const { view } = await window.vegaEmbed(buf, containerSpec, {
+    const { view } = await window.vegaEmbed(buf, embedSpec, {
       actions: false,
       renderer: 'canvas',
       patch: window.labelPatch,
@@ -153,7 +175,9 @@ async function renderChart(result) {
     while (elChartContainer.firstChild !== buf) {
       elChartContainer.removeChild(elChartContainer.firstChild);
     }
-    buf.style.cssText = 'width:100%;height:100%;';
+    // Compound: let the embed take its natural size (CSS handles it). Single:
+    // fill the container as before.
+    buf.style.cssText = compound ? '' : 'width:100%;height:100%;';
     state.vegaView = view;
   } catch (e) {
     buf.remove();

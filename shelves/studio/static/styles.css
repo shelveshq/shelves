@@ -442,6 +442,22 @@ body {
   height: 100%;
 }
 
+/* Scroll mode (KAN-298): compound specs (vconcat/hconcat/concat/repeat/facet)
+   render at natural size; the card scrolls instead of clipping them. */
+#chart-card.is-scroll {
+  overflow: auto;
+}
+#chart-card.is-scroll #chart-container {
+  width: max-content;
+  height: max-content;
+  min-width: 100%;
+  min-height: 100%;
+}
+#chart-card.is-scroll #chart-container .vega-embed {
+  width: auto;
+  height: auto;
+}
+
 /* ─── JSON View ───────────────────────────────────────────── */
 #json-view {
   display: none;
@@ -561,8 +577,7 @@ body {
   position: absolute;
   top: 24px;
   left: 24px;
-  width: 1440px;
-  height: 900px;
+  /* width/height set inline by dashboard.js from the declared canvas (KAN-298) */
   background: #fff;
   border-radius: 2px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
