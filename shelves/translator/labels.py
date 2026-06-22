@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from shelves.schema.chart_schema import ChartSpec, LabelConfig, LabelSpec
+from shelves.schema.chart_schema import (
+    ChartSpec,
+    ColorFieldMapping,
+    LabelConfig,
+    LabelSpec,
+)
 from shelves.schema.field_types import FieldTypeResolver
 
 
@@ -83,6 +88,16 @@ def resolve_measure_field(
         return spec.rows
     if isinstance(spec.cols, str) and resolver.is_measure(spec.cols):
         return spec.cols
+    # A measure on color is the heatmap measure. Checked before the band-field
+    # fallback so a heatmap labels its colour measure rather than a band field.
+    # Deliberately NOT gated by mark type — per render/CLAUDE.md, Python emits
+    # intent mark-agnostically and the JS patch decides what renders. The only
+    # non-heatmap chart that reaches here is a degenerate two-band bar, for which
+    # the colour measure is still the most sensible label (KAN-307).
+    if isinstance(spec.color, ColorFieldMapping) and resolver.is_measure(spec.color.field):
+        return spec.color.field
+    if isinstance(spec.color, str) and resolver.is_measure(spec.color):
+        return spec.color
     if isinstance(spec.rows, str):
         return spec.rows
     if isinstance(spec.cols, str):

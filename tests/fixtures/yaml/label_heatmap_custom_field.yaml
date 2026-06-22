@@ -1,0 +1,10 @@
+sheet: "Revenue Heatmap"
+data: orders
+cols: product
+rows: country
+marks: rect
+color:
+  field: revenue
+  type: quantitative
+label:
+  field: order_count

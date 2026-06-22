@@ -18,8 +18,29 @@
     vertical: 0.1, // room above a vertical bar's top (label on top)
   };
 
+  // Heatmap label fit gate: estimate rendered text width as
+  //   charCount * (fontSize * HEATMAP_CHAR_WIDTH_RATIO) + 2*HEATMAP_PADDING
+  // and hide (opacity 0) any value wider than its cell's x band OR taller (by
+  // fontSize) than its y band. No real font metrics exist outside the browser,
+  // so this errs toward hiding (never overflow into a neighbour).
+  const HEATMAP_CHAR_WIDTH_RATIO = 0.6;
+  const HEATMAP_PADDING = 6; // px each side
+
   function clone(o) {
     return JSON.parse(JSON.stringify(o));
+  }
+
+  // Wrap a value expression in a d3 `format(...)` call when the intent carries a
+  // format string; otherwise emit the bare value. Shared by every mark builder.
+  function textSignalFor(valExpr, format) {
+    return format ? "format(" + valExpr + ", '" + format + "')" : valExpr;
+  }
+
+  // The label fill for STATIC (non-'match') placement: the user's color, or the
+  // default ink when unset or 'match'. 'match' is a sentinel (resolved against a
+  // color scale elsewhere), not a CSS color, so it falls back here.
+  function resolveStaticFill(intent) {
+    return intent.color && intent.color !== 'match' ? intent.color : '#333333';
   }
 
   // Find a named mark and return the chain of ancestor groups leading to it,
@@ -100,9 +121,7 @@
 
   function buildPointLabelMark(mark, enc, intent, path) {
     var seg = "datum.datum['" + intent.field + "']";
-    var textSignal = intent.format
-      ? "format(" + seg + ", '" + intent.format + "')"
-      : seg;
+    var textSignal = textSignalFor(seg, intent.format);
 
     var textEnc = {
       text: { signal: textSignal },
@@ -116,9 +135,7 @@
     if (intent.color === 'match' && colorEnc && colorEnc.field) {
       textEnc.fill = { scale: colorEnc.scale, field: 'datum.' + colorEnc.field };
     } else {
-      textEnc.fill = {
-        value: intent.color && intent.color !== 'match' ? intent.color : '#333333',
-      };
+      textEnc.fill = { value: resolveStaticFill(intent) };
     }
 
     return {
@@ -258,6 +275,67 @@
     }
   }
 
+  // ── Heatmap label mark (KAN-307) ───────────────────────────────────────────
+  // A heatmap cell is a rect with two band axes and the measure on color. Place
+  // the value at the band centre on BOTH axes (sourced from the DATA, like the
+  // stacked-segment centre path) and hide any value too wide for its cell via a
+  // runtime opacity fit gate — the Vega label transform has no inter-label
+  // spacing knob and culls inconsistently down a column, so it is not used here.
+  function buildHeatmapLabelMark(mark, enc, intent) {
+    // Sourced from the DATA: each datum is the tuple directly, so read the value
+    // as datum['<field>'] (datum.datum[...] is the sourced-from-mark form).
+    const valExpr = "datum['" + intent.field + "']";
+    const textSignal = textSignalFor(valExpr, intent.format);
+
+    // Deterministic centre on both axes (bandCenter adds band: 0.5 to the band ref).
+    const xc = bandCenter(enc, 'x');
+    const yc = bandCenter(enc, 'y');
+
+    // 'match' is meaningless on a heatmap (it would paint the text the same hue
+    // as its cell), so fall back to the static default.
+    const fill = resolveStaticFill(intent);
+
+    // Fit gate: read the scale names from the mark's own encoding (VL names a
+    // named unit spec's scales '<markName>_x') — never hardcode 'x'/'y'.
+    const xScale = enc.x && enc.x.scale;
+    const yScale = enc.y && enc.y.scale;
+    const fontSize = intent.size || 11;
+    // Coerce the value to a string before length(): length() on a bare number
+    // does NOT return its digit count, which would silently disable the gate for
+    // an unformatted measure (no model format). '' + (expr) stringifies either a
+    // formatted string or a raw number.
+    const widthExpr =
+      "length('' + (" + textSignal + ')) * (' + fontSize + ' * ' + HEATMAP_CHAR_WIDTH_RATIO + ')' +
+      ' + ' + 2 * HEATMAP_PADDING;
+    // Hide a value that does not fit its cell on EITHER axis: wider than the x
+    // band, or a glyph taller than the y band. Errs toward hiding (never
+    // overflow into a neighbour). Falls back to always-show only when no x scale
+    // name is readable.
+    let opacityExpr = '1';
+    if (xScale) {
+      opacityExpr = '(' + widthExpr + ") <= bandwidth('" + xScale + "')";
+      if (yScale) opacityExpr += ' && ' + fontSize + " <= bandwidth('" + yScale + "')";
+      opacityExpr += ' ? 1 : 0';
+    }
+
+    const textEnc = {
+      text: { signal: textSignal },
+      fontSize: { value: fontSize },
+      fill: { value: fill },
+      align: { value: 'center' },
+      baseline: { value: 'middle' },
+      opacity: { signal: opacityExpr },
+    };
+    if (xc) textEnc.x = xc;
+    if (yc) textEnc.y = yc;
+
+    return {
+      type: 'text',
+      from: clone(mark.from),
+      encode: { update: textEnc },
+    };
+  }
+
   function labelPatch(vgSpec) {
     const labels = vgSpec.usermeta?.shelves?.labels;
     if (!labels || labels.length === 0) return vgSpec;
@@ -275,6 +353,16 @@
       // ── Point-family / tick path (KAN-285) ────────────────────────────────
       if (mark.type === 'symbol' || (mark.type === 'rect' && role === 'tick')) {
         insertAfterMark(vgSpec.marks, mark, buildPointLabelMark(mark, enc, intent, path));
+        continue;
+      }
+
+      // ── Heatmap path (KAN-307) ────────────────────────────────────────────
+      // A heatmap cell is a rect with TWO band axes and no measure axis. Detect
+      // by the absence of a measure axis (!enc.x2 && !enc.y2): every bar is VL
+      // stack-encoded with x2/y2, so this excludes bars; rects with role 'tick'
+      // were already handled (and continued) by the point/tick branch above.
+      if (mark.type === 'rect' && !enc.x2 && !enc.y2) {
+        insertAfterMark(vgSpec.marks, mark, buildHeatmapLabelMark(mark, enc, intent));
         continue;
       }
 
@@ -339,9 +427,7 @@
         : isStacked
           ? tuple + "['" + mField + "'] - " + tuple + "['" + bField + "']"
           : tuple + "['" + (mField || intent.field) + "']";
-      const textSignal = intent.format
-        ? "format(" + seg + ", '" + intent.format + "')"
-        : seg;
+      const textSignal = textSignalFor(seg, intent.format);
 
       const textEnc = {
         text: { signal: textSignal },
@@ -355,9 +441,7 @@
       } else {
         // 'match' is a sentinel, not a CSS color — fall back to the default
         // when there's no color scale to resolve it against.
-        textEnc.fill = {
-          value: intent.color && intent.color !== 'match' ? intent.color : '#333333',
-        };
+        textEnc.fill = { value: resolveStaticFill(intent) };
       }
 
       let textMark;

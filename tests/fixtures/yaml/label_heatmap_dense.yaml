@@ -1,0 +1,9 @@
+sheet: "Revenue Heatmap (dense)"
+data: orders
+cols: country
+rows: product
+marks: rect
+color:
+  field: revenue
+  type: quantitative
+label: true

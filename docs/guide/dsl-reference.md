@@ -567,10 +567,36 @@ Labels are supported on:
 | `bar` | Outside (top/right) by default, or `center` inside the bar/segment. Collision-aware; stacked segments centered deterministically. |
 | `point`, `circle`, `square` | Placed beside each point, sweeping 8 directions around it from your preferred side. Collision-aware — labels in dense clusters are hidden. |
 | `tick` | Same as points — a label is anchored beside each tick. |
+| `rect` (heatmap) | Color measure written centered in each cell. A value that does not fit its cell is hidden rather than overflowing into neighbours. Side hints (`vertical`/`horizontal`) are accepted but ignored — placement is always centered in v1. |
 
 Not yet supported: `line`, `area`, and `arc`/pie marks. A `label` on these mark
 types is currently **silently ignored** (labeling a line at its end point is
 planned separately).
+
+For a **heatmap** (`marks: rect` with two discrete shelves and the measure on
+`color`), `label: true` writes the color measure into each cell:
+
+```yaml
+cols: product
+rows: country
+marks: rect
+color:
+  field: revenue
+  type: quantitative
+label: true
+```
+
+Each cell is labeled with its centered `revenue` value; values too wide for their
+cell are hidden so labels never overflow into neighbouring cells.
+
+> **Orientation is ignored on a heatmap.** `horizontal`/`vertical` side hints
+> (`top`/`bottom`/`left`/`right`) are accepted for schema compatibility but have
+> no effect — every cell label is placed center/center. `field`, `format`, `size`,
+> and `color` all work as usual.
+
+> `color: match` is **not meaningful on a heatmap** — it would paint the text the
+> same hue as its cell. Heatmap labels use a static color (default `#333333`);
+> luminance-based contrast is planned separately.
 
 For points, `vertical`/`horizontal` set the *preferred* starting side
 (`top` is the default); the renderer then sweeps the remaining directions to

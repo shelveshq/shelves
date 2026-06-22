@@ -276,9 +276,18 @@ def wrap_html_page(
     body_font = theme.layout.font.family.body
 
     # Build vegaEmbed script
+    patch_js = ""
     fit_js = ""
     script_lines = []
     if chart_specs:
+        # Inline the browser-side label patch and pass it to every embed so
+        # labels (e.g. heatmap cell values) render in dashboards exactly as they
+        # do on the single-chart render path (to_html.py). Without this, the
+        # label intent in usermeta.shelves.labels is silently dropped (KAN-307).
+        from shelves.render.to_html import load_label_patch_js
+
+        patch_js = load_label_patch_js()
+
         # Serialize specs, applying fit modes and show_title
         specs_obj = {}
         # sheet id -> {width, height}: compound specs are sized in the browser.
@@ -339,21 +348,27 @@ def wrap_html_page(
             script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
             script_lines.append("      const box = fitTargets[id];")
             script_lines.append("      if (box && window.compoundFit) {")
-            script_lines.append("        compoundFit.fit(`#${id}`, spec, box, { actions: false });")
+            script_lines.append(
+                "        compoundFit.fit(`#${id}`, spec, box,"
+                " { actions: false, patch: labelPatch });"
+            )
             script_lines.append("      } else {")
             script_lines.append(
-                "        vegaEmbed(`#${id}`, spec, { actions: false }).catch(console.error);"
+                "        vegaEmbed(`#${id}`, spec, { actions: false, patch: labelPatch })"
+                ".catch(console.error);"
             )
             script_lines.append("      }")
             script_lines.append("    });")
         else:
             script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
             script_lines.append(
-                "      vegaEmbed(`#${id}`, spec, { actions: false }).catch(console.error);"
+                "      vegaEmbed(`#${id}`, spec, { actions: false, patch: labelPatch })"
+                ".catch(console.error);"
             )
             script_lines.append("    });")
 
     script_block = "\n".join(script_lines)
+    patch_block = f"  <script>\n{patch_js}\n  </script>\n" if patch_js else ""
     fit_block = f"  <script>\n{fit_js}\n  </script>\n" if fit_js else ""
 
     return f"""<!DOCTYPE html>
@@ -372,7 +387,7 @@ def wrap_html_page(
 </head>
 <body>
   {body_html}
-{fit_block}  <script>
+{patch_block}{fit_block}  <script>
 {script_block}
   </script>
 </body>
