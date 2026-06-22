@@ -58,6 +58,7 @@ class TestCliArgumentParsing:
                 "/tmp/dashboards",
                 "--models-dir",
                 "/tmp/models",
+                "--reload",
             ]
         )
         assert args.port == 9000
@@ -67,6 +68,7 @@ class TestCliArgumentParsing:
         assert args.charts_dir == "/tmp/charts"
         assert args.dashboards_dir == "/tmp/dashboards"
         assert args.models_dir == "/tmp/models"
+        assert args.reload is True
 
     def test_cli_default_arguments(self):
         """Default values match the spec."""
@@ -79,6 +81,7 @@ class TestCliArgumentParsing:
         assert args.charts_dir is None
         assert args.dashboards_dir is None
         assert args.models_dir is None
+        assert args.reload is False
 
     def test_cli_port_must_be_int(self):
         """Non-integer port raises argparse error."""

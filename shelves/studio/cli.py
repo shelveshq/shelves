@@ -16,10 +16,15 @@ Press Ctrl+C to stop.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import threading
 import webbrowser
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -73,7 +78,36 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Directory containing model YAML files (default: <dir>/models)",
     )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        default=False,
+        help="Auto-reload the server when Shelves source files change (dev mode)",
+    )
     return parser
+
+
+def _app_from_env() -> FastAPI:
+    """uvicorn app factory for ``--reload`` mode.
+
+    The reloader runs the app in a subprocess that re-imports it, so the
+    configuration can't be passed as constructor args — main() stashes it in
+    environment variables before calling ``uvicorn.run(..., reload=True)`` and
+    this factory reads them back out.
+    """
+    from shelves.studio.server import create_app
+
+    def _opt_path(key: str) -> Path | None:
+        val = os.environ.get(key)
+        return Path(val) if val else None
+
+    return create_app(
+        project_dir=Path(os.environ["SHELVES_STUDIO_DIR"]),
+        theme_path=_opt_path("SHELVES_STUDIO_THEME"),
+        models_dir=_opt_path("SHELVES_STUDIO_MODELS_DIR"),
+        charts_dir=_opt_path("SHELVES_STUDIO_CHARTS_DIR"),
+        dashboards_dir=_opt_path("SHELVES_STUDIO_DASHBOARDS_DIR"),
+    )
 
 
 def main() -> None:
@@ -133,7 +167,30 @@ def main() -> None:
         threading.Timer(1.0, webbrowser.open, args=[url]).start()
 
     # uvicorn handles SIGINT/SIGTERM gracefully
-    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    if args.reload:
+        # Reload needs an import string + factory: the reloader re-imports the
+        # app in a worker subprocess, so config travels via env vars (read back
+        # by _app_from_env). Watch the shelves package for .py changes.
+        os.environ["SHELVES_STUDIO_DIR"] = str(project_dir)
+        if theme_path:
+            os.environ["SHELVES_STUDIO_THEME"] = str(theme_path)
+        if models_dir:
+            os.environ["SHELVES_STUDIO_MODELS_DIR"] = str(models_dir)
+        if charts_dir:
+            os.environ["SHELVES_STUDIO_CHARTS_DIR"] = str(charts_dir)
+        if dashboards_dir:
+            os.environ["SHELVES_STUDIO_DASHBOARDS_DIR"] = str(dashboards_dir)
+        uvicorn.run(
+            "shelves.studio.cli:_app_from_env",
+            factory=True,
+            host="127.0.0.1",
+            port=args.port,
+            log_level="warning",
+            reload=True,
+            reload_dirs=[str(Path(__file__).resolve().parents[1])],
+        )
+    else:
+        uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":
