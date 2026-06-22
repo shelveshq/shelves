@@ -2352,3 +2352,43 @@ class TestCompoundFitWiring:
         }
         html = _translate(_concat_sheet_yaml(fit="height"), chart_specs={"stacked": facet_spec})
         assert self._fit_targets(html)["sheet-stacked"] == {"width": 780, "height": 580}
+
+
+# ─── Label patch wiring in dashboards (KAN-307) ────────────────────
+
+
+class TestDashboardLabelPatchWiring:
+    """Dashboards must apply the browser-side label patch like the single-chart
+    render path does, or labels (e.g. heatmap cell values) never appear.
+
+    Bug: wrap_html_page embedded each sheet with vegaEmbed(..., {actions:false})
+    and never inlined label_patch.js nor passed `patch: labelPatch`, so the
+    label intent in usermeta.shelves.labels was silently ignored in dashboards.
+    """
+
+    _DASH = """\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: heat
+      fit: fill
+"""
+
+    def test_label_patch_js_is_inlined(self):
+        html = _translate(self._DASH, chart_specs={"heat": {"mark": "rect", "encoding": {}}})
+        # The patch's global function must be present so `patch: labelPatch` resolves.
+        assert "function labelPatch(" in html
+
+    def test_plain_embed_passes_patch(self):
+        html = _translate(self._DASH, chart_specs={"heat": {"mark": "rect", "encoding": {}}})
+        assert "patch: labelPatch" in html
+
+    def test_compound_embed_passes_patch(self):
+        # Compound sheets route through compoundFit.fit, which forwards embedOpts
+        # to vegaEmbed — the patch must ride along there too.
+        html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": _vconcat_spec()})
+        assert "function labelPatch(" in html
+        assert "patch: labelPatch" in html
