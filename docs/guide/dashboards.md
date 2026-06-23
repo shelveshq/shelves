@@ -409,7 +409,7 @@ Buttons and links for dashboard-to-dashboard navigation. Rendered as `<a>` tags 
 Static images for logos or decorative graphics.
 
 ```yaml
-- image: logo.svg
+- image: assets/png/logo.png    # path under your project's assets/ directory
   alt: "Company Logo"
   height: 40
   width: 120
@@ -417,7 +417,7 @@ Static images for logos or decorative graphics.
 
 | Property | Required | Default | Description |
 |---|---|---|---|
-| *(value)* | Yes | — | Image file path or URL |
+| *(value)* | Yes | — | Image source: a project asset path, external URL, or data URI (see **Image paths** below) |
 | `alt` | No | `""` | Alt text for accessibility (recommended) |
 | `width` | No | `auto` | Outer box width |
 | `height` | No | `auto` | Outer box height |
@@ -426,12 +426,40 @@ Static images for logos or decorative graphics.
 | `style` | No | — | Reference to a shared style |
 | `html` | No | — | Raw CSS escape hatch |
 
-> **Referencing image files.** When you run `shelves-studio`, files under your
-> project's `assets/` directory are served at `/assets/…`, so a dashboard can use
-> a path-based `src` like `image: "assets/png/logo.png"` and it will load in the
-> preview. Override the location with `shelves-studio --assets-dir <path>`. (The
-> standalone `shelves-render` output resolves the same relative path against the
-> output HTML's location.)
+#### Image paths
+
+An image `src` (the value after `image:`) can be one of three things:
+
+**1. A project asset path beginning with `assets/`.** Put image files anywhere
+under your project's `assets/` directory — **including subfolders** — and
+reference them with the `assets/` prefix followed by the path *inside* that
+directory. Subfolders map one-to-one:
+
+| File on disk | `src` to write |
+|---|---|
+| `assets/logo.png` | `assets/logo.png` |
+| `assets/png/logo.png` | `assets/png/logo.png` |
+| `assets/brand/icons/star.svg` | `assets/brand/icons/star.svg` |
+
+`shelves-studio` serves your assets directory at the `/assets/` URL prefix, so
+these load in the live preview. The directory defaults to `<project>/assets`;
+change which folder it points at with `shelves-studio --assets-dir <path>`. The
+`assets/` prefix in the YAML stays the same regardless — only the directory it
+maps to changes, and everything after `assets/` is still the path within that
+directory.
+
+> The `assets/` prefix is required: `image: png/logo.png` (no `assets/`) or a
+> bare `image: logo.png` will **not** resolve in Studio. Write the full path
+> from your assets directory, e.g. `assets/png/logo.png`.
+
+When you render with `shelves-render` instead of Studio, the same relative path
+is resolved by the browser against the output HTML's own location, so keep the
+generated HTML alongside your `assets/` directory.
+
+**2. An external URL** — e.g. `https://example.com/logo.png`.
+
+**3. An inline data URI** — e.g. `data:image/png;base64,iVBORw0KGgo…`. Useful
+for embedding a small image directly in the dashboard with no external file.
 
 ### Blank (spacer)
 
