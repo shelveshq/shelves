@@ -636,6 +636,36 @@ root:
         with pytest.raises((ValueError, ValidationError)):
             parse_dashboard(yaml_str)
 
+
+class TestImageComponent:
+    """KAN-297 Part A: image fit/center booleans."""
+
+    def test_resolve_image_fit_center(self):
+        entry = {"image": "logo.svg", "fit": False, "center": False}
+        _, comp = resolve_child(entry, {})
+        assert comp.type == "image"
+        assert comp.fit is False
+        assert comp.center is False
+
+    def test_image_fit_center_defaults(self):
+        entry = {"image": "logo.svg"}
+        _, comp = resolve_child(entry, {})
+        assert comp.fit is True
+        assert comp.center is False
+
+    def test_invalid_image_fit_raises(self):
+        yaml_str = """\
+dashboard: "Bad Image Fit"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - image: logo.svg
+      fit: sometimes
+"""
+        with pytest.raises((ValueError, ValidationError)):
+            parse_dashboard(yaml_str)
+
     def test_style_ref_not_found_raises(self):
         yaml_str = """\
 dashboard: "Bad Style"

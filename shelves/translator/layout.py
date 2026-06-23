@@ -185,20 +185,40 @@ def _render_button_link(
 
 
 def _render_image(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
+    """Render an <img> in a div-in-div box honoring the fit/center booleans.
+
+    fit=True  -> inner clips; img fills the box with object-fit: contain,
+                 anchored center (center=True) or top-left (center=False).
+    fit=False -> inner scrolls (overflow: auto); img renders at natural size
+                 (center is ignored — natural images sit at the top-left origin).
+    The html escape hatch is appended to the img CSS last so user CSS wins.
+    """
     defn = node.component
-    escaped_src = html.escape(defn.src, quote=True)  # type: ignore[union-attr]
-    escaped_alt = html.escape(defn.alt, quote=True)  # type: ignore[union-attr]
-    img_css = "width: 100%; height: 100%; object-fit: contain"
-    inner_css = resolve_inner_styles(defn, ctx)
-    if inner_css:
-        img_css += "; " + inner_css
-    if defn.html:  # type: ignore[union-attr]
-        img_css += "; " + defn.html  # type: ignore[union-attr]
+    assert isinstance(defn, ImageComponent)
+    escaped_src = html.escape(defn.src, quote=True)
+    escaped_alt = html.escape(defn.alt, quote=True)
+
+    if defn.fit:
+        object_position = "center" if defn.center else "left top"
+        inner_css = "width: 100%; height: 100%; overflow: hidden"
+        img_css = (
+            f"width: 100%; height: 100%; object-fit: contain; object-position: {object_position}"
+        )
+    else:
+        # Natural size; the box scrolls when the image overflows.
+        inner_css = "width: 100%; height: 100%; overflow: auto"
+        img_css = "display: block"
+
+    if defn.html:
+        img_css += "; " + defn.html
+
+    safe_inner_css = html.escape(inner_css, quote=True)
     safe_img_css = html.escape(img_css, quote=True)
     return (
         f'<div style="{safe_outer}">'
-        f'<img src="{escaped_src}" alt="{escaped_alt}"'
-        f' style="{safe_img_css}">'
+        f'<div style="{safe_inner_css}">'
+        f'<img src="{escaped_src}" alt="{escaped_alt}" style="{safe_img_css}">'
+        f"</div>"
         f"</div>"
     )
 
