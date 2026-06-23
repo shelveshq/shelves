@@ -426,6 +426,13 @@ Static images for logos or decorative graphics.
 | `style` | No | — | Reference to a shared style |
 | `html` | No | — | Raw CSS escape hatch |
 
+> **Referencing image files.** When you run `shelves-studio`, files under your
+> project's `assets/` directory are served at `/assets/…`, so a dashboard can use
+> a path-based `src` like `image: "assets/png/logo.png"` and it will load in the
+> preview. Override the location with `shelves-studio --assets-dir <path>`. (The
+> standalone `shelves-render` output resolves the same relative path against the
+> output HTML's location.)
+
 ### Blank (spacer)
 
 Empty div for spacing or decorative dividers. Most spacing should use `gap` on containers — use `blank` for uneven spacing or visual dividers.

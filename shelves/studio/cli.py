@@ -114,6 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Directory containing model YAML files (default: <dir>/models)",
     )
     parser.add_argument(
+        "--assets-dir",
+        default=None,
+        help="Directory of static assets (images, fonts) served at /assets (default: <dir>/assets)",
+    )
+    parser.add_argument(
         "--reload",
         action="store_true",
         default=False,
@@ -142,6 +147,7 @@ def _app_from_env() -> FastAPI:
         models_dir=_opt_path("SHELVES_STUDIO_MODELS_DIR"),
         charts_dir=_opt_path("SHELVES_STUDIO_CHARTS_DIR"),
         dashboards_dir=_opt_path("SHELVES_STUDIO_DASHBOARDS_DIR"),
+        assets_dir=_opt_path("SHELVES_STUDIO_ASSETS_DIR"),
     )
 
 
@@ -175,6 +181,7 @@ def main() -> None:
     models_dir = Path(args.models_dir).resolve() if args.models_dir else None
     charts_dir = Path(args.charts_dir).resolve() if args.charts_dir else None
     dashboards_dir = Path(args.dashboards_dir).resolve() if args.dashboards_dir else None
+    assets_dir = Path(args.assets_dir).resolve() if args.assets_dir else None
 
     # Preflight: fail loudly if the bind host:port is occupied, BEFORE building
     # the app, printing the banner, or scheduling the browser (KAN-261 defect #1).
@@ -195,6 +202,7 @@ def main() -> None:
         models_dir=models_dir,
         charts_dir=charts_dir,
         dashboards_dir=dashboards_dir,
+        assets_dir=assets_dir,
     )
 
     url = _server_url(args.port)
@@ -205,6 +213,7 @@ def main() -> None:
     print(f"  Charts:      {app.state.charts_dir}")
     print(f"  Dashboards:  {app.state.dashboards_dir}")
     print(f"  Models:      {app.state.models_dir}")
+    print(f"  Assets:      {app.state.assets_dir}")
     print(f"  Theme:       {theme_path or 'Default'}")
     print(f"  Preview:     {url}")
     print("  Press Ctrl+C to stop\n")
@@ -227,6 +236,8 @@ def main() -> None:
             os.environ["SHELVES_STUDIO_CHARTS_DIR"] = str(charts_dir)
         if dashboards_dir:
             os.environ["SHELVES_STUDIO_DASHBOARDS_DIR"] = str(dashboards_dir)
+        if assets_dir:
+            os.environ["SHELVES_STUDIO_ASSETS_DIR"] = str(assets_dir)
         uvicorn.run(
             "shelves.studio.cli:_app_from_env",
             factory=True,

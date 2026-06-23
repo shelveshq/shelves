@@ -41,6 +41,7 @@ def create_app(
     models_dir: Path | None = None,
     charts_dir: Path | None = None,
     dashboards_dir: Path | None = None,
+    assets_dir: Path | None = None,
 ) -> FastAPI:
     """
     Create and configure the FastAPI application for Shelves Studio.
@@ -59,6 +60,7 @@ def create_app(
     resolved_models = models_dir or (project_dir / "models")
     resolved_charts = charts_dir or (project_dir / "charts")
     resolved_dashboards = dashboards_dir or (project_dir / "dashboards")
+    resolved_assets = assets_dir or (project_dir / "assets")
 
     lifespan = make_lifespan(project_dir, theme_path, resolved_models, resolved_charts)
 
@@ -70,6 +72,9 @@ def create_app(
     app.state.models_dir = resolved_models
     app.state.charts_dir = resolved_charts
     app.state.dashboards_dir = resolved_dashboards
+    # Stored even when the directory is absent so the startup banner can show the
+    # resolved path; only the StaticFiles mount below is conditional.
+    app.state.assets_dir = resolved_assets
     app.state.manager = ConnectionManager()
     # Per-app random token gating the terminal WS. The token is embedded in
     # the served HTML as a <meta> tag, so same-origin scripts can read it
@@ -146,5 +151,12 @@ def create_app(
 
     # Serve static assets (JS modules, CSS) — must come after explicit routes
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+    # Serve the project's assets so dashboards can reference images by path
+    # (e.g. image: "assets/png/logo.png"). The dashboard preview iframe uses
+    # srcdoc, so relative URLs resolve against this server origin → /assets/….
+    # StaticFiles raises if the directory is missing, so guard with is_dir().
+    if resolved_assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(resolved_assets)), name="assets")
 
     return app
