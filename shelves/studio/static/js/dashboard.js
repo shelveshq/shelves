@@ -15,6 +15,7 @@ let canvasH = DEFAULT_CANVAS_H;
 const elPreview          = document.getElementById('preview');
 const elJsonView         = document.getElementById('json-view');
 const elDashboardPreview = document.getElementById('dashboard-preview');
+const elDashboardStage   = document.getElementById('dashboard-stage');
 const elDashboardIframe  = document.getElementById('dashboard-iframe');
 
 let lastDashboardResult = null;
@@ -99,6 +100,14 @@ function scaleDashboardIframe() {
   } else {
     scale = Math.min(availW / canvasW, availH / canvasH);
   }
+
+  // Size the stage to the SCALED footprint so the pane has real content to
+  // scroll. A CSS transform scales only the iframe's pixels, not its layout
+  // box, and the iframe is position:absolute — without this the pane can
+  // never scroll and the overflow is clipped (KAN-298 addendum).
+  elDashboardStage.style.width  = `${canvasW * scale}px`;
+  elDashboardStage.style.height = `${canvasH * scale}px`;
+
   elDashboardIframe.style.transform = `scale(${scale})`;
 }
 

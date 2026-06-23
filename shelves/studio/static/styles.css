@@ -563,20 +563,30 @@ body {
   width: 100%;
   flex: 1;
   position: relative;
-  overflow: hidden;
+  overflow: auto;            /* scroll the scaled canvas on overflow (KAN-298 addendum) */
   align-items: flex-start;
-  justify-content: center;
+  justify-content: safe center;  /* `safe` keeps the start edge reachable when the stage overflows */
   padding: 24px 24px 40px;
   box-sizing: border-box;
   background: var(--bg-workspace);
+}
+
+/* Sized in JS to the SCALED canvas footprint (canvasW*scale × canvasH*scale)
+   so the pane has real layout content to scroll. The iframe inside is
+   position:absolute + CSS-transform-scaled, which contributes no layout size
+   of its own (KAN-298 addendum). */
+#dashboard-stage {
+  position: relative;
+  flex: 0 0 auto;   /* never let the flex container shrink the stage below its set size */
+  /* width/height set inline by dashboard.js */
 }
 
 #dashboard-iframe {
   border: none;
   transform-origin: top left;
   position: absolute;
-  top: 24px;
-  left: 24px;
+  top: 0;
+  left: 0;
   /* width/height set inline by dashboard.js from the declared canvas (KAN-298) */
   background: #fff;
   border-radius: 2px;
