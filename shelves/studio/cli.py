@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import socket
 import sys
 import threading
 import webbrowser
@@ -25,6 +26,40 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
+
+
+BIND_HOST = "127.0.0.1"
+"""The loopback IP the studio server binds to. Used for the uvicorn host AND the
+advertised/opened URL so the two can never diverge (KAN-261 defect #2). We use
+the IPv4 literal rather than the hostname 'localhost', which on modern macOS
+resolves to IPv6 ::1 first and may hit an unrelated listener (e.g. Docker)."""
+
+
+def _port_in_use(host: str, port: int) -> bool:
+    """Return True if a TCP listener already occupies (host, port).
+
+    Probes by attempting to bind the address. SO_REUSEADDR is set so a socket
+    lingering in TIME_WAIT does not produce a false positive, while an *active*
+    listener still causes bind() to fail (EADDRINUSE) — exactly the condition
+    we want to detect. The probe socket is closed immediately so uvicorn can
+    bind the freed port a moment later.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return True
+        return False
+
+
+def _server_url(port: int) -> str:
+    """The URL to advertise in the banner and open in the browser.
+
+    Built from BIND_HOST so it always matches the host uvicorn binds to
+    (KAN-261 defect #2).
+    """
+    return f"http://{BIND_HOST}:{port}"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -141,6 +176,18 @@ def main() -> None:
     charts_dir = Path(args.charts_dir).resolve() if args.charts_dir else None
     dashboards_dir = Path(args.dashboards_dir).resolve() if args.dashboards_dir else None
 
+    # Preflight: fail loudly if the bind host:port is occupied, BEFORE building
+    # the app, printing the banner, or scheduling the browser (KAN-261 defect #1).
+    if _port_in_use(BIND_HOST, args.port):
+        print(
+            f"Error: Port {args.port} is already in use on {BIND_HOST}.\n"
+            f"  Another process (a Docker container, Vite, or another "
+            f"shelves-studio?) is holding it.\n"
+            f"  Try a different port:  shelves-studio --port {args.port + 1}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     # Build the app
     app = create_app(
         project_dir=project_dir,
@@ -150,7 +197,7 @@ def main() -> None:
         dashboards_dir=dashboards_dir,
     )
 
-    url = f"http://localhost:{args.port}"
+    url = _server_url(args.port)
 
     # Print startup banner (mirrors shelves-dev style)
     print("Shelves Studio")
@@ -183,14 +230,14 @@ def main() -> None:
         uvicorn.run(
             "shelves.studio.cli:_app_from_env",
             factory=True,
-            host="127.0.0.1",
+            host=BIND_HOST,
             port=args.port,
             log_level="warning",
             reload=True,
             reload_dirs=[str(Path(__file__).resolve().parents[1])],
         )
     else:
-        uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+        uvicorn.run(app, host=BIND_HOST, port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":

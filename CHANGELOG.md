@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Studio
+
+- **`shelves-studio` port-collision handling** — the CLI now pre-checks the bind port and exits with a clear "Port N already in use" message *before* printing the startup banner or opening a browser tab, instead of opening a dead tab and then crashing with a bind traceback. The advertised/opened URL now uses the loopback IP `127.0.0.1` (matching the bind host) rather than `localhost`, which on macOS can resolve to IPv6 and hit an unrelated listener such as a Docker container on port 5173. (KAN-261)
+
 ## [0.3.1] - 2026-06-14
 
 ### Packaging
