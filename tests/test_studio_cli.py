@@ -858,3 +858,85 @@ class TestCliValidation:
         assert (
             "not a directory" in result.stderr.lower() or "not a directory" in result.stdout.lower()
         )
+
+
+# ─── Server URL (KAN-261) ────────────────────────────────────────
+
+
+class TestServerUrl:
+    def test_server_url_uses_loopback_ip(self):
+        from shelves.studio.cli import _server_url
+
+        assert _server_url(5173) == "http://127.0.0.1:5173"
+        assert _server_url(8080) == "http://127.0.0.1:8080"
+        assert "localhost" not in _server_url(5173)
+
+
+# ─── Port-in-use probe (KAN-261) ─────────────────────────────────
+
+
+class TestPortInUse:
+    def test_port_in_use_false_when_free(self):
+        import socket
+
+        from shelves.studio.cli import _port_in_use
+
+        # Reserve an OS-assigned port, then release it so it is genuinely free.
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        assert _port_in_use("127.0.0.1", port) is False
+
+    def test_port_in_use_true_when_occupied(self):
+        import socket
+
+        from shelves.studio.cli import _port_in_use
+
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        port = srv.getsockname()[1]
+        try:
+            assert _port_in_use("127.0.0.1", port) is True
+        finally:
+            srv.close()
+
+
+# ─── Port-collision exit (KAN-261) ───────────────────────────────
+
+
+class TestPortCollisionExit:
+    def test_occupied_port_exits_before_banner(self, tmp_path):
+        import socket
+
+        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        port = srv.getsockname()[1]
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "shelves.studio.cli",
+                    "--no-browser",
+                    "--port",
+                    str(port),
+                    "--dir",
+                    str(tmp_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        finally:
+            srv.close()
+
+        # Exits with code 1 (loud failure), not a uvicorn traceback after the banner.
+        assert result.returncode == 1
+        combined = (result.stdout + result.stderr).lower()
+        assert "already in use" in combined
+        assert str(port) in combined
+        # Banner must NOT have printed — the "Preview:" line is the tell.
+        assert "preview:" not in result.stdout.lower()
