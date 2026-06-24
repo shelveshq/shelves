@@ -34,6 +34,12 @@ class TestDevAssetResolve:
     def test_missing_file_returns_none(self, tmp_path):
         assert _resolve_asset_file(tmp_path, "/assets/nope.png") is None
 
+    def test_percent_encoded_filename_is_decoded(self, tmp_path):
+        (tmp_path / "png").mkdir()
+        f = tmp_path / "png" / "my logo.png"
+        f.write_bytes(b"PNG")
+        assert _resolve_asset_file(tmp_path, "/assets/png/my%20logo.png") == f.resolve()
+
     def test_directory_returns_none(self, tmp_path):
         (tmp_path / "png").mkdir()
         assert _resolve_asset_file(tmp_path, "/assets/png") is None

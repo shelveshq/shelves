@@ -25,6 +25,7 @@ import os
 import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
+from urllib.parse import unquote
 
 import yaml as yaml_lib
 from dotenv import load_dotenv
@@ -192,7 +193,9 @@ def _resolve_asset_file(assets_dir: Path, url_path: str) -> Path | None:
     Returns None if the path escapes ``assets_dir`` (traversal) or is not a
     regular file.
     """
-    rel = url_path[len("/assets/") :]
+    # URL-decode so filenames with spaces or non-ASCII chars resolve (the custom
+    # handler bypasses SimpleHTTPRequestHandler.translate_path, which unquotes).
+    rel = unquote(url_path[len("/assets/") :])
     base = assets_dir.resolve()
     candidate = (base / rel).resolve()
     try:
