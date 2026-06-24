@@ -21,7 +21,7 @@ root:
         padding: "24 16"
         gap: 8
         contains:
-          - image: assets/logo_white.svg
+          - image: logo_white.svg
             height: 24
             width: 100
           - blank:

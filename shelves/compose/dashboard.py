@@ -32,6 +32,7 @@ def compose_dashboard(
     data_dir: Path | None = None,
     models_dir: Path | str | None = None,
     no_theme: bool = False,
+    asset_url_prefix: str = "assets/",
 ) -> str:
     """Compose a complete dashboard from a dashboard YAML file.
 
@@ -44,6 +45,9 @@ def compose_dashboard(
                  If None, defaults to the current working directory.
         models_dir: Optional path to models directory.
         no_theme: If True, skip theme merging for charts and layout.
+        asset_url_prefix: URL prefix prepended to relative image srcs (default
+            "assets/"). The render CLI passes a path computed relative to the
+            output HTML's location.
 
     Returns:
         Complete HTML string for the dashboard.
@@ -76,7 +80,7 @@ def compose_dashboard(
             ) from e
         chart_specs[name] = vl
 
-    html = translate_dashboard(spec, theme, chart_specs)
+    html = translate_dashboard(spec, theme, chart_specs, asset_url_prefix=asset_url_prefix)
     return html
 
 

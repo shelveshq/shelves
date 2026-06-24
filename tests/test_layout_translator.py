@@ -238,7 +238,7 @@ root:
     - image: logo.png
       alt: "Company Logo"
 """)
-        assert '<img src="logo.png"' in html
+        assert '<img src="assets/logo.png"' in html
         assert 'alt="Company Logo"' in html
         assert "object-fit: contain" in html
 
@@ -252,7 +252,7 @@ root:
     - image: "img.png?a=1&b=2"
       alt: "test"
 """)
-        assert 'src="img.png?a=1&amp;b=2"' in html
+        assert 'src="assets/img.png?a=1&amp;b=2"' in html
 
     def test_image_alt_escaped(self):
         html = _translate("""\
@@ -1646,6 +1646,90 @@ root:
         assert original_config["axis"] == {"labelFontSize": 12}, "config.axis was mutated"
 
 
+class TestImageAssetPaths:
+    """KAN-308: image src is resolved relative to the assets dir via a URL prefix."""
+
+    def _img_src(self, html: str) -> str:
+        m = re.search(r'<img src="([^"]*)"', html)
+        assert m is not None, "<img> tag not found"
+        return m.group(1)
+
+    def test_relative_src_gets_assets_prefix(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: png/logo.png
+      alt: "Logo"
+""")
+        assert self._img_src(html) == "assets/png/logo.png"
+
+    def test_external_url_passthrough(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: "https://cdn.example.com/logo.png"
+      alt: "Logo"
+""")
+        assert self._img_src(html) == "https://cdn.example.com/logo.png"
+
+    def test_data_uri_passthrough(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: "data:image/png;base64,AAAA"
+      alt: "Logo"
+""")
+        assert self._img_src(html) == "data:image/png;base64,AAAA"
+
+    def test_protocol_relative_passthrough(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: "//cdn.example.com/logo.png"
+      alt: "Logo"
+""")
+        assert self._img_src(html) == "//cdn.example.com/logo.png"
+
+    def test_custom_asset_prefix(self):
+        spec = parse_dashboard("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: png/logo.png
+      alt: "Logo"
+""")
+        html = translate_dashboard(spec, _default_theme(), asset_url_prefix="../assets/")
+        m = re.search(r'<img src="([^"]*)"', html)
+        assert m is not None
+        assert m.group(1) == "../assets/png/logo.png"
+
+    def test_no_leading_slash_in_emitted_relative_src(self):
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: png/logo.png
+      alt: "Logo"
+""")
+        assert not self._img_src(html).startswith("/")
+
+
 class TestImageHtmlEscapeHatch:
     """Bug #2: Image component ignores html escape hatch and style extras."""
 
@@ -2024,7 +2108,7 @@ root:
       alt: "Logo"
 """)
         assert "object-fit: contain" in html
-        m = re.search(r'<img src="logo.png"[^>]*style="([^"]+)"', html)
+        m = re.search(r'<img src="assets/logo.png"[^>]*style="([^"]+)"', html)
         assert m is not None
         assert "justify-content: center" not in m.group(1)
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from collections.abc import Callable
 from typing import Literal
 
@@ -40,9 +41,16 @@ def translate_dashboard(
     dashboard: DashboardSpec,
     theme: ThemeSpec,
     chart_specs: dict[str, dict] | None = None,
+    asset_url_prefix: str = "assets/",
 ) -> str:
-    """Translate a DashboardSpec to a complete HTML page."""
-    ctx = RenderContext(theme=theme)
+    """Translate a DashboardSpec to a complete HTML page.
+
+    `asset_url_prefix` is prepended to relative image srcs so dashboards can
+    reference images relative to the assets directory (e.g. `image: png/x.png`).
+    Studio/dev serve assets at `/assets`, so they pass `"assets/"`; the render
+    CLI passes a path computed relative to the output HTML's location.
+    """
+    ctx = RenderContext(theme=theme, asset_url_prefix=asset_url_prefix)
 
     # Flatten first: resolve all style refs and component refs
     flat_tree = flatten_dashboard(dashboard)
@@ -184,6 +192,24 @@ def _render_button_link(
     )
 
 
+# A src is "external" (emitted verbatim) when it has a URI scheme (http:, data:,
+# …), is protocol-relative (//host/…), or is already an absolute path (/foo).
+# Everything else is treated as relative to the assets directory.
+_EXTERNAL_SRC_RE = re.compile(r"^(?:[a-zA-Z][a-zA-Z0-9+.\-]*:|//|/)")
+
+
+def _resolve_image_src(raw: str, asset_url_prefix: str) -> str:
+    """Resolve an image src against the asset URL prefix.
+
+    Relative srcs (e.g. `png/logo.png`) are interpreted relative to the assets
+    directory and get the prefix prepended. External URLs, protocol-relative
+    URLs, data URIs, and absolute paths pass through unchanged.
+    """
+    if _EXTERNAL_SRC_RE.match(raw):
+        return raw
+    return f"{asset_url_prefix}{raw}"
+
+
 def _render_image(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
     """Render an <img> in a div-in-div box honoring the fit/center booleans.
 
@@ -195,7 +221,7 @@ def _render_image(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
     """
     defn = node.component
     assert isinstance(defn, ImageComponent)
-    escaped_src = html.escape(defn.src, quote=True)
+    escaped_src = html.escape(_resolve_image_src(defn.src, ctx.asset_url_prefix), quote=True)
     escaped_alt = html.escape(defn.alt, quote=True)
 
     if defn.fit:

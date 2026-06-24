@@ -50,6 +50,9 @@ class RenderContext:
     """Carries shared state through the recursive tree walk."""
 
     theme: ThemeSpec
+    # URL prefix prepended to relative image srcs (e.g. "assets/"). Differs per
+    # render pipeline: studio/dev serve at /assets, render computes a relpath.
+    asset_url_prefix: str = "assets/"
     auto_id_counter: int = 0
     sheet_fit_modes: dict[str, str] = field(default_factory=dict)
     sheet_show_titles: dict[str, bool] = field(default_factory=dict)
