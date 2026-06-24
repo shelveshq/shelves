@@ -102,7 +102,7 @@ async def ws_terminal(ws: WebSocket) -> None:
                     {"type": "output", "data": _base64.b64encode(data).decode("ascii")}
                 )
             # Shell exited
-            code = mgr._proc.returncode if mgr._proc else 0
+            code = mgr.returncode
             with contextlib.suppress(Exception):
                 await ws.send_json({"type": "exit", "code": code or 0})
         except Exception:

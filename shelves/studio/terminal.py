@@ -176,5 +176,22 @@ class PtyManager:
         """True if the shell subprocess is still running."""
         return self._proc is not None and self._proc.poll() is None
 
+    @property
+    def returncode(self) -> int | None:
+        """
+        Exit code of the shell subprocess.
+
+        Returns None if the process has not been spawned, has already been
+        closed, or is still running. Returns the integer exit status once the
+        process has terminated.
+
+        Calls poll() to refresh the subprocess status before reading, so the
+        code is accurate even if the caller has not separately observed the
+        exit (e.g. via is_alive).
+        """
+        if self._proc is None:
+            return None
+        return self._proc.poll()
+
 
 __all__ = ["PtyManager"]

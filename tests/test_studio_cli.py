@@ -903,6 +903,57 @@ class TestPtyManagerCancellation:
         asyncio.run(_test())
 
 
+class TestPtyManagerReturncode:
+    """
+    SHE-26: PtyManager exposes a public `returncode` property so callers do
+    not reach into the private `_proc` attribute.
+    """
+
+    def test_returncode_none_while_running(self):
+        from shelves.studio.terminal import PtyManager
+
+        mgr = PtyManager()
+        mgr.spawn()
+        try:
+            assert mgr.is_alive is True
+            assert mgr.returncode is None
+        finally:
+            mgr.close()
+
+    def test_returncode_after_clean_exit(self):
+        import fcntl
+        import os
+
+        from shelves.studio.terminal import PtyManager
+
+        mgr = PtyManager()
+        mgr.spawn()
+        try:
+            mgr.write(b"exit 0\r")
+            # Drain PTY output non-blockingly so the shell isn't blocked on a
+            # full output buffer before it can process the `exit` command.
+            fd = mgr._master_fd
+            assert fd is not None
+            flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+            fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+            for _ in range(200):
+                with contextlib.suppress(OSError):
+                    os.read(fd, 4096)
+                if not mgr.is_alive:
+                    break
+                time.sleep(0.01)
+            assert mgr.is_alive is False
+            assert mgr.returncode == 0
+        finally:
+            mgr.close()
+
+    def test_returncode_no_proc(self):
+        from shelves.studio.terminal import PtyManager
+
+        mgr = PtyManager()
+        assert mgr.returncode is None
+
+
 # ─── Edge Cases ──────────────────────────────────────────────────
 
 
