@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import yaml as yaml_lib
@@ -50,6 +51,10 @@ def main():
         "--models-dir",
         help="Directory containing model YAML files for dashboards",
     )
+    parser.add_argument(
+        "--assets-dir",
+        help="Directory of image assets referenced by dashboards (default: ./assets)",
+    )
     args = parser.parse_args()
 
     # Detect dashboard vs chart YAML
@@ -62,12 +67,29 @@ def main():
         _render_chart(args, yaml_string)
 
 
+def _asset_url_prefix(assets_dir: Path, output_dir: Path) -> str:
+    """URL prefix for image assets in standalone-rendered HTML.
+
+    A relative path (with trailing slash) from the output HTML's directory to
+    the assets directory, e.g. "../assets/", so `<img src>` resolves when the
+    HTML is opened from disk.
+    """
+    rel = Path(os.path.relpath(assets_dir, output_dir)).as_posix()
+    return rel if rel.endswith("/") else rel + "/"
+
+
 def _render_dashboard(args, raw):
     """Render a dashboard YAML file."""
     from shelves.compose.dashboard import compose_dashboard
 
     theme_path = Path(args.theme) if args.theme else None
     theme = load_theme(theme_path) if not args.no_theme else None
+
+    slug = raw["dashboard"].lower().replace(" ", "-")
+    out_path = Path(args.out) if args.out else Path("output") / f"{slug}.html"
+
+    assets_dir = Path(args.assets_dir).resolve() if args.assets_dir else Path("assets").resolve()
+    asset_url_prefix = _asset_url_prefix(assets_dir, out_path.parent.resolve())
 
     html = compose_dashboard(
         dashboard_path=Path(args.yaml_path),
@@ -76,10 +98,9 @@ def _render_dashboard(args, raw):
         data_dir=Path(args.data_dir) if args.data_dir else None,
         models_dir=Path(args.models_dir) if args.models_dir else None,
         no_theme=args.no_theme,
+        asset_url_prefix=asset_url_prefix,
     )
 
-    slug = raw["dashboard"].lower().replace(" ", "-")
-    out_path = Path(args.out) if args.out else Path("output") / f"{slug}.html"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html)
     print(f"Rendered: {out_path}")

@@ -168,9 +168,10 @@ def create_app(
     # Serve static assets (JS modules, CSS) — must come after explicit routes
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
-    # Serve the project's assets so dashboards can reference images by path
-    # (e.g. image: "assets/png/logo.png"). The dashboard preview iframe uses
-    # srcdoc, so relative URLs resolve against this server origin → /assets/….
+    # Serve the project's assets so dashboards can reference images relative to
+    # the assets dir (e.g. image: png/logo.png → emitted src "assets/png/logo.png").
+    # The dashboard preview iframe uses srcdoc, so relative URLs resolve against
+    # this server origin → /assets/….
     # Mount unconditionally via _LenientStaticFiles: the directory commonly does
     # not exist yet at startup (a user adds assets/ later), and files are
     # resolved per-request, so they are served as soon as they appear — no

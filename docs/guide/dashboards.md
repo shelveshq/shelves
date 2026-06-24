@@ -409,7 +409,7 @@ Buttons and links for dashboard-to-dashboard navigation. Rendered as `<a>` tags 
 Static images for logos or decorative graphics.
 
 ```yaml
-- image: assets/png/logo.png    # path under your project's assets/ directory
+- image: png/logo.png    # path relative to your assets directory
   alt: "Company Logo"
   height: 40
   width: 120
@@ -419,7 +419,7 @@ Static images for logos or decorative graphics.
 
 | Property | Required | Default | Description |
 |---|---|---|---|
-| *(value)* | Yes | — | Image source: a project asset path, external URL, or data URI (see **Image paths** below) |
+| *(value)* | Yes | — | Image source: an assets-relative path, external URL, or data URI (see **Image paths** below) |
 | `alt` | No | `""` | Alt text for accessibility (recommended) |
 | `fit` | No | `true` | `true`: scale the image to fit its box, preserving aspect ratio. `false`: render at natural size; the box scrolls if the image overflows. |
 | `center` | No | `false` | `true`: center the image in its box. `false`: anchor to the top-left. Only applies when `fit: true`. |
@@ -439,33 +439,35 @@ Static images for logos or decorative graphics.
 
 An image `src` (the value after `image:`) can be one of three things:
 
-**1. A project asset path beginning with `assets/`.** Put image files anywhere
-under your project's `assets/` directory — **including subfolders** — and
-reference them with the `assets/` prefix followed by the path *inside* that
-directory. Subfolders map one-to-one:
+**1. A path relative to the assets directory.** Put image files anywhere under
+your assets directory — **including subfolders** — and reference them by the path
+*inside* that directory. Don't include the `assets/` folder name itself; just
+like a `sheet:` is named relative to the charts directory, an `image:` is named
+relative to the assets directory:
 
-| File on disk | `src` to write |
+| File on disk (under the assets dir) | `src` to write |
 |---|---|
-| `assets/logo.png` | `assets/logo.png` |
-| `assets/png/logo.png` | `assets/png/logo.png` |
-| `assets/brand/icons/star.svg` | `assets/brand/icons/star.svg` |
+| `logo.png` | `logo.png` |
+| `png/logo.png` | `png/logo.png` |
+| `brand/icons/star.svg` | `brand/icons/star.svg` |
 
-`shelves-studio` serves your assets directory at the `/assets/` URL prefix, so
-these load in the live preview. The directory defaults to `<project>/assets`;
-change which folder it points at with `shelves-studio --assets-dir <path>`. The
-`assets/` prefix in the YAML stays the same regardless — only the directory it
-maps to changes, and everything after `assets/` is still the path within that
-directory.
+The assets directory defaults to `<project>/assets` and is configurable on every
+CLI:
 
-> The `assets/` prefix is required: `image: png/logo.png` (no `assets/`) or a
-> bare `image: logo.png` will **not** resolve in Studio. Write the full path
-> from your assets directory, e.g. `assets/png/logo.png`.
+```bash
+shelves-studio --assets-dir ./assets
+shelves-dev dashboard.yaml --assets-dir ./assets
+shelves-render dashboard.yaml --assets-dir ./assets --out out/dash.html
+```
 
-When you render with `shelves-render` instead of Studio, the same relative path
-is resolved by the browser against the output HTML's own location, so keep the
-generated HTML alongside your `assets/` directory.
+`shelves-studio` and `shelves-dev` serve the assets directory and resolve these
+paths automatically in the live preview. `shelves-render` writes a standalone
+HTML file and emits a path relative to that file's location (e.g.
+`../assets/png/logo.png` when rendering into an `output/` subfolder), so the
+image resolves when the HTML is opened from disk.
 
-**2. An external URL** — e.g. `https://example.com/logo.png`.
+**2. An external URL** — e.g. `https://example.com/logo.png` (and
+protocol-relative `//example.com/logo.png`). Passed through unchanged.
 
 **3. An inline data URI** — e.g. `data:image/png;base64,iVBORw0KGgo…`. Useful
 for embedding a small image directly in the dashboard with no external file.
@@ -791,7 +793,7 @@ root:
         border_bottom: "1px solid #DEE2E6"
         padding: "0 16"
         contains:
-          - image: assets/logo.svg
+          - image: logo.svg
             alt: "Acme Corp"
             height: 28
             width: 100
@@ -851,7 +853,7 @@ root:
         padding: "24 16"
         gap: 8
         contains:
-          - image: assets/logo_white.svg
+          - image: logo_white.svg
             height: 24
             width: 100
           - blank:

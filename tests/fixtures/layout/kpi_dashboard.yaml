@@ -39,7 +39,7 @@ root:
         background: "#F8F9FA"
         border_bottom: "1px solid #DEE2E6"
         contains:
-          - image: assets/logo.svg
+          - image: logo.svg
             alt: "Acme Corp"
             height: 28
             width: 100

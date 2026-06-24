@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import os
 import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
@@ -185,19 +186,49 @@ class _YAMLWatcher(FileSystemEventHandler):
             )
 
 
-def _make_handler(state: _State):
+def _resolve_asset_file(assets_dir: Path, url_path: str) -> Path | None:
+    """Map a ``/assets/<rel>`` URL path to a file under ``assets_dir``.
+
+    Returns None if the path escapes ``assets_dir`` (traversal) or is not a
+    regular file.
+    """
+    rel = url_path[len("/assets/") :]
+    base = assets_dir.resolve()
+    candidate = (base / rel).resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError:
+        return None
+    return candidate if candidate.is_file() else None
+
+
+def _make_handler(state: _State, assets_dir: Path | None = None):
     class Handler(SimpleHTTPRequestHandler):
         def do_GET(self):
-            if self.path == "/__timestamp":
+            path = self.path.split("?", 1)[0]
+            if path == "/__timestamp":
                 self.send_response(200)
                 self.send_header("Content-Type", "text/plain")
                 self.end_headers()
                 self.wfile.write(state.timestamp.encode())
-            elif self.path == "/" or self.path == "/index.html":
+            elif path == "/" or path == "/index.html":
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html")
                 self.end_headers()
                 self.wfile.write(state.html.encode())
+            elif path.startswith("/assets/") and assets_dir is not None:
+                fpath = _resolve_asset_file(assets_dir, path)
+                if fpath is None:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                data = fpath.read_bytes()
+                ctype = mimetypes.guess_type(str(fpath))[0] or "application/octet-stream"
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
             else:
                 self.send_response(404)
                 self.end_headers()
@@ -230,6 +261,10 @@ def main():
         "--models-dir",
         help="Directory containing model YAML files for dashboards",
     )
+    parser.add_argument(
+        "--assets-dir",
+        help="Directory of image assets referenced by dashboards (default: ./assets)",
+    )
     args = parser.parse_args()
 
     yaml_path = Path(args.yaml_path).resolve()
@@ -238,6 +273,7 @@ def main():
     chart_dir = Path(args.chart_dir).resolve() if args.chart_dir else None
     data_dir = Path(args.data_dir).resolve() if args.data_dir else None
     models_dir = Path(args.models_dir).resolve() if args.models_dir else None
+    assets_dir = Path(args.assets_dir).resolve() if args.assets_dir else Path("assets").resolve()
 
     if not yaml_path.exists():
         print(f"Error: {yaml_path} not found")
@@ -260,6 +296,7 @@ def main():
             print(f"  Data dir: {data_dir}")
         if models_dir:
             print(f"  Models:   {models_dir}")
+        print(f"  Assets:   {assets_dir}")
     else:
         print("  Mode:     Chart")
         if data_path:
@@ -278,7 +315,7 @@ def main():
     observer.start()
 
     # HTTP server
-    server = HTTPServer(("127.0.0.1", args.port), _make_handler(state))
+    server = HTTPServer(("127.0.0.1", args.port), _make_handler(state, assets_dir))
     print(f"  Preview:  http://localhost:{args.port}")
     print("  Press Ctrl+C to stop\n")
 
