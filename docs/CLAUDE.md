@@ -5,6 +5,7 @@
 - `guide/` — User-facing documentation
   - `dsl-reference.md` — Complete DSL field/property reference with examples and type tables
   - `getting-started.md` — Introductory workflow and basic examples
+  - `dashboards.md` — Dashboard / Layout DSL guide
 - `foundational/` — Architecture and design documents (Vision, Architecture, DSL Specifications, Measure Design)
 - `plans/` — Implementation plans for specific tickets (KAN-xxx.md)
 

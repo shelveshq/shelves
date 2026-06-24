@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Area-specific context lives in sub-directory `CLAUDE.md` files (`shelves/schema/`, `shelves/translator/`, `shelves/data/`, `shelves/models/`, `docs/`, `tests/`).
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Area-specific context lives in sub-directory `CLAUDE.md` files (`shelves/schema/`, `shelves/translator/`, `shelves/theme/`, `shelves/data/`, `shelves/models/`, `shelves/render/`, `docs/`, `tests/`).
 
 ## What This Project Is
 
-Shelves is a declarative visual analytics platform that translates a Tableau-inspired YAML DSL into Vega-Lite JSON specifications. The pipeline: YAML → Pydantic validation → Vega-Lite translation → Theme merge → Data binding → HTML rendering.
+Shelves is a declarative visual analytics platform that translates a Tableau-inspired YAML DSL into Vega-Lite JSON specifications and HTML dashboards. It produces two artifacts: a **chart** (one sheet) and a **dashboard** (a layout tree of sheets). Both read field types, formats, and sources from a shared **semantic model**, backed by either a flat file (DuckDB) or Cube.dev. Surfaces on top: a `render`/`dev` CLI, a `shelves-import` model generator, and Shelves Studio (a FastAPI editor with live reload).
 
 ## Git Workflow
 
@@ -44,21 +44,33 @@ python3 -m venv .venv
 
 # Dev server with live reload (open http://localhost:8089)
 .venv/bin/python -m shelves.cli.dev tests/fixtures/yaml/simple_bar.yaml --data tests/fixtures/data/orders.json
+
+# Render a dashboard (layout tree of sheets)
+.venv/bin/python -m shelves.cli.render dashboards/<name>.yaml
+
+# Generate a model from a flat file
+.venv/bin/python -m shelves.cli.import_cmd data/sales.csv
+
+# Launch Shelves Studio (FastAPI editor)
+.venv/bin/python -m shelves.studio.cli
 ```
 
 ## Architecture Overview
 
-The pipeline has four stages (each is pure/composable):
+The single chart pipeline lives in `shelves/pipeline.py` (`compile_chart`) and is shared by every surface (CLIs, studio, dashboard composer):
 
-1. **Parse** (`shelves/schema/`) — YAML → `ChartSpec` via Pydantic
-2. **Translate** (`shelves/translator/`) — `ChartSpec` → Vega-Lite dict
-3. **Compose** (`shelves/theme/`, `shelves/render/`) — Theme merge → HTML rendering with vegaEmbed CDN
-4. **Data** (`shelves/data/`) — Inline binding or Cube.dev fetching
-5. **Models** (`shelves/models/`) — Reusable semantic model definitions for field type resolution
+1. **Parse** (`shelves/schema/`) — YAML → `ChartSpec` / `DashboardSpec` via Pydantic
+2. **Translate** (`shelves/translator/`) — `ChartSpec` → Vega-Lite dict; dashboards → HTML via the layout translator/solver
+3. **Theme** (`shelves/theme/`) — merge theme config into the Vega-Lite spec
+4. **Data** (`shelves/data/`) — resolve via the source registry (inline / file-DuckDB / Cube.dev) and bind
+5. **Render** (`shelves/render/`) — standalone HTML with vegaEmbed CDN + browser-side label patch
+6. **Compose** (`shelves/compose/`) — orchestrate a full dashboard from YAML
 
-Public API: `parse_chart`, `translate_chart`, `merge_theme`, `bind_data`, `resolve_data`, `render_html` (exported from `shelves/__init__.py`).
+`shelves/models/` supplies reusable semantic models for field-type resolution.
 
-See each module's `CLAUDE.md` for detailed design decisions, file descriptions, and rules.
+Public API (`shelves/__init__.py`): `parse_chart`, `translate_chart`, `merge_theme`, `load_theme`, `bind_data`, `resolve_data`, `render_html`, `compile_chart`, `parse_dashboard`, `translate_dashboard`, `compose_dashboard`, `resolve_model_data`.
+
+See each module's `CLAUDE.md` and `docs/architecture-diagram.md` for design decisions, file descriptions, and rules.
 
 ## Branching Convention
 
@@ -67,7 +79,7 @@ Branch names follow: `KAN-{ticket}/description-in-kebab-case` (e.g. `KAN-100/sem
 ## Planning Workflow
 
 - When using shelves-planner, check for existing plan files FIRST and ask whether to update vs. recreate before reading context repeatedly
-- For Jira tickets, use the Atlassian MCP with cloud ID already configured; if MCP unavailable, ask the user to paste ticket details upfront
+- Route by ticket-ID prefix: `SHE-` tickets live in Linear (use the Linear MCP), `KAN-` tickets live in Jira (use the Atlassian MCP with cloud ID already configured). Linear is the current project-management tool; older Jira/`KAN-` tickets remain valid. If the matched tracker's MCP is unavailable, ask the user to paste ticket details upfront
 
 ## Testing & Type Checking
 
@@ -83,4 +95,4 @@ Branch names follow: `KAN-{ticket}/description-in-kebab-case` (e.g. `KAN-100/sem
 
 ## Project Status
 
-Phase 1 (single-measure + stacked multi-measure) is complete. Phase 1a (layers/dual-axis) is schema-parsed but compilation is deferred. Phase 3 (Cube.dev semantic layer integration) is implemented. See `PLAN.md` for the full roadmap, `docs/foundational/` for architecture documents, and `docs/guide/` for user-facing documentation.
+Charts (single-measure, stacked multi-measure, and layers/dual-axis) compile. The semantic-model layer is implemented for both backends — flat file via DuckDB and Cube.dev. The Layout DSL (dashboards → HTML) and Shelves Studio editor are in active development. See `PLAN.md` for the full roadmap, `docs/foundational/` for architecture documents, and `docs/guide/` for user-facing documentation.

@@ -1,10 +1,9 @@
 # Render — CLAUDE.md
 
-This module turns a Vega-Lite spec into rendered output. On this branch it owns
-the **compile-then-patch label** mechanism (KAN-279) — an *exploratory* approach
-(labels via a browser-side vegaEmbed `patch`) that competes with the separate
-KAN-268 "implicit text-mark layer" direction. It is undecided which lands; this
-doc describes compile-then-patch only.
+This module turns a Vega-Lite spec into rendered output. It owns the
+**compile-then-patch label** mechanism (KAN-279), which replaced the earlier
+text-mark-layer approach and is now the way labels render: Python emits label
+intent, a browser-side vegaEmbed `patch` does placement.
 
 ## Files
 

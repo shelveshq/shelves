@@ -10,4 +10,5 @@
 
 - **Preset color resolution:** `layout.presets.*.color` supports `"text.primary"` / `"text.secondary"` / `"text.tertiary"` references, resolved at load time by `_resolve_preset_colors()`. Unknown references raise `ValueError`.
 - **ChartTheme is permissive:** `extra="allow"` lets any Vega-Lite config key through. Don't add explicit fields unless you need validation on them.
-- **Layout section never leaks into VL config.** `merge_theme()` extracts only `theme.chart` for the Vega-Lite spec. Layout tokens are consumed by the Layout DSL renderer (future).
+- **Layout section never leaks into VL config.** `merge_theme()` extracts only `theme.chart` for the Vega-Lite spec. Layout tokens are consumed by the Layout DSL renderer (`shelves/translator/layout*.py`).
+- `kpi_tokens.py` — resolves KPI-specific theme tokens (used by KPI sheets).
