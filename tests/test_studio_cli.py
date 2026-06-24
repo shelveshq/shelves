@@ -58,6 +58,8 @@ class TestCliArgumentParsing:
                 "/tmp/dashboards",
                 "--models-dir",
                 "/tmp/models",
+                "--assets-dir",
+                "/tmp/assets",
                 "--reload",
             ]
         )
@@ -68,6 +70,7 @@ class TestCliArgumentParsing:
         assert args.charts_dir == "/tmp/charts"
         assert args.dashboards_dir == "/tmp/dashboards"
         assert args.models_dir == "/tmp/models"
+        assert args.assets_dir == "/tmp/assets"
         assert args.reload is True
 
     def test_cli_default_arguments(self):
@@ -81,6 +84,7 @@ class TestCliArgumentParsing:
         assert args.charts_dir is None
         assert args.dashboards_dir is None
         assert args.models_dir is None
+        assert args.assets_dir is None
         assert args.reload is False
 
     def test_cli_port_must_be_int(self):
@@ -88,6 +92,87 @@ class TestCliArgumentParsing:
         parser = build_parser()
         with pytest.raises(SystemExit):
             parser.parse_args(["--port", "abc"])
+
+
+# ─── Assets Directory Serving (KAN-297 Part B) ───────────────────
+
+
+class TestAssetsRoute:
+    """Project assets are served at /assets so dashboards can reference images by path."""
+
+    def test_assets_route_serves_file(self, tmp_path):
+        """A file under <project_dir>/assets is served at /assets/... with matching bytes."""
+        from starlette.testclient import TestClient
+
+        (tmp_path / "assets" / "png").mkdir(parents=True)
+        (tmp_path / "assets" / "png" / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\nFAKE")
+        app = create_app(project_dir=tmp_path)
+        client = TestClient(app)
+        resp = client.get("/assets/png/logo.png")
+        assert resp.status_code == 200
+        assert resp.content == b"\x89PNG\r\n\x1a\nFAKE"
+
+    def test_assets_dir_override(self, tmp_path):
+        """Explicit assets_dir overrides the <project_dir>/assets default."""
+        from starlette.testclient import TestClient
+
+        (tmp_path / "custom_assets").mkdir()
+        (tmp_path / "custom_assets" / "logo.png").write_bytes(b"PNGDATA")
+        app = create_app(project_dir=tmp_path, assets_dir=tmp_path / "custom_assets")
+        assert app.state.assets_dir == (tmp_path / "custom_assets")
+        client = TestClient(app)
+        resp = client.get("/assets/logo.png")
+        assert resp.status_code == 200
+        assert resp.content == b"PNGDATA"
+
+    def test_assets_dir_defaults_to_project_subdir(self, tmp_path):
+        """app.state.assets_dir resolves to <project_dir>/assets when not overridden."""
+        app = create_app(project_dir=tmp_path)
+        assert app.state.assets_dir == (tmp_path / "assets")
+
+    def test_assets_missing_dir_returns_404(self, tmp_path):
+        """No assets dir at startup → app still builds and /assets 404s (not 500)."""
+        from starlette.testclient import TestClient
+
+        app = create_app(project_dir=tmp_path)
+        client = TestClient(app)
+        resp = client.get("/assets/logo.png")
+        assert resp.status_code == 404
+
+    def test_assets_dir_created_after_startup_is_served(self, tmp_path):
+        """A dir/file created after startup is served without a restart (check_dir=False)."""
+        from starlette.testclient import TestClient
+
+        app = create_app(project_dir=tmp_path)  # no assets/ dir yet
+        client = TestClient(app)
+        assert client.get("/assets/png/logo.png").status_code == 404
+
+        (tmp_path / "assets" / "png").mkdir(parents=True)
+        (tmp_path / "assets" / "png" / "logo.png").write_bytes(b"LATE")
+        resp = client.get("/assets/png/logo.png")
+        assert resp.status_code == 200
+        assert resp.content == b"LATE"
+
+    def test_assets_path_is_file_returns_404(self, tmp_path):
+        """assets_dir pointing at a file (not a dir) doesn't crash; requests 404."""
+        from starlette.testclient import TestClient
+
+        not_a_dir = tmp_path / "assets.txt"
+        not_a_dir.write_text("not a directory")
+        app = create_app(project_dir=tmp_path, assets_dir=not_a_dir)
+        client = TestClient(app)
+        resp = client.get("/assets/logo.png")
+        assert resp.status_code == 404
+
+    def test_app_from_env_reads_assets_dir(self, tmp_path, monkeypatch):
+        """--reload round-trip: _app_from_env reads SHELVES_STUDIO_ASSETS_DIR."""
+        from shelves.studio.cli import _app_from_env
+
+        (tmp_path / "custom").mkdir()
+        monkeypatch.setenv("SHELVES_STUDIO_DIR", str(tmp_path))
+        monkeypatch.setenv("SHELVES_STUDIO_ASSETS_DIR", str(tmp_path / "custom"))
+        app = _app_from_env()
+        assert app.state.assets_dir == (tmp_path / "custom")
 
 
 # ─── Server: Index Page ──────────────────────────────────────────

@@ -35,12 +35,26 @@ logger = logging.getLogger("shelves.studio.server")
 _STATIC_DIR = Path(__file__).parent / "static"
 
 
+class _LenientStaticFiles(StaticFiles):
+    """StaticFiles that tolerates a missing or late-created directory.
+
+    The project assets dir often does not exist when studio starts (a user adds
+    `assets/` and references an image later). Stock StaticFiles raises on the
+    first request if the directory is missing; we skip that check so requests
+    simply 404 until files appear, then serve them — no restart required.
+    """
+
+    async def check_config(self) -> None:  # pragma: no cover - trivial override
+        return
+
+
 def create_app(
     project_dir: Path,
     theme_path: Path | None = None,
     models_dir: Path | None = None,
     charts_dir: Path | None = None,
     dashboards_dir: Path | None = None,
+    assets_dir: Path | None = None,
 ) -> FastAPI:
     """
     Create and configure the FastAPI application for Shelves Studio.
@@ -52,6 +66,9 @@ def create_app(
         charts_dir: Directory containing chart YAML files. Defaults to project_dir/charts.
         dashboards_dir: Directory containing dashboard YAML files.
             Defaults to project_dir/dashboards.
+        assets_dir: Directory of image assets served at /assets. Defaults to
+            project_dir/assets. Need not exist at startup — it is served
+            whenever files appear in it.
 
     Returns:
         Configured FastAPI instance.
@@ -59,6 +76,7 @@ def create_app(
     resolved_models = models_dir or (project_dir / "models")
     resolved_charts = charts_dir or (project_dir / "charts")
     resolved_dashboards = dashboards_dir or (project_dir / "dashboards")
+    resolved_assets = assets_dir or (project_dir / "assets")
 
     lifespan = make_lifespan(project_dir, theme_path, resolved_models, resolved_charts)
 
@@ -70,6 +88,9 @@ def create_app(
     app.state.models_dir = resolved_models
     app.state.charts_dir = resolved_charts
     app.state.dashboards_dir = resolved_dashboards
+    # Stored even when the directory is absent so the startup banner can show the
+    # resolved path; only the StaticFiles mount below is conditional.
+    app.state.assets_dir = resolved_assets
     app.state.manager = ConnectionManager()
     # Per-app random token gating the terminal WS. The token is embedded in
     # the served HTML as a <meta> tag, so same-origin scripts can read it
@@ -146,5 +167,18 @@ def create_app(
 
     # Serve static assets (JS modules, CSS) — must come after explicit routes
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+    # Serve the project's assets so dashboards can reference images by path
+    # (e.g. image: "assets/png/logo.png"). The dashboard preview iframe uses
+    # srcdoc, so relative URLs resolve against this server origin → /assets/….
+    # Mount unconditionally via _LenientStaticFiles: the directory commonly does
+    # not exist yet at startup (a user adds assets/ later), and files are
+    # resolved per-request, so they are served as soon as they appear — no
+    # restart needed. Missing files/dir return 404, not 500.
+    app.mount(
+        "/assets",
+        _LenientStaticFiles(directory=str(resolved_assets), check_dir=False),
+        name="assets",
+    )
 
     return app
