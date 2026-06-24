@@ -130,8 +130,8 @@ class TestAssetsRoute:
         app = create_app(project_dir=tmp_path)
         assert app.state.assets_dir == (tmp_path / "assets")
 
-    def test_assets_mount_skipped_when_absent(self, tmp_path):
-        """No assets dir → mount skipped; the app still builds and /assets 404s (not 500)."""
+    def test_assets_missing_dir_returns_404(self, tmp_path):
+        """No assets dir at startup → app still builds and /assets 404s (not 500)."""
         from starlette.testclient import TestClient
 
         app = create_app(project_dir=tmp_path)
@@ -139,8 +139,22 @@ class TestAssetsRoute:
         resp = client.get("/assets/logo.png")
         assert resp.status_code == 404
 
-    def test_assets_path_is_file_skips_mount(self, tmp_path):
-        """assets_dir pointing at a file (not a dir) is skipped without crashing."""
+    def test_assets_dir_created_after_startup_is_served(self, tmp_path):
+        """A dir/file created after startup is served without a restart (check_dir=False)."""
+        from starlette.testclient import TestClient
+
+        app = create_app(project_dir=tmp_path)  # no assets/ dir yet
+        client = TestClient(app)
+        assert client.get("/assets/png/logo.png").status_code == 404
+
+        (tmp_path / "assets" / "png").mkdir(parents=True)
+        (tmp_path / "assets" / "png" / "logo.png").write_bytes(b"LATE")
+        resp = client.get("/assets/png/logo.png")
+        assert resp.status_code == 200
+        assert resp.content == b"LATE"
+
+    def test_assets_path_is_file_returns_404(self, tmp_path):
+        """assets_dir pointing at a file (not a dir) doesn't crash; requests 404."""
         from starlette.testclient import TestClient
 
         not_a_dir = tmp_path / "assets.txt"

@@ -35,6 +35,19 @@ logger = logging.getLogger("shelves.studio.server")
 _STATIC_DIR = Path(__file__).parent / "static"
 
 
+class _LenientStaticFiles(StaticFiles):
+    """StaticFiles that tolerates a missing or late-created directory.
+
+    The project assets dir often does not exist when studio starts (a user adds
+    `assets/` and references an image later). Stock StaticFiles raises on the
+    first request if the directory is missing; we skip that check so requests
+    simply 404 until files appear, then serve them — no restart required.
+    """
+
+    async def check_config(self) -> None:  # pragma: no cover - trivial override
+        return
+
+
 def create_app(
     project_dir: Path,
     theme_path: Path | None = None,
@@ -53,6 +66,9 @@ def create_app(
         charts_dir: Directory containing chart YAML files. Defaults to project_dir/charts.
         dashboards_dir: Directory containing dashboard YAML files.
             Defaults to project_dir/dashboards.
+        assets_dir: Directory of image assets served at /assets. Defaults to
+            project_dir/assets. Need not exist at startup — it is served
+            whenever files appear in it.
 
     Returns:
         Configured FastAPI instance.
@@ -155,8 +171,14 @@ def create_app(
     # Serve the project's assets so dashboards can reference images by path
     # (e.g. image: "assets/png/logo.png"). The dashboard preview iframe uses
     # srcdoc, so relative URLs resolve against this server origin → /assets/….
-    # StaticFiles raises if the directory is missing, so guard with is_dir().
-    if resolved_assets.is_dir():
-        app.mount("/assets", StaticFiles(directory=str(resolved_assets)), name="assets")
+    # Mount unconditionally via _LenientStaticFiles: the directory commonly does
+    # not exist yet at startup (a user adds assets/ later), and files are
+    # resolved per-request, so they are served as soon as they appear — no
+    # restart needed. Missing files/dir return 404, not 500.
+    app.mount(
+        "/assets",
+        _LenientStaticFiles(directory=str(resolved_assets), check_dir=False),
+        name="assets",
+    )
 
     return app
