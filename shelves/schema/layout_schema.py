@@ -116,6 +116,10 @@ class ImageComponent(BaseModel):
     type: Literal["image"] = "image"
     src: str
     alt: str = ""
+    # True: scale to fit box (object-fit: contain). False: natural size, box scrolls.
+    fit: bool = True
+    # True: center in box. False: top-left. Only applies when fit=True.
+    center: bool = False
     width: SizeValue = None
     height: SizeValue = None
     margin: int | str | None = None

@@ -1670,6 +1670,87 @@ root:
         assert "object-fit: cover" in img_style
 
 
+class TestImageFit:
+    """KAN-297 Part A: image fit/center boolean content control."""
+
+    def _img_style(self, html: str) -> str:
+        m = re.search(r'<img[^>]+style="([^"]+)"', html)
+        assert m is not None, "<img> tag not found"
+        return m.group(1)
+
+    def test_image_default_fit_top_left(self):
+        """Defaults (fit:true, center:false) → contain, top-left, single sizing."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: logo.png
+      alt: "Logo"
+""")
+        img_style = self._img_style(html)
+        assert "object-fit: contain" in img_style
+        assert "object-position: left top" in img_style
+        assert "object-position: center" not in img_style
+        assert img_style.count("width: 100%") == 1
+        assert img_style.count("height: 100%") == 1
+        assert "overflow: hidden" in html
+
+    def test_image_fit_true_center_true(self):
+        """fit:true + center:true centers the fitted image."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: logo.png
+      alt: "Logo"
+      fit: true
+      center: true
+""")
+        img_style = self._img_style(html)
+        assert "object-fit: contain" in img_style
+        assert "object-position: center" in img_style
+        assert "object-position: left top" not in img_style
+
+    def test_image_fit_false_scrolls(self):
+        """fit:false → natural-size image in a scrollable box."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: logo.png
+      alt: "Logo"
+      fit: false
+""")
+        img_style = self._img_style(html)
+        assert "overflow: auto" in html
+        assert "display: block" in img_style
+        assert "object-fit" not in img_style
+
+    def test_image_fit_false_ignores_center(self):
+        """center has no effect when fit:false."""
+        html = _translate("""\
+dashboard: "Test"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - image: logo.png
+      alt: "Logo"
+      fit: false
+      center: true
+""")
+        img_style = self._img_style(html)
+        assert "overflow: auto" in html
+        assert "display: block" in img_style
+        assert "object-position" not in img_style
+
+
 class TestTextPresetIntegration:
     """Bug #4: Text presets (font-size/weight/color) must appear in rendered HTML."""
 

@@ -413,18 +413,27 @@ Static images for logos or decorative graphics.
   alt: "Company Logo"
   height: 40
   width: 120
+  fit: true       # scale to fit the box (preserve aspect); false = natural size + scroll
+  center: false   # top-left within the box; true = centered (only applies when fit: true)
 ```
 
 | Property | Required | Default | Description |
 |---|---|---|---|
 | *(value)* | Yes | — | Image file path or URL |
 | `alt` | No | `""` | Alt text for accessibility (recommended) |
+| `fit` | No | `true` | `true`: scale the image to fit its box, preserving aspect ratio. `false`: render at natural size; the box scrolls if the image overflows. |
+| `center` | No | `false` | `true`: center the image in its box. `false`: anchor to the top-left. Only applies when `fit: true`. |
 | `width` | No | `auto` | Outer box width |
 | `height` | No | `auto` | Outer box height |
 | `padding` | No | `0` | Inner spacing |
 | `margin` | No | `0` | Outer spacing |
 | `style` | No | — | Reference to a shared style |
-| `html` | No | — | Raw CSS escape hatch |
+| `html` | No | — | Raw CSS escape hatch (applied last, overrides `fit`/`center`) |
+
+> **Box vs. content.** In a horizontal/vertical container the image's *box* always
+> stretches to fill the cross axis (the Tableau layout model). `fit` and `center`
+> control how the image *content* sits inside that box — they do not resize the box.
+> This mirrors Tableau's image options: fit-to-box on/off, centered on/off.
 
 ### Blank (spacer)
 
