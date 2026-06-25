@@ -1094,7 +1094,7 @@ root:
         )
         legend_links = {
             ("charts/foo.yaml", "region"): LegendLink(
-                sheet_id="sheet-faceted", scale="color", title="Region"
+                sheet_id="sheet-faceted", scale="color", title="Region", channel="color"
             )
         }
         html = translate_dashboard(

@@ -168,6 +168,33 @@ class TestStudioDashboardLegends:
         # warning, surfaced in the Studio warnings list (NOT a Python warning).
         assert any("color" in w and "scatter_chart" in w for w in result["warnings"])
 
+    def test_labeled_chart_uses_namespaced_scale(self):
+        """Studio path: a legend on a labeled chart (name: mark_0) must emit the
+        namespaced runtime scale mark_0_color, mirroring the compose path."""
+        yaml_body = (
+            'dashboard: "Legend Labeled"\n'
+            "canvas:\n"
+            "  width: 1000\n"
+            "  height: 800\n"
+            "root:\n"
+            "  orientation: horizontal\n"
+            "  contains:\n"
+            "    - sheet: label_bar_match_color.yaml\n"
+            "      name: labeled_chart\n"
+            "    - legend: label_bar_match_color.yaml\n"
+            "      field: country\n"
+            "      width: 180\n"
+        )
+        result = _pipeline(yaml_body)
+        assert result["errors"] == []
+
+        attrs = _legend_attrs(result["html"])
+        assert 'data-scale="mark_0_color"' in attrs
+        assert 'data-channel="color"' in attrs
+
+        specs = _embedded_specs(result["html"])
+        assert specs["sheet-labeled_chart"]["encoding"]["color"]["legend"] is None
+
     def test_unlinked_channel_warns_in_warnings_list(self):
         yaml_body = (
             'dashboard: "Legend Unlinked"\n'

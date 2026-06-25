@@ -89,24 +89,74 @@
     return '';
   }
 
+  function warn(msg) {
+    if (typeof console !== 'undefined' && console.warn) console.warn(msg);
+  }
+
+  // Resolve the live Vega scale for a legend, never throwing. Primary lookup is
+  // the exact name Python emitted (data-scale). Fallback: scan the view's scale
+  // names for one matching the channel — `name === channel` or `name` ending in
+  // `_<channel>`. This recovers the namespaced scale (e.g. `mark_0_color`) that
+  // Vega-Lite produces when a unit spec carries a `name` (labeled charts), so the
+  // legend is robust even if the compile-time scale name is wrong or stale.
+  // Returns the scale object or null.
+  function resolveScale(view, scaleName, channel) {
+    if (view && scaleName) {
+      try {
+        return view.scale(scaleName);
+      } catch (e) {
+        /* fall through to the channel scan */
+      }
+    }
+    if (view && channel && view._runtime && view._runtime.scales) {
+      var names = Object.keys(view._runtime.scales);
+      var suffix = '_' + channel;
+      for (var i = 0; i < names.length; i++) {
+        var n = names[i];
+        if (n === channel || (n.length > suffix.length && n.slice(-suffix.length) === suffix)) {
+          try {
+            return view.scale(n);
+          } catch (e) {
+            /* keep scanning */
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   // Browser-only: fill every legend div bound to `sheetId` from `view`'s scales.
+  // Failures warn rather than silently leaving an empty box (an unexplained empty
+  // legend was a real debugging trap): an unresolvable scale and a resolved-but-
+  // unrenderable scale (e.g. a not-yet-supported gradient/size type) each warn.
   function populate(view, sheetId, doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
     if (!doc || !view) return;
     var divs = doc.querySelectorAll('div[data-source="' + sheetId + '"]');
     Array.prototype.forEach.call(divs, function (div) {
       var scaleName = div.getAttribute('data-scale');
-      if (!scaleName) return;
-      var scale;
-      try {
-        scale = view.scale(scaleName);
-      } catch (e) {
-        return; // scale not present on this view → leave the box empty
+      var channel = div.getAttribute('data-channel');
+      if (!scaleName && !channel) return;
+      var scale = resolveScale(view, scaleName, channel);
+      if (!scale) {
+        warn(
+          'legend: could not resolve scale ' + JSON.stringify(scaleName) +
+            ' (channel ' + JSON.stringify(channel) + ') on ' + sheetId
+        );
+        return;
       }
-      div.innerHTML = renderLegend(scale, {
+      var markup = renderLegend(scale, {
         title: div.getAttribute('data-title') || '',
         orientation: div.getAttribute('data-orientation') || 'vertical',
       });
+      if (!markup) {
+        warn(
+          'legend: scale type ' + JSON.stringify(scale.type) + ' on ' + sheetId +
+            ' produced no content (unsupported legend type)'
+        );
+        return;
+      }
+      div.innerHTML = markup;
     });
   }
 
@@ -115,6 +165,7 @@
     buildMarkup: buildMarkup,
     renderCategorical: renderCategorical,
     renderLegend: renderLegend,
+    resolveScale: resolveScale,
     populate: populate,
     CATEGORICAL_TYPES: CATEGORICAL_TYPES,
   };
