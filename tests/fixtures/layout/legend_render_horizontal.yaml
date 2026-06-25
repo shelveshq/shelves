@@ -1,0 +1,13 @@
+dashboard: "Legend Horizontal"
+canvas:
+  width: 1000
+  height: 800
+root:
+  orientation: vertical
+  contains:
+    - sheet: simple_bar.yaml
+      name: sales_chart
+    - legend: simple_bar.yaml
+      field: country
+      orientation: horizontal
+      height: 80

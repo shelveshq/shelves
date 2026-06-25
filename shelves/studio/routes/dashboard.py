@@ -72,10 +72,10 @@ async def run_dashboard_pipeline(
     flat_root = flatten_dashboard(spec)
     component_tree = build_component_tree(flat_root)
 
-    # Discover sheets (name → link)
+    # Discover sheets (name → link) — reuse the already-flattened tree.
     from shelves.compose.dashboard import _discover_sheets
 
-    sheets = _discover_sheets(spec)
+    sheets = _discover_sheets(flat_root)
 
     # Load theme
     try:

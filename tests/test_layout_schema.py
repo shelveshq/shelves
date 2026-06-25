@@ -875,3 +875,118 @@ root:
         spec = parse_dashboard(yaml_str)
         # The horizontal container's contains should have two refs to "kpi"
         assert "kpi" in spec.components
+
+
+# ─── Legend Component (SHE-9) ────────────────────────────────────────
+
+
+class TestLegendComponent:
+    """SHE-9: legend leaf component — schema parse/resolve/defaults + errors."""
+
+    def test_parse_dashboard_with_legend(self):
+        spec = parse_dashboard(load_layout_yaml("legend_basic.yaml"))
+        assert len(spec.root.contains) == 2
+        _, comp = resolve_child(spec.root.contains[1], {})
+        assert comp.type == "legend"
+        assert comp.source == "sales_by_category.yaml"
+        assert comp.field == "Category"
+        assert comp.title == "Product Category"
+        assert comp.width == 180
+        assert comp.style == "card"
+        assert comp.orientation == "vertical"
+
+    def test_resolve_legend(self):
+        entry = {
+            "legend": "charts/foo.yaml",
+            "field": "Region",
+            "title": "Sales Region",
+            "width": 200,
+            "style": "card",
+        }
+        name, comp = resolve_child(entry, {})
+        assert name is None
+        assert comp.type == "legend"
+        assert comp.source == "charts/foo.yaml"
+        assert comp.field == "Region"
+        assert comp.title == "Sales Region"
+        assert comp.width == 200
+        assert comp.style == "card"
+        assert comp.orientation == "vertical"
+
+    def test_resolve_legend_minimal(self):
+        entry = {"legend": "charts/foo.yaml", "field": "Region"}
+        _, comp = resolve_child(entry, {})
+        assert comp.source == "charts/foo.yaml"
+        assert comp.field == "Region"
+        assert comp.title is None
+        assert comp.orientation == "vertical"
+        assert comp.width is None
+        assert comp.height is None
+        assert comp.style is None
+
+    def test_resolve_legend_orientation_horizontal(self):
+        entry = {"legend": "charts/foo.yaml", "field": "Region", "orientation": "horizontal"}
+        _, comp = resolve_child(entry, {})
+        assert comp.orientation == "horizontal"
+
+    def test_resolve_legend_with_name(self):
+        entry = {"legend": "charts/foo.yaml", "field": "X", "name": "cat_legend"}
+        name, comp = resolve_child(entry, {})
+        assert name == "cat_legend"
+        assert comp.source == "charts/foo.yaml"
+
+    def test_resolve_legend_with_html(self):
+        entry = {"legend": "charts/foo.yaml", "field": "X", "html": "border: 1px solid red;"}
+        _, comp = resolve_child(entry, {})
+        assert comp.html == "border: 1px solid red;"
+
+    def test_legend_missing_field_raises(self):
+        with pytest.raises(ValidationError):
+            resolve_child({"legend": "charts/foo.yaml"}, {})
+
+    def test_legend_missing_field_in_dashboard_raises(self):
+        yaml_str = """\
+dashboard: "Legend No Field"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - legend: charts/foo.yaml
+"""
+        with pytest.raises((ValueError, ValidationError)):
+            parse_dashboard(yaml_str)
+
+    def test_legend_with_contains_raises(self):
+        yaml_str = """\
+dashboard: "Legend Contains"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - legend: charts/foo.yaml
+      field: Region
+      contains:
+        - blank:
+"""
+        with pytest.raises(ValueError):
+            parse_dashboard(yaml_str)
+
+    def test_legend_invalid_orientation_raises(self):
+        with pytest.raises(ValidationError):
+            resolve_child(
+                {"legend": "charts/foo.yaml", "field": "X", "orientation": "diagonal"}, {}
+            )
+
+    def test_legend_undefined_style_raises(self):
+        yaml_str = """\
+dashboard: "Bad Legend Style"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - legend: charts/foo.yaml
+      field: Region
+      style: nonexistent
+"""
+        with pytest.raises((ValueError, KeyError)):
+            parse_dashboard(yaml_str)

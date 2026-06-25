@@ -1,0 +1,9 @@
+dashboard: "Legend Unlinked"
+canvas:
+  width: 1000
+  height: 800
+root:
+  orientation: vertical
+  contains:
+    - sheet: simple_bar.yaml
+      name: sales_chart

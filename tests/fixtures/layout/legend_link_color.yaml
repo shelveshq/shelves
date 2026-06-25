@@ -1,0 +1,12 @@
+dashboard: "Legend Link Color"
+canvas:
+  width: 1000
+  height: 800
+root:
+  orientation: horizontal
+  contains:
+    - sheet: simple_bar.yaml
+      name: sales_chart
+    - legend: simple_bar.yaml
+      field: country
+      width: 180

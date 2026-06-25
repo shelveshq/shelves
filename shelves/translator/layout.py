@@ -21,15 +21,21 @@ from shelves.schema.layout_schema import (
     ContainerComponent,
     DashboardSpec,
     ImageComponent,
+    LegendComponent,
     LinkComponent,
     RootComponent,
     SheetComponent,
     TextComponent,
 )
 from shelves.theme.theme_schema import ThemeSpec
-from shelves.translator.layout_flatten import flatten_dashboard
+from shelves.translator.layout_flatten import FlatNode, flatten_dashboard
 from shelves.translator.layout_solver import ResolvedNode, solve_layout
-from shelves.translator.layout_styles import RenderContext, resolve_inner_styles, resolve_styles
+from shelves.translator.layout_styles import (
+    LegendLink,
+    RenderContext,
+    resolve_inner_styles,
+    resolve_styles,
+)
 
 # Block holder that carries the ellipsis clipping for text (KAN-295).  Kept off
 # the flex-centering inner div because text-overflow:ellipsis is inert on a flex
@@ -42,6 +48,8 @@ def translate_dashboard(
     theme: ThemeSpec,
     chart_specs: dict[str, dict] | None = None,
     asset_url_prefix: str = "assets/",
+    legend_links: dict[tuple[str, str], LegendLink] | None = None,
+    flat_tree: FlatNode | None = None,
 ) -> str:
     """Translate a DashboardSpec to a complete HTML page.
 
@@ -49,11 +57,23 @@ def translate_dashboard(
     reference images relative to the assets directory (e.g. `image: png/x.png`).
     Studio/dev serve assets at `/assets`, so they pass `"assets/"`; the render
     CLI passes a path computed relative to the output HTML's location.
-    """
-    ctx = RenderContext(theme=theme, asset_url_prefix=asset_url_prefix)
 
-    # Flatten first: resolve all style refs and component refs
-    flat_tree = flatten_dashboard(dashboard)
+    `legend_links` maps (legend.source, legend.field) → resolved LegendLink and
+    is built by compose_dashboard (SHE-10). Empty for direct-translate callers.
+
+    `flat_tree` lets a caller pass an already-flattened layout tree (compose
+    flattens once and reuses it for sheet/legend discovery); when None the tree
+    is flattened here.
+    """
+    ctx = RenderContext(
+        theme=theme,
+        asset_url_prefix=asset_url_prefix,
+        legend_links=legend_links or {},
+    )
+
+    # Flatten first (unless a caller already did): resolve style + component refs
+    if flat_tree is None:
+        flat_tree = flatten_dashboard(dashboard)
 
     # Solve layout to get concrete pixel dimensions
     resolved_tree = solve_layout(flat_tree)
@@ -253,6 +273,38 @@ def _render_blank(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
     return f'<div style="{safe_outer}"><div style="{safe_inner}"></div></div>'
 
 
+def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
+    """Render a legend placeholder: an empty, box-styled div in a div-in-div wrapper.
+
+    When the legend resolves to a sheet scale (SHE-10/11), bake the link in as
+    `data-source`/`data-scale`/`data-orientation`/`data-title` so the runtime
+    (`legend_render.js`) can call `view.scale(...)` and render the swatch/label
+    content. The box stays empty at compile time — content is rendered browser-side.
+
+    Mirrors _render_sheet's id scheme (`legend-{name-or-auto-id}`) but does no
+    fit/show_title bookkeeping — a legend is not a Vega embed target.
+    """
+    defn = node.component
+    assert isinstance(defn, LegendComponent)
+    legend_name = node.name or ctx.next_auto_id()
+    safe_name = html.escape(legend_name, quote=True)
+
+    link = ctx.legend_links.get((defn.source, defn.field))
+    data_attrs = ""
+    if link is not None:
+        data_attrs = (
+            f' data-source="{html.escape(link.sheet_id, quote=True)}"'
+            f' data-scale="{html.escape(link.scale, quote=True)}"'
+            f' data-orientation="{html.escape(defn.orientation, quote=True)}"'
+            f' data-title="{html.escape(link.title, quote=True)}"'
+        )
+    return (
+        f'<div style="{safe_outer}">'
+        f'<div id="legend-{safe_name}"{data_attrs} style="{safe_inner}"></div>'
+        f"</div>"
+    )
+
+
 _RENDERERS: dict[type, Callable[[ResolvedNode, RenderContext, str, str], str]] = {
     RootComponent: _render_root,
     ContainerComponent: _render_container,
@@ -262,6 +314,7 @@ _RENDERERS: dict[type, Callable[[ResolvedNode, RenderContext, str, str], str]] =
     LinkComponent: _render_button_link,
     ImageComponent: _render_image,
     BlankComponent: _render_blank,
+    LegendComponent: _render_legend,
 }
 
 
@@ -324,8 +377,23 @@ def wrap_html_page(
     # Build vegaEmbed script
     patch_js = ""
     fit_js = ""
+    legend_js = ""
     script_lines = []
+    # `data-scale=` appears only on a SHE-10-linked legend div, so it gates the
+    # legend renderer + populate wiring. Non-legend dashboards stay byte-identical.
+    has_legends = "data-scale=" in body_html
+    # Guard `r` before dereferencing `r.view`: compoundFit.fit's internal .catch
+    # resolves with undefined on a fit error, so an unguarded `r.view` would throw.
+    populate_tail = (
+        ".then(r => { if (r && window.legendRender) legendRender.populate(r.view, id, document); })"
+        if has_legends
+        else ""
+    )
     if chart_specs:
+        if has_legends:
+            from shelves.render.to_html import load_legend_render_js
+
+            legend_js = load_legend_render_js()
         # Inline the browser-side label patch and pass it to every embed so
         # labels (e.g. heatmap cell values) render in dashboards exactly as they
         # do on the single-chart render path (to_html.py). Without this, the
@@ -396,12 +464,13 @@ def wrap_html_page(
             script_lines.append("      if (box && window.compoundFit) {")
             script_lines.append(
                 "        compoundFit.fit(`#${id}`, spec, box,"
-                " { actions: false, patch: labelPatch });"
+                " { actions: false, patch: labelPatch })" + populate_tail + ".catch(console.error);"
             )
             script_lines.append("      } else {")
             script_lines.append(
                 "        vegaEmbed(`#${id}`, spec, { actions: false, patch: labelPatch })"
-                ".catch(console.error);"
+                + populate_tail
+                + ".catch(console.error);"
             )
             script_lines.append("      }")
             script_lines.append("    });")
@@ -409,13 +478,15 @@ def wrap_html_page(
             script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
             script_lines.append(
                 "      vegaEmbed(`#${id}`, spec, { actions: false, patch: labelPatch })"
-                ".catch(console.error);"
+                + populate_tail
+                + ".catch(console.error);"
             )
             script_lines.append("    });")
 
     script_block = "\n".join(script_lines)
     patch_block = f"  <script>\n{patch_js}\n  </script>\n" if patch_js else ""
     fit_block = f"  <script>\n{fit_js}\n  </script>\n" if fit_js else ""
+    legend_block = f"  <script>\n{legend_js}\n  </script>\n" if legend_js else ""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -433,7 +504,7 @@ def wrap_html_page(
 </head>
 <body>
   {body_html}
-{patch_block}{fit_block}  <script>
+{patch_block}{fit_block}{legend_block}  <script>
 {script_block}
   </script>
 </body>

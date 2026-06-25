@@ -1067,6 +1067,57 @@ root:
         # The title should be nulled in the embedded spec
         assert '"title": null' in html or '"title":null' in html or "title: null" in html
 
+    def test_compound_fit_with_legends_guards_and_catches(self):
+        """A compound (faceted) sheet routed through compoundFit.fit on a
+        dashboard that also has legends must not throw on a fit error: the
+        populate callback guards an undefined result, and the compound branch
+        carries a trailing .catch like the non-compound branch. Regression for
+        the `undefined.view` TypeError when compoundFit.fit's internal .catch
+        resolves with undefined.
+        """
+        from shelves.translator.layout_styles import LegendLink
+
+        spec = parse_dashboard(
+            """\
+dashboard: "Compound + Legend"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: horizontal
+  contains:
+    - sheet: charts/foo.yaml
+      name: faceted
+      fit: fill
+    - legend: charts/foo.yaml
+      field: region
+      width: 180
+"""
+        )
+        legend_links = {
+            ("charts/foo.yaml", "region"): LegendLink(
+                sheet_id="sheet-faceted", scale="color", title="Region"
+            )
+        }
+        html = translate_dashboard(
+            spec,
+            _default_theme(),
+            chart_specs={
+                "faceted": {
+                    "facet": {"field": "region", "type": "nominal"},
+                    "columns": 2,
+                    "spec": {"mark": "bar", "encoding": {}},
+                }
+            },
+            legend_links=legend_links,
+        )
+
+        # The compound sheet must route through compoundFit.fit with legends wired.
+        line = next(ln for ln in html.splitlines() if "compoundFit.fit" in ln)
+        assert "legendRender.populate" in line
+        # populate must guard against an undefined result (fit error path):
+        assert "if (r &&" in line
+        # the compound branch must catch errors like the non-compound branch does:
+        assert ".catch(" in line
+
 
 # ─── Spacing CSS ────────────────────────────────────────────────────
 
@@ -2557,3 +2608,90 @@ root:
         html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": _vconcat_spec()})
         assert "function labelPatch(" in html
         assert "patch: labelPatch" in html
+
+
+# ─── Legend Render (SHE-9) ───────────────────────────────────────────
+
+
+class TestLegendRender:
+    """SHE-9: legend renders as a sized, positioned, empty placeholder box."""
+
+    def test_legend_placeholder_box(self):
+        html_out = _translate(load_layout_yaml("legend_basic.yaml"))
+
+        # A legend placeholder div exists, with an id of the form legend-<name-or-auto-id>.
+        m = re.search(
+            r'<div style="([^"]+)"><div id="(legend-[^"]+)" style="([^"]+)"></div></div>',
+            html_out,
+        )
+        assert m is not None
+        outer_css, _legend_id, inner_css = m.group(1), m.group(2), m.group(3)
+
+        # Outer wrapper carries solver dims + the card style + box-sizing.
+        assert "width: 180px" in outer_css
+        assert "height: 800px" in outer_css
+        assert "background: #FFFFFF" in outer_css
+        assert "border-radius: 8px" in outer_css
+        assert "box-sizing: border-box" in outer_css
+        assert "display: inline-block" in outer_css  # child of a horizontal container
+
+        # Inner placeholder is a full-box clipped div, and EMPTY (no content yet).
+        assert "width: 100%" in inner_css
+        assert "height: 100%" in inner_css
+        assert "overflow: hidden" in inner_css
+
+    def test_legend_minimal_render(self):
+        html_out = _translate("""\
+dashboard: "Legend Min"
+canvas: { width: 600, height: 400 }
+root:
+  orientation: vertical
+  contains:
+    - legend: charts/foo.yaml
+      field: Region
+      height: 120
+""")
+        m = re.search(
+            r'<div style="([^"]+)"><div id="(legend-[^"]+)" style="[^"]*"></div></div>',
+            html_out,
+        )
+        assert m is not None
+        outer_css = m.group(1)
+        assert "height: 120px" in outer_css
+        # vertical parent → fills cross axis
+        assert "width: 600px" in outer_css
+        # No style → no visual style keys on the wrapper (box-sizing: border-box
+        # is structural and always present, so don't match the bare "border" token).
+        assert "background" not in outer_css
+        assert "border-radius" not in outer_css
+
+    def test_legend_explicit_name_in_id(self):
+        html_out = _translate("""\
+dashboard: "Legend Named"
+canvas: { width: 600, height: 400 }
+root:
+  orientation: vertical
+  contains:
+    - legend: charts/foo.yaml
+      field: X
+      name: cat_legend
+""")
+        assert 'id="legend-cat_legend"' in html_out
+
+    def test_legend_html_escape_hatch(self):
+        html_out = _translate("""\
+dashboard: "Legend Html"
+canvas: { width: 600, height: 400 }
+root:
+  orientation: vertical
+  contains:
+    - legend: charts/foo.yaml
+      field: X
+      html: "border: 1px solid red;"
+""")
+        m = re.search(
+            r'<div style="([^"]+)"><div id="legend-[^"]+" style="[^"]*"></div></div>',
+            html_out,
+        )
+        assert m is not None
+        assert m.group(1).endswith("border: 1px solid red;")
