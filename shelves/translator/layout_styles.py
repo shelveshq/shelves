@@ -42,6 +42,21 @@ LINK_DEFAULTS: dict[str, str] = {
 }
 
 
+# ─── Legend Link ─────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class LegendLink:
+    """Resolved binding from a legend element to its sheet's scale (SHE-10).
+
+    SHE-11 will add a `title` field (explicit override or model-label default);
+    it is intentionally absent in SHE-10.
+    """
+
+    sheet_id: str  # the linked sheet's DOM id, e.g. "sheet-sales_chart"
+    scale: str  # Vega runtime scale name == channel name for single-view
+
+
 # ─── Render Context ──────────────────────────────────────────────
 
 
@@ -57,6 +72,9 @@ class RenderContext:
     sheet_fit_modes: dict[str, str] = field(default_factory=dict)
     sheet_show_titles: dict[str, bool] = field(default_factory=dict)
     sheet_content_dims: dict[str, tuple[int, int]] = field(default_factory=dict)
+    # SHE-10: (legend.source, legend.field) -> resolved link. Empty for the
+    # studio/direct-translate paths that don't resolve legends yet.
+    legend_links: dict[tuple[str, str], LegendLink] = field(default_factory=dict)
 
     def next_auto_id(self) -> str:
         """Generate next auto-ID for anonymous sheets."""

@@ -30,7 +30,12 @@ from shelves.schema.layout_schema import (
 from shelves.theme.theme_schema import ThemeSpec
 from shelves.translator.layout_flatten import flatten_dashboard
 from shelves.translator.layout_solver import ResolvedNode, solve_layout
-from shelves.translator.layout_styles import RenderContext, resolve_inner_styles, resolve_styles
+from shelves.translator.layout_styles import (
+    LegendLink,
+    RenderContext,
+    resolve_inner_styles,
+    resolve_styles,
+)
 
 # Block holder that carries the ellipsis clipping for text (KAN-295).  Kept off
 # the flex-centering inner div because text-overflow:ellipsis is inert on a flex
@@ -43,6 +48,7 @@ def translate_dashboard(
     theme: ThemeSpec,
     chart_specs: dict[str, dict] | None = None,
     asset_url_prefix: str = "assets/",
+    legend_links: dict[tuple[str, str], LegendLink] | None = None,
 ) -> str:
     """Translate a DashboardSpec to a complete HTML page.
 
@@ -50,8 +56,15 @@ def translate_dashboard(
     reference images relative to the assets directory (e.g. `image: png/x.png`).
     Studio/dev serve assets at `/assets`, so they pass `"assets/"`; the render
     CLI passes a path computed relative to the output HTML's location.
+
+    `legend_links` maps (legend.source, legend.field) → resolved LegendLink and
+    is built by compose_dashboard (SHE-10). Empty for direct-translate callers.
     """
-    ctx = RenderContext(theme=theme, asset_url_prefix=asset_url_prefix)
+    ctx = RenderContext(
+        theme=theme,
+        asset_url_prefix=asset_url_prefix,
+        legend_links=legend_links or {},
+    )
 
     # Flatten first: resolve all style refs and component refs
     flat_tree = flatten_dashboard(dashboard)
@@ -257,8 +270,9 @@ def _render_blank(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
 def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
     """Render a legend placeholder: an empty, box-styled div in a div-in-div wrapper.
 
-    SHE-9 emits only the positioned/sized empty box. Field→scale linking, in-sheet
-    legend suppression, and runtime content population are SHE-10 / SHE-11.
+    When the legend resolves to a sheet scale (SHE-10), bake the link in as
+    `data-source`/`data-scale` so SHE-11's runtime can call `view.scale(...)`.
+    Content (swatches/labels) and the title are still deferred to SHE-11.
 
     Mirrors _render_sheet's id scheme (`legend-{name-or-auto-id}`) but does no
     fit/show_title bookkeeping — a legend is not a Vega embed target.
@@ -267,8 +281,18 @@ def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe
     assert isinstance(defn, LegendComponent)
     legend_name = node.name or ctx.next_auto_id()
     safe_name = html.escape(legend_name, quote=True)
+
+    link = ctx.legend_links.get((defn.source, defn.field))
+    data_attrs = ""
+    if link is not None:
+        data_attrs = (
+            f' data-source="{html.escape(link.sheet_id, quote=True)}"'
+            f' data-scale="{html.escape(link.scale, quote=True)}"'
+        )
     return (
-        f'<div style="{safe_outer}"><div id="legend-{safe_name}" style="{safe_inner}"></div></div>'
+        f'<div style="{safe_outer}">'
+        f'<div id="legend-{safe_name}"{data_attrs} style="{safe_inner}"></div>'
+        f"</div>"
     )
 
 

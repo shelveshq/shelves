@@ -1,0 +1,12 @@
+dashboard: "Legend Layered"
+canvas:
+  width: 1000
+  height: 800
+root:
+  orientation: horizontal
+  contains:
+    - sheet: dual_axis.yaml
+      name: dual
+    - legend: dual_axis.yaml
+      field: country
+      width: 180

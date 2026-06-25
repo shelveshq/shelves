@@ -505,11 +505,17 @@ relative to the dashboard file, with no implicit `charts/` prefix.
 | `html` | No | — | Raw CSS escape hatch |
 
 The in-sheet legend on the linked chart is hidden automatically so the legend is
-not drawn twice. Sizing and styling follow the same rules as every other layout
-element (see [Sizing](#sizing) and [Shared styles](#shared-styles)).
+not drawn twice — and **every** in-sheet legend on a dashboard chart is suppressed,
+whether or not you place a matching `legend:` element. If a chart has a colour or
+size legend and no `legend:` element points at it, the dashboard build emits a
+warning so the legend doesn't silently disappear. Sizing and styling follow the
+same rules as every other layout element (see [Sizing](#sizing) and
+[Shared styles](#shared-styles)).
 
-> Legends currently support a single chart's **categorical color** encoding.
-> Gradient (quantitative) color, size, and shape legends are planned.
+> Legends currently link to a **single-view** chart's `color` or `size` field.
+> Legends pointing at layered or dual-axis charts (which have multiple scales per
+> channel) are not supported yet and raise a build error. Gradient (quantitative)
+> colour, and shape legends, and rendered swatch content, are planned.
 
 ### Blank (spacer)
 

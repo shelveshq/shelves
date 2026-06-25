@@ -12,10 +12,17 @@ Top-level orchestrator that composes a complete dashboard from a YAML file:
 from __future__ import annotations
 
 import contextlib
+import warnings
 from pathlib import Path
 
+from shelves.compose.legend_link import resolve_legend_links
+from shelves.models.loader import load_model
+from shelves.models.resolver import ModelResolver
+from shelves.schema.chart_schema import ChartSpec
+from shelves.schema.field_types import FieldTypeResolver
 from shelves.schema.layout_schema import (
     DashboardSpec,
+    LegendComponent,
     SheetComponent,
     load_dashboard,
 )
@@ -66,6 +73,7 @@ def compose_dashboard(
     resolved_data_dir = Path(data_dir) if data_dir else Path.cwd()
 
     chart_specs: dict[str, dict] = {}
+    resolvers: dict[str, FieldTypeResolver] = {}
     for name, link in sheets.items():
         chart_path = base / link
         if not chart_path.exists():
@@ -73,14 +81,29 @@ def compose_dashboard(
                 f"Chart file not found: {chart_path} (referenced by sheet '{name}')"
             )
         try:
-            vl = _compile_chart(chart_path, theme, resolved_data_dir, models_dir, no_theme)
+            vl, chart_spec = _compile_chart(
+                chart_path, theme, resolved_data_dir, models_dir, no_theme
+            )
         except Exception as e:
             raise RuntimeError(
                 f"Failed to compile chart for sheet '{name}' (link: {link}): {e}"
             ) from e
         chart_specs[name] = vl
+        resolvers[name] = ModelResolver(load_model(chart_spec.data, models_dir=models_dir))
 
-    html = translate_dashboard(spec, theme, chart_specs, asset_url_prefix=asset_url_prefix)
+    # SHE-10: link legends to sheet scales + suppress in-sheet legends.
+    legends = _discover_legends(spec)
+    legend_links, legend_warnings = resolve_legend_links(legends, sheets, chart_specs, resolvers)
+    for msg in legend_warnings:
+        warnings.warn(msg, stacklevel=2)
+
+    html = translate_dashboard(
+        spec,
+        theme,
+        chart_specs,
+        asset_url_prefix=asset_url_prefix,
+        legend_links=legend_links,
+    )
     return html
 
 
@@ -117,19 +140,39 @@ def _next_auto(counter: list[int]) -> int:
     return counter[0]
 
 
+def _discover_legends(spec: DashboardSpec) -> list[LegendComponent]:
+    """Walk the flattened layout tree and collect every LegendComponent (in
+    document order)."""
+    flat_tree = flatten_dashboard(spec)
+    legends: list[LegendComponent] = []
+    _walk_legends(flat_tree, legends)
+    return legends
+
+
+def _walk_legends(node: FlatNode, legends: list[LegendComponent]) -> None:
+    """Recursively collect LegendComponents from a FlatNode tree."""
+    if isinstance(node.component, LegendComponent):
+        legends.append(node.component)
+    for child in node.children:
+        _walk_legends(child, legends)
+
+
 def _compile_chart(
     chart_path: Path,
     theme: ThemeSpec,
     data_dir: Path,
     models_dir: Path | str | None,
     no_theme: bool,
-) -> dict:
+) -> tuple[dict, ChartSpec]:
     """Compile a single chart YAML through the full pipeline.
 
     Pipeline: parse_chart → translate_chart → merge_theme → data binding.
 
     Data binding is model-driven: loads the chart's model, then routes
     by source type — inline reads from data_dir, cube fetches from API.
+
+    Returns (vega_lite_spec, chart_spec); the ChartSpec is needed by the caller
+    to build a resolver for legend linking (SHE-10).
     """
     from shelves.pipeline import compile_chart, resolve_model_data
 
@@ -144,4 +187,4 @@ def _compile_chart(
     with contextlib.suppress(Exception):
         vl = resolve_model_data(vl, spec, models_dir=models_dir, data_base_dir=data_dir)
 
-    return vl
+    return vl, spec

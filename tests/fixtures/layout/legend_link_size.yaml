@@ -1,0 +1,12 @@
+dashboard: "Legend Link Size"
+canvas:
+  width: 1000
+  height: 800
+root:
+  orientation: horizontal
+  contains:
+    - sheet: scatter.yaml
+      name: scatter_chart
+    - legend: scatter.yaml
+      field: revenue
+      width: 180
