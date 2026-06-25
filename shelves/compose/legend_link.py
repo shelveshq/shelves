@@ -113,8 +113,11 @@ def resolve_legend_links(
                 f"color/size/shape channel on sheet {name!r} "
                 f"(source {legend.source!r})."
             )
-        # Title is NOT resolved here — deferred to SHE-11.
-        links[(legend.source, legend.field)] = LegendLink(sheet_id=f"sheet-{name}", scale=scale)
+        # Title: explicit element override, else the field's model label (SHE-11).
+        title = legend.title or resolver.resolve_label(legend.field)
+        links[(legend.source, legend.field)] = LegendLink(
+            sheet_id=f"sheet-{name}", scale=scale, title=title
+        )
         linked.setdefault(name, set()).add(scale)
 
     # Step 3: ALWAYS-suppress + warn over every single-view sheet.

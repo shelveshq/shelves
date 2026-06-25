@@ -270,9 +270,10 @@ def _render_blank(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
 def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
     """Render a legend placeholder: an empty, box-styled div in a div-in-div wrapper.
 
-    When the legend resolves to a sheet scale (SHE-10), bake the link in as
-    `data-source`/`data-scale` so SHE-11's runtime can call `view.scale(...)`.
-    Content (swatches/labels) and the title are still deferred to SHE-11.
+    When the legend resolves to a sheet scale (SHE-10/11), bake the link in as
+    `data-source`/`data-scale`/`data-orientation`/`data-title` so the runtime
+    (`legend_render.js`) can call `view.scale(...)` and render the swatch/label
+    content. The box stays empty at compile time — content is rendered browser-side.
 
     Mirrors _render_sheet's id scheme (`legend-{name-or-auto-id}`) but does no
     fit/show_title bookkeeping — a legend is not a Vega embed target.
@@ -288,6 +289,8 @@ def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe
         data_attrs = (
             f' data-source="{html.escape(link.sheet_id, quote=True)}"'
             f' data-scale="{html.escape(link.scale, quote=True)}"'
+            f' data-orientation="{html.escape(defn.orientation, quote=True)}"'
+            f' data-title="{html.escape(link.title, quote=True)}"'
         )
     return (
         f'<div style="{safe_outer}">'
@@ -368,8 +371,21 @@ def wrap_html_page(
     # Build vegaEmbed script
     patch_js = ""
     fit_js = ""
+    legend_js = ""
     script_lines = []
+    # `data-scale=` appears only on a SHE-10-linked legend div, so it gates the
+    # legend renderer + populate wiring. Non-legend dashboards stay byte-identical.
+    has_legends = "data-scale=" in body_html
+    populate_tail = (
+        ".then(r => { if (window.legendRender) legendRender.populate(r.view, id, document); })"
+        if has_legends
+        else ""
+    )
     if chart_specs:
+        if has_legends:
+            from shelves.render.to_html import load_legend_render_js
+
+            legend_js = load_legend_render_js()
         # Inline the browser-side label patch and pass it to every embed so
         # labels (e.g. heatmap cell values) render in dashboards exactly as they
         # do on the single-chart render path (to_html.py). Without this, the
@@ -440,12 +456,13 @@ def wrap_html_page(
             script_lines.append("      if (box && window.compoundFit) {")
             script_lines.append(
                 "        compoundFit.fit(`#${id}`, spec, box,"
-                " { actions: false, patch: labelPatch });"
+                " { actions: false, patch: labelPatch })" + populate_tail + ";"
             )
             script_lines.append("      } else {")
             script_lines.append(
                 "        vegaEmbed(`#${id}`, spec, { actions: false, patch: labelPatch })"
-                ".catch(console.error);"
+                + populate_tail
+                + ".catch(console.error);"
             )
             script_lines.append("      }")
             script_lines.append("    });")
@@ -453,13 +470,15 @@ def wrap_html_page(
             script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
             script_lines.append(
                 "      vegaEmbed(`#${id}`, spec, { actions: false, patch: labelPatch })"
-                ".catch(console.error);"
+                + populate_tail
+                + ".catch(console.error);"
             )
             script_lines.append("    });")
 
     script_block = "\n".join(script_lines)
     patch_block = f"  <script>\n{patch_js}\n  </script>\n" if patch_js else ""
     fit_block = f"  <script>\n{fit_js}\n  </script>\n" if fit_js else ""
+    legend_block = f"  <script>\n{legend_js}\n  </script>\n" if legend_js else ""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -477,7 +496,7 @@ def wrap_html_page(
 </head>
 <body>
   {body_html}
-{patch_block}{fit_block}  <script>
+{patch_block}{fit_block}{legend_block}  <script>
 {script_block}
   </script>
 </body>

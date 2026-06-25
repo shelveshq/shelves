@@ -1,0 +1,13 @@
+dashboard: "Legend Titled"
+canvas:
+  width: 1000
+  height: 800
+root:
+  orientation: horizontal
+  contains:
+    - sheet: simple_bar.yaml
+      name: sales_chart
+    - legend: simple_bar.yaml
+      field: country
+      title: "Sales Region"
+      width: 180

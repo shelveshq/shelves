@@ -47,14 +47,11 @@ LINK_DEFAULTS: dict[str, str] = {
 
 @dataclass(frozen=True)
 class LegendLink:
-    """Resolved binding from a legend element to its sheet's scale (SHE-10).
-
-    SHE-11 will add a `title` field (explicit override or model-label default);
-    it is intentionally absent in SHE-10.
-    """
+    """Resolved binding from a legend element to its sheet's scale (SHE-10/11)."""
 
     sheet_id: str  # the linked sheet's DOM id, e.g. "sheet-sales_chart"
     scale: str  # Vega runtime scale name == channel name for single-view
+    title: str  # SHE-11: legend heading — explicit override or the field's model label
 
 
 # ─── Render Context ──────────────────────────────────────────────

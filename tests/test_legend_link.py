@@ -144,7 +144,9 @@ class TestLegendLinkHelpers:
         links, warns = resolve_legend_links(legends, sheets, vls, resolvers)
 
         assert links == {
-            ("simple_bar.yaml", "country"): LegendLink(sheet_id="sheet-sales_chart", scale="color")
+            ("simple_bar.yaml", "country"): LegendLink(
+                sheet_id="sheet-sales_chart", scale="color", title="country"
+            )
         }
         # In-sheet legend suppressed on the linked channel:
         assert vls["sales_chart"]["encoding"]["color"]["legend"] is None
