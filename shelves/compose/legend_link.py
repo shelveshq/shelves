@@ -114,7 +114,9 @@ def resolve_legend_links(
                 f"(source {legend.source!r})."
             )
         # Title: explicit element override, else the field's model label (SHE-11).
-        title = legend.title or resolver.resolve_label(legend.field)
+        # An explicit `title: ""` is meaningful (suppress the heading), so only
+        # fall back when title is unset (None) — not merely falsy.
+        title = legend.title if legend.title is not None else resolver.resolve_label(legend.field)
         links[(legend.source, legend.field)] = LegendLink(
             sheet_id=f"sheet-{name}", scale=scale, title=title
         )

@@ -1067,6 +1067,57 @@ root:
         # The title should be nulled in the embedded spec
         assert '"title": null' in html or '"title":null' in html or "title: null" in html
 
+    def test_compound_fit_with_legends_guards_and_catches(self):
+        """A compound (faceted) sheet routed through compoundFit.fit on a
+        dashboard that also has legends must not throw on a fit error: the
+        populate callback guards an undefined result, and the compound branch
+        carries a trailing .catch like the non-compound branch. Regression for
+        the `undefined.view` TypeError when compoundFit.fit's internal .catch
+        resolves with undefined.
+        """
+        from shelves.translator.layout_styles import LegendLink
+
+        spec = parse_dashboard(
+            """\
+dashboard: "Compound + Legend"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: horizontal
+  contains:
+    - sheet: charts/foo.yaml
+      name: faceted
+      fit: fill
+    - legend: charts/foo.yaml
+      field: region
+      width: 180
+"""
+        )
+        legend_links = {
+            ("charts/foo.yaml", "region"): LegendLink(
+                sheet_id="sheet-faceted", scale="color", title="Region"
+            )
+        }
+        html = translate_dashboard(
+            spec,
+            _default_theme(),
+            chart_specs={
+                "faceted": {
+                    "facet": {"field": "region", "type": "nominal"},
+                    "columns": 2,
+                    "spec": {"mark": "bar", "encoding": {}},
+                }
+            },
+            legend_links=legend_links,
+        )
+
+        # The compound sheet must route through compoundFit.fit with legends wired.
+        line = next(ln for ln in html.splitlines() if "compoundFit.fit" in ln)
+        assert "legendRender.populate" in line
+        # populate must guard against an undefined result (fit error path):
+        assert "if (r &&" in line
+        # the compound branch must catch errors like the non-compound branch does:
+        assert ".catch(" in line
+
 
 # ─── Spacing CSS ────────────────────────────────────────────────────
 

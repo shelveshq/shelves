@@ -37,6 +37,33 @@ def _compose(fixture_name: str, **kwargs) -> str:
 
 
 class TestDashboardCompose:
+    def test_compose_flattens_tree_once(self, monkeypatch):
+        """compose_dashboard should flatten the layout tree exactly once and
+        thread it to sheet discovery, legend discovery, and translate_dashboard —
+        not re-flatten in each (it rebuilds the full tree with style merging)."""
+        import shelves.compose.dashboard as compose_mod
+        import shelves.translator.layout as layout_mod
+
+        counts = {"compose": 0, "layout": 0}
+        orig = compose_mod.flatten_dashboard
+
+        def counting_compose(spec):
+            counts["compose"] += 1
+            return orig(spec)
+
+        def counting_layout(spec):
+            counts["layout"] += 1
+            return orig(spec)
+
+        monkeypatch.setattr(compose_mod, "flatten_dashboard", counting_compose)
+        monkeypatch.setattr(layout_mod, "flatten_dashboard", counting_layout)
+
+        _compose("compose_minimal.yaml")
+
+        # Flattened once in compose and reused everywhere downstream.
+        assert counts["compose"] == 1
+        assert counts["layout"] == 0
+
     def test_compose_minimal_dashboard(self):
         """Single chart dashboard produces valid HTML with vegaEmbed."""
         html = _compose("compose_minimal.yaml")

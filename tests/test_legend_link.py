@@ -153,6 +153,19 @@ class TestLegendLinkHelpers:
         # Linked channel does NOT warn:
         assert warns == []
 
+    def test_resolve_links_explicit_empty_title_preserved(self):
+        # An explicit `title: ""` suppresses the heading and must NOT fall back
+        # to the model label (empty string is meaningful, not "unset").
+        color_enc = {"field": "country", "type": "nominal"}
+        vls = {"s": {"mark": "bar", "encoding": {"color": color_enc}}}
+        sheets = {"s": "chart.yaml"}
+        resolvers = {"s": FakeResolver()}
+        legends = [LegendComponent(source="chart.yaml", field="country", title="")]
+
+        links, _ = resolve_legend_links(legends, sheets, vls, resolvers)
+
+        assert links[("chart.yaml", "country")].title == ""
+
     def test_resolve_links_warns_unlinked(self):
         vls = {"s": {"mark": "bar", "encoding": {"color": {"field": "country"}}}}
         sheets = {"s": "chart.yaml"}

@@ -28,7 +28,7 @@ from shelves.schema.layout_schema import (
     TextComponent,
 )
 from shelves.theme.theme_schema import ThemeSpec
-from shelves.translator.layout_flatten import flatten_dashboard
+from shelves.translator.layout_flatten import FlatNode, flatten_dashboard
 from shelves.translator.layout_solver import ResolvedNode, solve_layout
 from shelves.translator.layout_styles import (
     LegendLink,
@@ -49,6 +49,7 @@ def translate_dashboard(
     chart_specs: dict[str, dict] | None = None,
     asset_url_prefix: str = "assets/",
     legend_links: dict[tuple[str, str], LegendLink] | None = None,
+    flat_tree: FlatNode | None = None,
 ) -> str:
     """Translate a DashboardSpec to a complete HTML page.
 
@@ -59,6 +60,10 @@ def translate_dashboard(
 
     `legend_links` maps (legend.source, legend.field) → resolved LegendLink and
     is built by compose_dashboard (SHE-10). Empty for direct-translate callers.
+
+    `flat_tree` lets a caller pass an already-flattened layout tree (compose
+    flattens once and reuses it for sheet/legend discovery); when None the tree
+    is flattened here.
     """
     ctx = RenderContext(
         theme=theme,
@@ -66,8 +71,9 @@ def translate_dashboard(
         legend_links=legend_links or {},
     )
 
-    # Flatten first: resolve all style refs and component refs
-    flat_tree = flatten_dashboard(dashboard)
+    # Flatten first (unless a caller already did): resolve style + component refs
+    if flat_tree is None:
+        flat_tree = flatten_dashboard(dashboard)
 
     # Solve layout to get concrete pixel dimensions
     resolved_tree = solve_layout(flat_tree)
@@ -376,8 +382,10 @@ def wrap_html_page(
     # `data-scale=` appears only on a SHE-10-linked legend div, so it gates the
     # legend renderer + populate wiring. Non-legend dashboards stay byte-identical.
     has_legends = "data-scale=" in body_html
+    # Guard `r` before dereferencing `r.view`: compoundFit.fit's internal .catch
+    # resolves with undefined on a fit error, so an unguarded `r.view` would throw.
     populate_tail = (
-        ".then(r => { if (window.legendRender) legendRender.populate(r.view, id, document); })"
+        ".then(r => { if (r && window.legendRender) legendRender.populate(r.view, id, document); })"
         if has_legends
         else ""
     )
@@ -456,7 +464,7 @@ def wrap_html_page(
             script_lines.append("      if (box && window.compoundFit) {")
             script_lines.append(
                 "        compoundFit.fit(`#${id}`, spec, box,"
-                " { actions: false, patch: labelPatch })" + populate_tail + ";"
+                " { actions: false, patch: labelPatch })" + populate_tail + ".catch(console.error);"
             )
             script_lines.append("      } else {")
             script_lines.append(
