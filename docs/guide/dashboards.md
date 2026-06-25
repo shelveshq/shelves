@@ -189,6 +189,7 @@ The type key's value is always the component's **primary field**. Additional pro
 | `image` | src | `image: logo.png` |
 | `button` | display text | `button: "Export"` |
 | `link` | display text | `link: "Details"` |
+| `legend` | source (chart path) | `legend: revenue.yaml` |
 | `blank` | *(none)* | `blank:` |
 
 ---
@@ -471,6 +472,44 @@ protocol-relative `//example.com/logo.png`). Passed through unchanged.
 
 **3. An inline data URI** — e.g. `data:image/png;base64,iVBORw0KGgo…`. Useful
 for embedding a small image directly in the dashboard with no external file.
+
+### Legend
+
+An independent legend for a chart, placed as its own box in the layout instead of
+inside the chart. A legend links to exactly one sheet by its **chart path** (the
+same path you would give a `sheet:`) and names the **field** whose scale it shows.
+
+```yaml
+- legend: sales_by_category.yaml   # same path as the chart's `sheet:` link
+  field: Category                   # which encoded field's scale to show
+  title: "Product Category"         # optional; defaults to the field's label
+  orientation: vertical             # vertical (default) or horizontal
+  width: 180
+  style: card
+```
+
+The `legend:` value is the **same path you give the matching `sheet:`** — resolved
+relative to the dashboard file, with no implicit `charts/` prefix.
+
+| Property | Required | Default | Description |
+|---|---|---|---|
+| *(value)* | Yes | — | `source`: the chart YAML path this legend describes (must match the sheet's path) |
+| `field` | Yes | — | Name of the encoded field whose scale the legend renders |
+| `title` | No | field label | Legend heading; defaults to the field's model label |
+| `orientation` | No | `vertical` | `vertical` (stacked list) or `horizontal` (wrapping row) |
+| `width` | No | `auto` | Outer box width |
+| `height` | No | `auto` | Outer box height |
+| `padding` | No | `0` | Inner spacing |
+| `margin` | No | `0` | Outer spacing |
+| `style` | No | — | Reference to a shared style |
+| `html` | No | — | Raw CSS escape hatch |
+
+The in-sheet legend on the linked chart is hidden automatically so the legend is
+not drawn twice. Sizing and styling follow the same rules as every other layout
+element (see [Sizing](#sizing) and [Shared styles](#shared-styles)).
+
+> Legends currently support a single chart's **categorical color** encoding.
+> Gradient (quantitative) color, size, and shape legends are planned.
 
 ### Blank (spacer)
 

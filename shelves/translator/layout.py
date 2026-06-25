@@ -21,6 +21,7 @@ from shelves.schema.layout_schema import (
     ContainerComponent,
     DashboardSpec,
     ImageComponent,
+    LegendComponent,
     LinkComponent,
     RootComponent,
     SheetComponent,
@@ -253,6 +254,24 @@ def _render_blank(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
     return f'<div style="{safe_outer}"><div style="{safe_inner}"></div></div>'
 
 
+def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
+    """Render a legend placeholder: an empty, box-styled div in a div-in-div wrapper.
+
+    SHE-9 emits only the positioned/sized empty box. Field→scale linking, in-sheet
+    legend suppression, and runtime content population are SHE-10 / SHE-11.
+
+    Mirrors _render_sheet's id scheme (`legend-{name-or-auto-id}`) but does no
+    fit/show_title bookkeeping — a legend is not a Vega embed target.
+    """
+    defn = node.component
+    assert isinstance(defn, LegendComponent)
+    legend_name = node.name or ctx.next_auto_id()
+    safe_name = html.escape(legend_name, quote=True)
+    return (
+        f'<div style="{safe_outer}"><div id="legend-{safe_name}" style="{safe_inner}"></div></div>'
+    )
+
+
 _RENDERERS: dict[type, Callable[[ResolvedNode, RenderContext, str, str], str]] = {
     RootComponent: _render_root,
     ContainerComponent: _render_container,
@@ -262,6 +281,7 @@ _RENDERERS: dict[type, Callable[[ResolvedNode, RenderContext, str, str], str]] =
     LinkComponent: _render_button_link,
     ImageComponent: _render_image,
     BlankComponent: _render_blank,
+    LegendComponent: _render_legend,
 }
 
 

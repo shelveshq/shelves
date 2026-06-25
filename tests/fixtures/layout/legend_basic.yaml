@@ -1,0 +1,20 @@
+dashboard: "Legend Basic"
+canvas:
+  width: 1000
+  height: 800
+
+styles:
+  card:
+    background: "#FFFFFF"
+    border_radius: 8
+
+root:
+  orientation: horizontal
+  contains:
+    - sheet: sales_by_category.yaml
+      name: sales_chart
+    - legend: sales_by_category.yaml
+      field: Category
+      title: "Product Category"
+      width: 180
+      style: card

@@ -16,6 +16,7 @@ from shelves.translator.layout_solver import (
     parse_spacing,
     solve_layout,
 )
+from tests.conftest import load_layout_yaml
 
 # ─── Helpers ────────────────────────────────────────────────────────
 
@@ -1271,3 +1272,24 @@ root:
         # Each KPI has padding 8: content = outer - 16
         for kpi in kpi_row.children:
             assert kpi.content_width == kpi.outer_width - 16
+
+
+# ─── Legend Placement (SHE-9) ───────────────────────────────────────
+
+
+class TestLegendPlacement:
+    """SHE-9: a legend is a generic leaf — explicit px main-axis, fill cross-axis."""
+
+    def test_legend_fixed_width_fills_cross_axis(self):
+        resolved = _solve(load_layout_yaml("legend_basic.yaml"))
+
+        assert len(resolved.children) == 2
+        legend_node = resolved.children[1]
+        assert legend_node.component.type == "legend"
+        assert legend_node.outer_width == 180  # explicit px main-axis size
+        assert legend_node.outer_height == 800  # fills the cross axis
+        assert legend_node.content_width == 180  # no padding from the card style
+        assert legend_node.content_height == 800
+
+        # Sibling sheet absorbs the remaining main-axis width.
+        assert resolved.children[0].outer_width == 820  # 1000 - 180

@@ -2557,3 +2557,90 @@ root:
         html = _translate(_concat_sheet_yaml(fit="fill"), chart_specs={"stacked": _vconcat_spec()})
         assert "function labelPatch(" in html
         assert "patch: labelPatch" in html
+
+
+# ─── Legend Render (SHE-9) ───────────────────────────────────────────
+
+
+class TestLegendRender:
+    """SHE-9: legend renders as a sized, positioned, empty placeholder box."""
+
+    def test_legend_placeholder_box(self):
+        html_out = _translate(load_layout_yaml("legend_basic.yaml"))
+
+        # A legend placeholder div exists, with an id of the form legend-<name-or-auto-id>.
+        m = re.search(
+            r'<div style="([^"]+)"><div id="(legend-[^"]+)" style="([^"]+)"></div></div>',
+            html_out,
+        )
+        assert m is not None
+        outer_css, _legend_id, inner_css = m.group(1), m.group(2), m.group(3)
+
+        # Outer wrapper carries solver dims + the card style + box-sizing.
+        assert "width: 180px" in outer_css
+        assert "height: 800px" in outer_css
+        assert "background: #FFFFFF" in outer_css
+        assert "border-radius: 8px" in outer_css
+        assert "box-sizing: border-box" in outer_css
+        assert "display: inline-block" in outer_css  # child of a horizontal container
+
+        # Inner placeholder is a full-box clipped div, and EMPTY (no content yet).
+        assert "width: 100%" in inner_css
+        assert "height: 100%" in inner_css
+        assert "overflow: hidden" in inner_css
+
+    def test_legend_minimal_render(self):
+        html_out = _translate("""\
+dashboard: "Legend Min"
+canvas: { width: 600, height: 400 }
+root:
+  orientation: vertical
+  contains:
+    - legend: charts/foo.yaml
+      field: Region
+      height: 120
+""")
+        m = re.search(
+            r'<div style="([^"]+)"><div id="(legend-[^"]+)" style="[^"]*"></div></div>',
+            html_out,
+        )
+        assert m is not None
+        outer_css = m.group(1)
+        assert "height: 120px" in outer_css
+        # vertical parent → fills cross axis
+        assert "width: 600px" in outer_css
+        # No style → no visual style keys on the wrapper (box-sizing: border-box
+        # is structural and always present, so don't match the bare "border" token).
+        assert "background" not in outer_css
+        assert "border-radius" not in outer_css
+
+    def test_legend_explicit_name_in_id(self):
+        html_out = _translate("""\
+dashboard: "Legend Named"
+canvas: { width: 600, height: 400 }
+root:
+  orientation: vertical
+  contains:
+    - legend: charts/foo.yaml
+      field: X
+      name: cat_legend
+""")
+        assert 'id="legend-cat_legend"' in html_out
+
+    def test_legend_html_escape_hatch(self):
+        html_out = _translate("""\
+dashboard: "Legend Html"
+canvas: { width: 600, height: 400 }
+root:
+  orientation: vertical
+  contains:
+    - legend: charts/foo.yaml
+      field: X
+      html: "border: 1px solid red;"
+""")
+        m = re.search(
+            r'<div style="([^"]+)"><div id="legend-[^"]+" style="[^"]*"></div></div>',
+            html_out,
+        )
+        assert m is not None
+        assert m.group(1).endswith("border: 1px solid red;")

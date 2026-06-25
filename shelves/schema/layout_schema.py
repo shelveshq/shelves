@@ -73,7 +73,7 @@ class Canvas(BaseModel):
 
 # ─── Type Constants ───────────────────────────────────────────────
 
-KNOWN_LEAF_TYPES = {"sheet", "text", "image", "button", "link", "blank"}
+KNOWN_LEAF_TYPES = {"sheet", "text", "image", "button", "link", "blank", "legend"}
 KNOWN_CONTAINER_TYPES = {"horizontal", "vertical"}
 KNOWN_TYPES = KNOWN_LEAF_TYPES | KNOWN_CONTAINER_TYPES
 
@@ -120,6 +120,21 @@ class ImageComponent(BaseModel):
     fit: bool = True
     # True: center in box. False: top-left. Only applies when fit=True.
     center: bool = False
+    width: SizeValue = None
+    height: SizeValue = None
+    margin: int | str | None = None
+    padding: int | str | None = None
+    style: str | None = None
+    html: str | None = None
+
+
+class LegendComponent(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    type: Literal["legend"] = "legend"
+    source: str  # chart YAML path the legend draws from (matches a sheet's `link`)
+    field: str  # field name whose scale the legend will render (resolved in SHE-10)
+    title: str | None = None
+    orientation: Literal["vertical", "horizontal"] = "vertical"
     width: SizeValue = None
     height: SizeValue = None
     margin: int | str | None = None
@@ -215,6 +230,7 @@ Component = (
     | LinkComponent
     | ImageComponent
     | BlankComponent
+    | LegendComponent
 )
 
 
@@ -228,6 +244,7 @@ _LEAF_BUILDERS: dict[str, tuple[type, str]] = {
     "button": (ButtonComponent, "text"),
     "link": (LinkComponent, "text"),
     "blank": (BlankComponent, ""),  # blank has no primary field
+    "legend": (LegendComponent, "source"),
 }
 
 
