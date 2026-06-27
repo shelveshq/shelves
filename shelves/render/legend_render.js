@@ -26,6 +26,17 @@
   var ITEMS_STYLE_V = 'display:flex;flex-direction:column;gap:4px';
   var ITEMS_STYLE_H = 'display:flex;flex-direction:row;flex-wrap:wrap;gap:12px';
 
+  // SHE-12 gradient styling (no dedicated theme tokens yet).
+  var GRADIENT_STOPS = 16; // n+1 color samples across the domain
+  var GRADIENT_BAR_V = 'width:14px;height:120px;border-radius:2px;flex:0 0 auto';
+  // Horizontal bar fills the container width so it aligns with the tick row,
+  // which spans the full width via space-between (SHE-12 alignment fix).
+  var GRADIENT_BAR_H = 'height:14px;width:100%;border-radius:2px;flex:0 0 auto';
+  var GRADIENT_WRAP_V = 'display:flex;flex-direction:row;gap:6px;align-items:stretch';
+  var GRADIENT_WRAP_H = 'display:flex;flex-direction:column;gap:4px';
+  var GRADIENT_TICKS_V = 'display:flex;flex-direction:column;justify-content:space-between';
+  var GRADIENT_TICKS_H = 'display:flex;flex-direction:row;justify-content:space-between';
+
   // Categorical scale types this renderer handles. Others (linear/pow/sqrt/
   // sequential/...) return empty markup until their renderers land.
   var CATEGORICAL_TYPES = { ordinal: true, point: true, band: true };
@@ -81,11 +92,114 @@
     return buildMarkup(entries, opts);
   }
 
-  // Pure dispatch on scale.type. Only categorical implemented; everything else
-  // returns '' (graceful, no throw).
+  // Build a number formatter from a d3 spec, using vega's locale when the page
+  // has loaded vega (the embed script does). Falls back to String() under node
+  // tests or when no spec is given. (vega.format / vega.numberFormat are NOT
+  // formatters — the formatter is vega.formatLocale().format(spec).)
+  function makeFormatter(spec) {
+    if (spec && global.vega && global.vega.formatLocale) {
+      try {
+        return global.vega.formatLocale().format(spec);
+      } catch (e) {
+        /* fall through to String */
+      }
+    }
+    return function (v) {
+      return String(v);
+    };
+  }
+
+  // Pure: domain -> [min, mid, max] tick values (first & last domain entries).
+  function gradientTicks(domain) {
+    var lo = domain[0];
+    var hi = domain[domain.length - 1];
+    return [lo, (lo + hi) / 2, hi];
+  }
+
+  // Pure: n+1 evenly-spaced color stops across [min, max]. offset in [0, 1].
+  function gradientStops(scale, n) {
+    n = n || GRADIENT_STOPS;
+    var dom = scale.domain();
+    var lo = dom[0];
+    var hi = dom[dom.length - 1];
+    var out = [];
+    for (var i = 0; i <= n; i++) {
+      var t = i / n;
+      out.push({ offset: t, color: scale(lo + t * (hi - lo)) });
+    }
+    return out;
+  }
+
+  // Pure: stops + CSS direction -> "linear-gradient(dir, color pct%, ...)".
+  function gradientCss(stops, direction) {
+    var parts = stops.map(function (s) {
+      return s.color + ' ' + s.offset * 100 + '%';
+    });
+    return 'linear-gradient(' + direction + ', ' + parts.join(', ') + ')';
+  }
+
+  // Pure: assemble gradient legend markup. `ticks` is the display-ordered list of
+  // already-formatted label strings; `css` is the linear-gradient background.
+  function buildGradientMarkup(opts) {
+    opts = opts || {};
+    var horizontal = opts.orientation === 'horizontal';
+    var parts = [];
+    if (opts.title) {
+      parts.push(
+        '<div class="legend-title" style="' + TITLE_STYLE + '">' +
+          escapeHtml(opts.title) +
+          '</div>'
+      );
+    }
+    var bar =
+      '<div class="legend-gradient-bar" style="' +
+      (horizontal ? GRADIENT_BAR_H : GRADIENT_BAR_V) +
+      ';background:' + opts.css + '"></div>';
+    var tickSpans = (opts.ticks || []).map(function (t) {
+      return '<span class="legend-label" style="' + LABEL_STYLE + '">' + escapeHtml(t) + '</span>';
+    });
+    var ticks =
+      '<div class="legend-gradient-ticks" style="' +
+      (horizontal ? GRADIENT_TICKS_H : GRADIENT_TICKS_V) +
+      '">' + tickSpans.join('') + '</div>';
+    parts.push(
+      '<div class="legend-gradient" style="' +
+        (horizontal ? GRADIENT_WRAP_H : GRADIENT_WRAP_V) +
+        '">' + bar + ticks + '</div>'
+    );
+    return parts.join('');
+  }
+
+  // A continuous color scale -> gradient markup. Returns '' for a non-numeric or
+  // degenerate (<2 entry) domain (caller warns -> empty box, never a throw).
+  function renderGradient(scale, opts) {
+    opts = opts || {};
+    var dom = scale && scale.domain ? scale.domain() : [];
+    if (dom.length < 2 || typeof dom[0] !== 'number' || typeof dom[dom.length - 1] !== 'number') {
+      return '';
+    }
+    var horizontal = opts.orientation === 'horizontal';
+    var css = gradientCss(gradientStops(scale, GRADIENT_STOPS), horizontal ? 'to right' : 'to top');
+    var fmt = makeFormatter(opts.format);
+    var labels = gradientTicks(dom).map(fmt); // [min, mid, max]
+    // vertical bar shows max at top; horizontal shows min at left.
+    var display = horizontal ? labels : labels.slice().reverse();
+    return buildGradientMarkup({
+      css: css,
+      ticks: display,
+      orientation: opts.orientation,
+      title: opts.title,
+    });
+  }
+
+  // Dispatch on scale + channel. Categorical (any channel) -> swatches.
+  // Continuous color -> gradient (SHE-12). Size (SHE-13), shape (SHE-14), and
+  // channel-less continuous scales return '' (graceful, no throw).
   function renderLegend(scale, opts) {
+    opts = opts || {};
     if (!scale || typeof scale.type !== 'string') return '';
     if (CATEGORICAL_TYPES[scale.type]) return renderCategorical(scale, opts);
+    if (opts.channel === 'color') return renderGradient(scale, opts);
     return '';
   }
 
@@ -148,6 +262,8 @@
       var markup = renderLegend(scale, {
         title: div.getAttribute('data-title') || '',
         orientation: div.getAttribute('data-orientation') || 'vertical',
+        channel: channel,
+        format: div.getAttribute('data-format') || '',
       });
       if (!markup) {
         warn(
@@ -164,9 +280,16 @@
     escapeHtml: escapeHtml,
     buildMarkup: buildMarkup,
     renderCategorical: renderCategorical,
-    renderLegend: renderLegend,
     resolveScale: resolveScale,
+    renderLegend: renderLegend,
     populate: populate,
+    // SHE-12:
+    makeFormatter: makeFormatter,
+    gradientTicks: gradientTicks,
+    gradientStops: gradientStops,
+    gradientCss: gradientCss,
+    buildGradientMarkup: buildGradientMarkup,
+    renderGradient: renderGradient,
     CATEGORICAL_TYPES: CATEGORICAL_TYPES,
   };
 

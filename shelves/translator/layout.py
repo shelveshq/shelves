@@ -292,10 +292,14 @@ def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe
     link = ctx.legend_links.get((defn.source, defn.field))
     data_attrs = ""
     if link is not None:
+        # SHE-12: emit data-format only when the field has a model format, so
+        # categorical (nominal) legends stay byte-identical.
+        fmt_attr = f' data-format="{html.escape(link.format, quote=True)}"' if link.format else ""
         data_attrs = (
             f' data-source="{html.escape(link.sheet_id, quote=True)}"'
             f' data-scale="{html.escape(link.scale, quote=True)}"'
             f' data-channel="{html.escape(link.channel, quote=True)}"'
+            f"{fmt_attr}"
             f' data-orientation="{html.escape(defn.orientation, quote=True)}"'
             f' data-title="{html.escape(link.title, quote=True)}"'
         )

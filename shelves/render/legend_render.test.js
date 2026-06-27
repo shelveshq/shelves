@@ -169,12 +169,115 @@ test('populate: warns (not silent) when the scale cannot be resolved', () => {
 });
 
 test('populate: warns when the scale resolves but renders no content', () => {
-  // Gradient/size legend types are not implemented yet → empty markup. Warn so
-  // the empty box is never a silent mystery.
-  const view = fakeView({ color: fakeScale('linear', {}) });
-  const div = fakeDiv({ 'data-source': 'sheet-x', 'data-scale': 'color', 'data-channel': 'color' });
+  // Size legend types are not implemented yet → empty markup. Warn so the empty
+  // box is never a silent mystery. (Use channel size: a linear color scale now
+  // renders a gradient.)
+  const sizeScale = fakeScale('linear', {});
+  sizeScale.domain = () => [0, 10];
+  const view = fakeView({ size: sizeScale });
+  const div = fakeDiv({ 'data-source': 'sheet-x', 'data-scale': 'size', 'data-channel': 'size' });
   const warns = captureWarns(() => lr.populate(view, 'sheet-x', fakeDoc([div])));
   assert.strictEqual(div.innerHTML, '');
   assert.strictEqual(warns.length, 1);
   assert.ok(/no content/i.test(warns[0]));
+});
+
+// ─── SHE-12: gradient (quantitative color) renderer ────────────────
+
+// Linear color scale over [lo, hi]; scale(v) -> a deterministic "rgb" string.
+function fakeColorScale(lo, hi) {
+  const s = (v) => 'rgb(' + Math.round(((v - lo) / (hi - lo)) * 255) + ',0,0)';
+  s.type = 'sequential-linear';
+  s.domain = () => [lo, hi];
+  return s;
+}
+
+test('gradientTicks: min, mid, max from domain', () => {
+  assert.deepStrictEqual(lr.gradientTicks([0, 10000]), [0, 5000, 10000]);
+  // uses first & last domain entries:
+  assert.deepStrictEqual(lr.gradientTicks([0, 10000, 99999]), [0, 49999.5, 99999]);
+});
+
+test('gradientStops: evenly spaced offsets + colors from scale', () => {
+  const stops = lr.gradientStops(fakeColorScale(0, 100), 4);
+  assert.strictEqual(stops.length, 5);
+  assert.deepStrictEqual(stops.map((s) => s.offset), [0, 0.25, 0.5, 0.75, 1]);
+  assert.strictEqual(stops[0].color, 'rgb(0,0,0)');
+  assert.strictEqual(stops[4].color, 'rgb(255,0,0)');
+});
+
+test('gradientCss: direction + percent stops', () => {
+  const css = lr.gradientCss(
+    [{ offset: 0, color: 'rgb(0,0,0)' }, { offset: 1, color: 'rgb(255,0,0)' }],
+    'to top'
+  );
+  assert.strictEqual(css, 'linear-gradient(to top, rgb(0,0,0) 0%, rgb(255,0,0) 100%)');
+});
+
+test('renderGradient: vertical bar, ticks max..min, title', () => {
+  const html = lr.renderGradient(fakeColorScale(0, 10000), {
+    title: 'Revenue',
+    orientation: 'vertical', // format omitted -> String fallback under node
+  });
+  assert.ok(html.includes('Revenue')); // title heading
+  assert.ok(html.includes('linear-gradient(to top')); // vertical => to top
+  assert.ok(html.includes('flex-direction:column')); // ticks stacked
+  // vertical display order is max..min (top to bottom):
+  assert.ok(html.indexOf('>10000<') < html.indexOf('>5000<'));
+  assert.ok(html.indexOf('>5000<') < html.indexOf('>0<'));
+});
+
+test('renderGradient: horizontal bar, ticks min..max', () => {
+  const html = lr.renderGradient(fakeColorScale(0, 10000), { orientation: 'horizontal' });
+  assert.ok(html.includes('linear-gradient(to right'));
+  assert.ok(html.includes('flex-direction:row'));
+  assert.ok(html.indexOf('>0<') < html.indexOf('>10000<')); // min left, max right
+  assert.ok(!html.includes('font-weight:600')); // no title element when title absent
+});
+
+test('renderGradient: horizontal bar fills the container width (aligns with ticks)', () => {
+  // The tick row spans the full box width (space-between); the bar must too, or
+  // the bar (fixed width) and ticks (full width) visibly misalign.
+  const html = lr.renderGradient(fakeColorScale(0, 10000), { orientation: 'horizontal' });
+  const barStyle = html.match(/legend-gradient-bar" style="([^"]+)"/)[1];
+  assert.ok(barStyle.includes('width:100%'), 'horizontal bar should fill the container width');
+});
+
+test('renderLegend: continuous color -> gradient; size/categorical unchanged', () => {
+  // continuous color -> gradient
+  assert.ok(lr.renderLegend(fakeColorScale(0, 100), { channel: 'color' }).includes('linear-gradient'));
+  // categorical still swatches (channel irrelevant; categorical wins):
+  assert.ok(lr.renderLegend(fakeScale('ordinal', { US: '#aaa' }), { channel: 'color' }).includes('legend-swatch'));
+  // continuous size -> still empty (SHE-13 not implemented):
+  const sizeScale = fakeScale('linear', {});
+  sizeScale.domain = () => [0, 10];
+  assert.strictEqual(lr.renderLegend(sizeScale, { channel: 'size' }), '');
+  // continuous color but no channel -> empty (don't guess):
+  assert.strictEqual(lr.renderLegend(fakeColorScale(0, 100), {}), '');
+});
+
+test('makeFormatter: vega when present, String fallback otherwise', () => {
+  assert.strictEqual(lr.makeFormatter('$,.0f')(10000), '10000'); // no global vega -> String
+  globalThis.vega = { formatLocale: () => ({ format: (s) => (v) => '[' + s + ']' + v }) };
+  try {
+    assert.strictEqual(lr.makeFormatter('$,.0f')(10000), '[$,.0f]10000');
+  } finally {
+    delete globalThis.vega;
+  }
+  assert.strictEqual(lr.makeFormatter(null)(10000), '10000'); // no spec -> String
+});
+
+test('populate: continuous color div renders a gradient', () => {
+  const view = fakeView({ color: fakeColorScale(0, 10000) });
+  const div = fakeDiv({
+    'data-source': 'sheet-x',
+    'data-scale': 'color',
+    'data-channel': 'color',
+    'data-title': 'Revenue',
+    'data-format': '$,.0f',
+  });
+  const warns = captureWarns(() => lr.populate(view, 'sheet-x', fakeDoc([div])));
+  assert.ok(div.innerHTML.includes('linear-gradient'));
+  assert.ok(div.innerHTML.includes('Revenue'));
+  assert.deepStrictEqual(warns, []);
 });

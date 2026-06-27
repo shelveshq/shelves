@@ -50,6 +50,19 @@ class TestLegendDataAttrs:
         div = _legend_div(_compose("legend_render_horizontal.yaml"))
         assert 'data-orientation="horizontal"' in div
 
+    def test_gradient_color_data_attrs(self):
+        div = _legend_div(_compose("legend_gradient_color.yaml"))
+        assert 'data-source="sheet-heat"' in div
+        assert 'data-scale="color"' in div
+        assert 'data-channel="color"' in div
+        assert 'data-format="$,.0f"' in div  # revenue.format from the model
+        assert 'data-title="Revenue"' in div  # model label default
+
+    def test_nominal_color_no_format_attr(self):
+        # simple_bar.yaml color: country (nominal) -> resolve_format is None -> no attr.
+        div = _legend_div(_compose("legend_link_color.yaml"))
+        assert "data-format=" not in div
+
 
 class TestLegendRuntimeWiring:
     def test_renderer_inlined_and_populate_wired(self):

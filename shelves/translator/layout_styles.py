@@ -54,6 +54,8 @@ class LegendLink:
     title: str  # SHE-11: legend heading — explicit override or the field's model label
     channel: str  # the bare encoding channel ("color"/"size"); the runtime's
     # fallback key when the exact `scale` name doesn't resolve on the live view
+    format: str | None = None  # SHE-12: d3 format spec for gradient tick labels
+    # (the field's model format, e.g. "$,.0f"); None for un-formatted fields
 
 
 # ─── Render Context ──────────────────────────────────────────────

@@ -125,8 +125,12 @@ def resolve_legend_links(
         # An explicit `title: ""` is meaningful (suppress the heading), so only
         # fall back when title is unset (None) — not merely falsy.
         title = legend.title if legend.title is not None else resolver.resolve_label(legend.field)
+        # SHE-12: the field's model format (d3 spec) for gradient/quantitative tick
+        # labels. None for nominal/un-formatted fields. Intent stays in Python (like
+        # title); the browser renderer applies it via vega.formatLocale().
+        fmt = resolver.resolve_format(legend.field)
         links[(legend.source, legend.field)] = LegendLink(
-            sheet_id=f"sheet-{name}", scale=scale, title=title, channel=channel
+            sheet_id=f"sheet-{name}", scale=scale, title=title, channel=channel, format=fmt
         )
         # Track the bare CHANNEL (not the prefixed scale) — the always-suppress
         # pass below dedupes warnings by channel name.
