@@ -514,13 +514,14 @@ same rules as every other layout element (see [Sizing](#sizing) and
 
 > Legends link to a **single-view** chart's `color` or `size` field. A
 > **categorical** colour legend (ordinal/nominal scale) renders a swatch + label
-> list, and a **gradient** colour legend (quantitative scale) renders a sampled
-> colour bar with min/mid/max ticks formatted with the field's model format —
-> both vertical (default) or horizontal per `orientation`, headed by `title`
-> (defaulting to the field's model label), with the in-sheet legend suppressed.
-> **Size** legends are linked and suppressed today but render an **empty** box
-> until their renderer lands; legends pointing at layered or dual-axis charts
-> (multiple scales per channel) are not supported yet and raise a build error.
+> list; a **gradient** colour legend (quantitative scale) renders a sampled
+> colour bar with min/mid/max ticks; and a **size** legend (quantitative scale)
+> renders graduated circle glyphs at increasing radius with value labels. Tick
+> and glyph labels use the field's model format. All render either vertical
+> (default) or horizontal per `orientation`, headed by `title` (defaulting to the
+> field's model label), with the in-sheet legend suppressed. Legends pointing at
+> layered or dual-axis charts (multiple scales per channel) are not supported yet
+> and raise a build error.
 
 ### Blank (spacer)
 

@@ -37,6 +37,15 @@
   var GRADIENT_TICKS_V = 'display:flex;flex-direction:column;justify-content:space-between';
   var GRADIENT_TICKS_H = 'display:flex;flex-direction:row;justify-content:space-between';
 
+  // SHE-13 size legend styling (no dedicated theme tokens yet).
+  var SIZE_TICKS = 5; // representative domain stops (mirrors Vega's ~5 default ticks)
+  // Neutral fill: a size legend encodes magnitude, not colour (the chart may also
+  // colour-encode a different field, so a coloured glyph would mislead).
+  var SIZE_GLYPH_FILL = '#888';
+  var SIZE_ITEMS_STYLE_V = 'display:flex;flex-direction:column;gap:6px';
+  var SIZE_ITEMS_STYLE_H =
+    'display:flex;flex-direction:row;flex-wrap:wrap;gap:14px;align-items:flex-end';
+
   // Categorical scale types this renderer handles. Others (linear/pow/sqrt/
   // sequential/...) return empty markup until their renderers land.
   var CATEGORICAL_TYPES = { ordinal: true, point: true, band: true };
@@ -192,14 +201,123 @@
     });
   }
 
+  // Pure: a symbol's AREA in px² (what a Vega `size` scale yields) -> its pixel
+  // DIAMETER. Vega encodes `size` as area, so a circle of area A has diameter
+  // 2*sqrt(A/π). Guards non-positive / non-numeric input to 0 (invisible glyph;
+  // its label still renders) so a zero-baseline domain never produces NaN.
+  function areaToDiameter(area) {
+    if (typeof area !== 'number' || !(area > 0)) return 0;
+    return 2 * Math.sqrt(area / Math.PI);
+  }
+
+  // Representative domain values for the glyph stops. Prefers the scale's own nice
+  // tick values (real Vega continuous scales expose .ticks(count)); falls back to
+  // `count` evenly-spaced values across the domain (endpoints inclusive) for fake
+  // scales or scales without .ticks. Always returns >= 2 ascending values.
+  function sizeTicks(scale, count) {
+    count = count || SIZE_TICKS;
+    if (scale && typeof scale.ticks === 'function') {
+      try {
+        var t = scale.ticks(count);
+        if (t && t.length >= 2) return t;
+      } catch (e) {
+        /* fall through to evenly-spaced */
+      }
+    }
+    var dom = scale.domain();
+    var lo = dom[0];
+    var hi = dom[dom.length - 1];
+    var out = [];
+    for (var i = 0; i < count; i++) {
+      out.push(lo + ((hi - lo) * i) / (count - 1));
+    }
+    return out;
+  }
+
+  // Pure: tick values -> [{value, diameter}] via the live scale
+  // (value -> area -> diameter). Preserves tick order (ascending: smallest first).
+  function sizeEntries(scale, values) {
+    return values.map(function (v) {
+      return { value: v, diameter: areaToDiameter(scale(v)) };
+    });
+  }
+
+  // Pure: entries = [{label, diameter}], opts = {title, orientation, maxDiameter}.
+  // Renders a graduated-glyph list. Each glyph sits in a fixed maxDiameter×
+  // maxDiameter cell so labels align in a column (vertical) and circles share a
+  // baseline (horizontal). Colours come from a trusted constant; label text is
+  // escaped. Returns an HTML string.
+  function buildSizeMarkup(entries, opts) {
+    opts = opts || {};
+    var horizontal = opts.orientation === 'horizontal';
+    var itemsStyle = horizontal ? SIZE_ITEMS_STYLE_H : SIZE_ITEMS_STYLE_V;
+    var maxD = opts.maxDiameter || 0;
+    var parts = [];
+    if (opts.title) {
+      parts.push(
+        '<div class="legend-title" style="' + TITLE_STYLE + '">' +
+          escapeHtml(opts.title) +
+          '</div>'
+      );
+    }
+    var rows = (entries || []).map(function (e) {
+      var cell =
+        'display:inline-flex;justify-content:center;align-items:center;' +
+        'width:' + maxD + 'px;height:' + maxD + 'px;margin-right:6px;flex:0 0 auto';
+      var circle =
+        'display:inline-block;border-radius:50%;background:' + SIZE_GLYPH_FILL +
+        ';width:' + e.diameter + 'px;height:' + e.diameter + 'px';
+      return (
+        '<div class="legend-item" style="' + ROW_STYLE + '">' +
+        '<span class="legend-size-glyph" style="' + cell + '">' +
+          '<span style="' + circle + '"></span>' +
+        '</span>' +
+        '<span class="legend-label" style="' + LABEL_STYLE + '">' +
+          escapeHtml(e.label) +
+          '</span>' +
+        '</div>'
+      );
+    });
+    parts.push(
+      '<div class="legend-items" style="' + itemsStyle + '">' + rows.join('') + '</div>'
+    );
+    return parts.join('');
+  }
+
+  // A continuous size scale -> graduated-glyph markup. Returns '' for a non-numeric
+  // or degenerate (<2 entry) domain (caller warns -> empty box, never a throw).
+  function renderSize(scale, opts) {
+    opts = opts || {};
+    var dom = scale && scale.domain ? scale.domain() : [];
+    if (dom.length < 2 || typeof dom[0] !== 'number' || typeof dom[dom.length - 1] !== 'number') {
+      return '';
+    }
+    var values = sizeTicks(scale, SIZE_TICKS);
+    var entries = sizeEntries(scale, values);
+    var fmt = makeFormatter(opts.format);
+    var labeled = entries.map(function (e) {
+      return { label: fmt(e.value), diameter: e.diameter };
+    });
+    var maxD = labeled.reduce(function (m, e) {
+      return e.diameter > m ? e.diameter : m;
+    }, 0);
+    return buildSizeMarkup(labeled, {
+      title: opts.title,
+      orientation: opts.orientation,
+      maxDiameter: maxD,
+    });
+  }
+
   // Dispatch on scale + channel. Categorical (any channel) -> swatches.
-  // Continuous color -> gradient (SHE-12). Size (SHE-13), shape (SHE-14), and
-  // channel-less continuous scales return '' (graceful, no throw).
+  // Continuous color -> gradient (SHE-12). Continuous size -> graduated glyphs
+  // (SHE-13). Shape (SHE-14) and channel-less continuous scales return ''
+  // (graceful, no throw).
   function renderLegend(scale, opts) {
     opts = opts || {};
     if (!scale || typeof scale.type !== 'string') return '';
     if (CATEGORICAL_TYPES[scale.type]) return renderCategorical(scale, opts);
     if (opts.channel === 'color') return renderGradient(scale, opts);
+    if (opts.channel === 'size') return renderSize(scale, opts);
     return '';
   }
 
@@ -291,6 +409,12 @@
     buildGradientMarkup: buildGradientMarkup,
     renderGradient: renderGradient,
     CATEGORICAL_TYPES: CATEGORICAL_TYPES,
+    // SHE-13:
+    areaToDiameter: areaToDiameter,
+    sizeTicks: sizeTicks,
+    sizeEntries: sizeEntries,
+    buildSizeMarkup: buildSizeMarkup,
+    renderSize: renderSize,
   };
 
   global.legendRender = api;

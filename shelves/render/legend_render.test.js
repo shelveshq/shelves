@@ -169,13 +169,13 @@ test('populate: warns (not silent) when the scale cannot be resolved', () => {
 });
 
 test('populate: warns when the scale resolves but renders no content', () => {
-  // Size legend types are not implemented yet → empty markup. Warn so the empty
-  // box is never a silent mystery. (Use channel size: a linear color scale now
-  // renders a gradient.)
-  const sizeScale = fakeScale('linear', {});
-  sizeScale.domain = () => [0, 10];
-  const view = fakeView({ size: sizeScale });
-  const div = fakeDiv({ 'data-source': 'sheet-x', 'data-scale': 'size', 'data-channel': 'size' });
+  // shape legends are not implemented yet → empty markup. Warn so the empty box
+  // is never a silent mystery. (size now renders; use channel 'shape' for the
+  // empty path.)
+  const shapeScale = fakeScale('linear', {});
+  shapeScale.domain = () => [0, 10];
+  const view = fakeView({ shape: shapeScale });
+  const div = fakeDiv({ 'data-source': 'sheet-x', 'data-scale': 'shape', 'data-channel': 'shape' });
   const warns = captureWarns(() => lr.populate(view, 'sheet-x', fakeDoc([div])));
   assert.strictEqual(div.innerHTML, '');
   assert.strictEqual(warns.length, 1);
@@ -248,12 +248,12 @@ test('renderLegend: continuous color -> gradient; size/categorical unchanged', (
   assert.ok(lr.renderLegend(fakeColorScale(0, 100), { channel: 'color' }).includes('linear-gradient'));
   // categorical still swatches (channel irrelevant; categorical wins):
   assert.ok(lr.renderLegend(fakeScale('ordinal', { US: '#aaa' }), { channel: 'color' }).includes('legend-swatch'));
-  // continuous size -> still empty (SHE-13 not implemented):
-  const sizeScale = fakeScale('linear', {});
-  sizeScale.domain = () => [0, 10];
-  assert.strictEqual(lr.renderLegend(sizeScale, { channel: 'size' }), '');
+  // continuous size -> graduated glyphs (SHE-13):
+  assert.ok(lr.renderLegend(fakeSizeScale(0, 100), { channel: 'size' }).includes('border-radius:50%'));
   // continuous color but no channel -> empty (don't guess):
   assert.strictEqual(lr.renderLegend(fakeColorScale(0, 100), {}), '');
+  // continuous size but no channel -> empty (don't guess):
+  assert.strictEqual(lr.renderLegend(fakeSizeScale(0, 100), {}), '');
 });
 
 test('makeFormatter: vega when present, String fallback otherwise', () => {
@@ -278,6 +278,112 @@ test('populate: continuous color div renders a gradient', () => {
   });
   const warns = captureWarns(() => lr.populate(view, 'sheet-x', fakeDoc([div])));
   assert.ok(div.innerHTML.includes('linear-gradient'));
+  assert.ok(div.innerHTML.includes('Revenue'));
+  assert.deepStrictEqual(warns, []);
+});
+
+// ─── SHE-13: size (graduated-glyph) renderer ───────────────────────
+
+// Linear size scale over [lo, hi]; scale(v) returns the symbol AREA in px².
+// Identity (area == value) keeps the diameter math easy to assert. When
+// `withTicks` is true, expose a d3-style .ticks(n) returning nice endpoints so
+// the scale.ticks() path is exercised; omit it to exercise the evenly-spaced
+// fallback.
+function fakeSizeScale(lo, hi, withTicks) {
+  const s = (v) => v; // area == value
+  s.type = 'linear';
+  s.domain = () => [lo, hi];
+  if (withTicks) {
+    s.ticks = (n) => {
+      const out = [];
+      for (let i = 0; i < n; i++) out.push(lo + ((hi - lo) * i) / (n - 1));
+      return out;
+    };
+  }
+  return s;
+}
+
+test('areaToDiameter: area px^2 -> pixel diameter', () => {
+  // area = π·r²; r=5 ⇒ area=π·25 ⇒ diameter=10.
+  assert.ok(Math.abs(lr.areaToDiameter(Math.PI * 25) - 10) < 1e-9);
+  assert.ok(Math.abs(lr.areaToDiameter(Math.PI * 100) - 20) < 1e-9); // r=10 ⇒ d=20
+  assert.strictEqual(lr.areaToDiameter(0), 0); // zero area -> invisible glyph
+  assert.strictEqual(lr.areaToDiameter(-5), 0); // guard negatives
+  assert.strictEqual(lr.areaToDiameter('x'), 0); // guard non-numbers
+});
+
+test('sizeTicks: scale.ticks when present, evenly-spaced otherwise', () => {
+  // No .ticks method -> evenly spaced across the domain (count incl. endpoints):
+  assert.deepStrictEqual(lr.sizeTicks(fakeSizeScale(0, 100), 5), [0, 25, 50, 75, 100]);
+  // With .ticks -> defer to the scale's nice values:
+  assert.deepStrictEqual(lr.sizeTicks(fakeSizeScale(0, 100, true), 5), [0, 25, 50, 75, 100]);
+  // Default count is 5 when omitted:
+  assert.strictEqual(lr.sizeTicks(fakeSizeScale(0, 100)).length, 5);
+});
+
+test('sizeEntries: value -> area -> diameter, order preserved', () => {
+  const scale = fakeSizeScale(0, 100); // area == value
+  const entries = lr.sizeEntries(scale, [Math.PI * 25, Math.PI * 100]);
+  assert.strictEqual(entries.length, 2);
+  assert.strictEqual(entries[0].value, Math.PI * 25);
+  assert.ok(Math.abs(entries[0].diameter - 10) < 1e-9);
+  assert.ok(Math.abs(entries[1].diameter - 20) < 1e-9);
+});
+
+test('buildSizeMarkup: glyphs sized, labels aligned, title', () => {
+  const html = lr.buildSizeMarkup(
+    [{ label: '$0', diameter: 0 }, { label: '$5,000', diameter: 20 }],
+    { title: 'Revenue', orientation: 'vertical', maxDiameter: 20 }
+  );
+  assert.ok(html.includes('Revenue')); // title heading
+  assert.ok(html.includes('font-weight:600')); // title style
+  assert.ok(html.includes('border-radius:50%')); // circle glyph
+  assert.ok(html.includes('width:20px;height:20px')); // largest glyph at its diameter
+  assert.ok(html.includes('flex-direction:column')); // vertical items
+  assert.ok(html.includes('>$0<'));
+  assert.ok(html.includes('>$5,000<'));
+});
+
+test('renderSize: vertical graduated glyphs, ascending, title', () => {
+  const html = lr.renderSize(fakeSizeScale(0, 10000), {
+    title: 'Revenue',
+    orientation: 'vertical', // format omitted -> String fallback under node
+  });
+  assert.ok(html.includes('Revenue')); // title heading
+  assert.ok(html.includes('border-radius:50%')); // circle glyphs
+  assert.ok(html.includes('flex-direction:column'));
+  // 5 default stops over [0, 10000] -> labels 0,2500,5000,7500,10000 ascending:
+  assert.ok(html.indexOf('>0<') < html.indexOf('>10000<')); // smallest before largest
+});
+
+test('renderSize: horizontal row of glyphs', () => {
+  const html = lr.renderSize(fakeSizeScale(0, 10000), { orientation: 'horizontal' });
+  assert.ok(html.includes('flex-direction:row'));
+  assert.ok(html.includes('align-items:flex-end')); // circles sit on a shared baseline
+  assert.ok(html.includes('border-radius:50%'));
+  assert.ok(!html.includes('font-weight:600')); // no title element when title absent
+});
+
+test('renderSize: empty for non-numeric or <2 domain', () => {
+  const bad = fakeSizeScale(0, 0);
+  bad.domain = () => ['a']; // non-numeric, single entry
+  assert.strictEqual(lr.renderSize(bad, {}), '');
+  const empty = fakeSizeScale(0, 0);
+  empty.domain = () => [];
+  assert.strictEqual(lr.renderSize(empty, {}), '');
+});
+
+test('populate: size div renders graduated glyphs', () => {
+  const view = fakeView({ size: fakeSizeScale(0, 10000) });
+  const div = fakeDiv({
+    'data-source': 'sheet-x',
+    'data-scale': 'size',
+    'data-channel': 'size',
+    'data-title': 'Revenue',
+    'data-format': '$,.0f',
+  });
+  const warns = captureWarns(() => lr.populate(view, 'sheet-x', fakeDoc([div])));
+  assert.ok(div.innerHTML.includes('border-radius:50%'));
   assert.ok(div.innerHTML.includes('Revenue'));
   assert.deepStrictEqual(warns, []);
 });

@@ -63,6 +63,16 @@ class TestLegendDataAttrs:
         div = _legend_div(_compose("legend_link_color.yaml"))
         assert "data-format=" not in div
 
+    def test_size_legend_data_attrs(self):
+        # scatter.yaml also color-encodes country with no legend element → one warning.
+        with pytest.warns(UserWarning, match="color"):
+            div = _legend_div(_compose("legend_link_size.yaml"))
+        assert 'data-source="sheet-scatter_chart"' in div
+        assert 'data-scale="size"' in div
+        assert 'data-channel="size"' in div
+        assert 'data-format="$,.0f"' in div  # revenue.format from the model
+        assert 'data-title="Revenue"' in div  # model label default
+
 
 class TestLegendRuntimeWiring:
     def test_renderer_inlined_and_populate_wired(self):
