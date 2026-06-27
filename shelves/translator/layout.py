@@ -89,6 +89,7 @@ def translate_dashboard(
         sheet_fit_modes=ctx.sheet_fit_modes,
         sheet_show_titles=ctx.sheet_show_titles,
         sheet_content_dims=ctx.sheet_content_dims,
+        has_legends=bool(ctx.legend_links),
     )
 
 
@@ -286,15 +287,20 @@ def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe
     """
     defn = node.component
     assert isinstance(defn, LegendComponent)
-    legend_name = node.name or ctx.next_auto_id()
+    legend_name = node.name or ctx.next_legend_auto_id()
     safe_name = html.escape(legend_name, quote=True)
 
     link = ctx.legend_links.get((defn.source, defn.field))
     data_attrs = ""
     if link is not None:
+        # SHE-12: emit data-format only when the field has a model format, so
+        # categorical (nominal) legends stay byte-identical.
+        fmt_attr = f' data-format="{html.escape(link.format, quote=True)}"' if link.format else ""
         data_attrs = (
             f' data-source="{html.escape(link.sheet_id, quote=True)}"'
             f' data-scale="{html.escape(link.scale, quote=True)}"'
+            f' data-channel="{html.escape(link.channel, quote=True)}"'
+            f"{fmt_attr}"
             f' data-orientation="{html.escape(defn.orientation, quote=True)}"'
             f' data-title="{html.escape(link.title, quote=True)}"'
         )
@@ -367,6 +373,7 @@ def wrap_html_page(
     sheet_fit_modes: dict[str, str] | None = None,
     sheet_show_titles: dict[str, bool] | None = None,
     sheet_content_dims: dict[str, tuple[int, int]] | None = None,
+    has_legends: bool = False,
 ) -> str:
     """Wrap rendered component tree in a full HTML page."""
     fit_modes = sheet_fit_modes or {}
@@ -379,9 +386,12 @@ def wrap_html_page(
     fit_js = ""
     legend_js = ""
     script_lines = []
-    # `data-scale=` appears only on a SHE-10-linked legend div, so it gates the
-    # legend renderer + populate wiring. Non-legend dashboards stay byte-identical.
-    has_legends = "data-scale=" in body_html
+    # `has_legends` gates the legend renderer + populate wiring. It is derived
+    # from the resolved legend links (a div emits data-scale iff its legend
+    # resolved), not a substring scan of the body — so a text component that
+    # happens to contain 'data-scale=' can't pull the JS in, and an all-unresolved
+    # dashboard (nothing to populate) correctly omits it. Non-legend dashboards
+    # stay byte-identical.
     # Guard `r` before dereferencing `r.view`: compoundFit.fit's internal .catch
     # resolves with undefined on a fit error, so an unguarded `r.view` would throw.
     populate_tail = (

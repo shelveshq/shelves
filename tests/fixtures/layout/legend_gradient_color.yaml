@@ -1,0 +1,12 @@
+dashboard: "Legend Gradient Color"
+canvas:
+  width: 1000
+  height: 800
+root:
+  orientation: horizontal
+  contains:
+    - sheet: heatmap.yaml
+      name: heat
+    - legend: heatmap.yaml
+      field: revenue
+      width: 180

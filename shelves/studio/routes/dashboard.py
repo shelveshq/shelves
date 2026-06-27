@@ -73,7 +73,10 @@ async def run_dashboard_pipeline(
     component_tree = build_component_tree(flat_root)
 
     # Discover sheets (name → link) — reuse the already-flattened tree.
-    from shelves.compose.dashboard import _discover_sheets
+    from shelves.compose.dashboard import _discover_sheets, link_legends
+    from shelves.models.loader import load_model
+    from shelves.models.resolver import ModelResolver
+    from shelves.schema.field_types import FieldTypeResolver
 
     sheets = _discover_sheets(flat_root)
 
@@ -85,9 +88,13 @@ async def run_dashboard_pipeline(
 
         theme = ThemeSpec()
 
+    # Resolve a models_dir usable for both chart compile and the per-sheet resolver.
+    effective_models_dir = models_dir if models_dir and models_dir.exists() else None
+
     # Compile each referenced chart (resolved relative to charts_dir)
     warnings: list[str] = []
     chart_specs: dict[str, dict] = {}
+    resolvers: dict[str, FieldTypeResolver] = {}
     for name, link in sheets.items():
         chart_path = charts_dir / link
         if not chart_path.exists():
@@ -102,7 +109,7 @@ async def run_dashboard_pipeline(
             vl, chart_spec = compile_chart(
                 chart_yaml,
                 theme=theme,
-                models_dir=models_dir if models_dir and models_dir.exists() else None,
+                models_dir=effective_models_dir,
             )
             try:
                 vl = resolve_model_data(
@@ -113,11 +120,35 @@ async def run_dashboard_pipeline(
                 )
             except Exception as de:
                 warnings.append(f"Data resolution skipped for '{name}': {de}")
+            # SHE-27: build the resolver before publishing either, so the spec and
+            # its resolver stay in lock-step (a sheet that failed to compile — or
+            # whose model fails to load — has neither). The legend filter keys off
+            # chart_specs, so a chart_specs entry without a matching resolver would
+            # KeyError in resolve_legend_links.
+            resolver = ModelResolver(load_model(chart_spec.data, models_dir=effective_models_dir))
             chart_specs[name] = vl
+            resolvers[name] = resolver
         except Exception as e:
             warnings.append(f"Chart '{name}' ({link}): {e}")
 
-    html = translate_dashboard(spec, theme, chart_specs)
+    # SHE-27: link legends to sheet scales + suppress in-sheet legends via the
+    # shared helper (same path as compose_dashboard), routing the bad-source
+    # ValueError into the Studio result dict rather than warnings.warn.
+    try:
+        legend_links, legend_warnings = link_legends(flat_root, sheets, chart_specs, resolvers)
+    except ValueError as le:
+        return {
+            "html": None,
+            "errors": [str(le)],
+            "warnings": warnings,
+            "component_tree": component_tree,
+            "canvas": {"width": spec.canvas.width, "height": spec.canvas.height},
+        }
+    warnings.extend(legend_warnings)
+
+    html = translate_dashboard(
+        spec, theme, chart_specs, legend_links=legend_links, flat_tree=flat_root
+    )
 
     return {
         "html": html,

@@ -104,23 +104,37 @@ def resolve_legend_links(
                 f"dashboard links to it."
             )
         resolver = resolvers[name]
-        enc = single_view_encoding(chart_vls[name], name, legend.source)
+        vl = chart_vls[name]
+        enc = single_view_encoding(vl, name, legend.source)
         base = resolver.resolve_base_field(legend.field)
-        scale = find_legend_scale(base, enc, resolver)
-        if scale is None:
+        channel = find_legend_scale(base, enc, resolver)
+        if channel is None:
             raise ValueError(
                 f"Legend field {legend.field!r} is not encoded as a "
                 f"color/size/shape channel on sheet {name!r} "
                 f"(source {legend.source!r})."
             )
+        # Compiled Vega scale name. Vega-Lite namespaces a unit spec's scales as
+        # `{name}_{channel}` when the spec carries a top-level `name` (the labels
+        # machinery sets `name: "mark_0"`), so the runtime scale is `mark_0_color`,
+        # not `color`. Without this prefix view.scale(...) throws on labeled charts
+        # and the legend renders empty. Unnamed specs keep the bare channel name.
+        spec_name = vl.get("name")
+        scale = f"{spec_name}_{channel}" if isinstance(spec_name, str) and spec_name else channel
         # Title: explicit element override, else the field's model label (SHE-11).
         # An explicit `title: ""` is meaningful (suppress the heading), so only
         # fall back when title is unset (None) — not merely falsy.
         title = legend.title if legend.title is not None else resolver.resolve_label(legend.field)
+        # SHE-12: the field's model format (d3 spec) for gradient/quantitative tick
+        # labels. None for nominal/un-formatted fields. Intent stays in Python (like
+        # title); the browser renderer applies it via vega.formatLocale().
+        fmt = resolver.resolve_format(legend.field)
         links[(legend.source, legend.field)] = LegendLink(
-            sheet_id=f"sheet-{name}", scale=scale, title=title
+            sheet_id=f"sheet-{name}", scale=scale, title=title, channel=channel, format=fmt
         )
-        linked.setdefault(name, set()).add(scale)
+        # Track the bare CHANNEL (not the prefixed scale) — the always-suppress
+        # pass below dedupes warnings by channel name.
+        linked.setdefault(name, set()).add(channel)
 
     # Step 3: ALWAYS-suppress + warn over every single-view sheet.
     warnings_out: list[str] = []

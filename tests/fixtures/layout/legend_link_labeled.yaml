@@ -1,0 +1,12 @@
+dashboard: "Legend Link Labeled"
+canvas:
+  width: 1000
+  height: 800
+root:
+  orientation: horizontal
+  contains:
+    - sheet: label_bar_match_color.yaml
+      name: labeled_chart
+    - legend: label_bar_match_color.yaml
+      field: country
+      width: 180
