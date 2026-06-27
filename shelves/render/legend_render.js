@@ -58,6 +58,26 @@
       .replace(/"/g, '&quot;');
   }
 
+  // Pure: the shared legend heading. '' for a falsy title (so callers can push
+  // it unconditionally). One source for all three builders (categorical/
+  // gradient/size) so a markup or a11y change lands in exactly one place.
+  function titleMarkup(title) {
+    return title
+      ? '<div class="legend-title" style="' + TITLE_STYLE + '">' + escapeHtml(title) + '</div>'
+      : '';
+  }
+
+  // Pure: true when `dom` is a usable continuous domain — >= 2 entries with
+  // numeric endpoints. Shared by the gradient and size renderers (any new
+  // continuous legend type guards through here too).
+  function isContinuousDomain(dom) {
+    return (
+      dom.length >= 2 &&
+      typeof dom[0] === 'number' &&
+      typeof dom[dom.length - 1] === 'number'
+    );
+  }
+
   // Pure: entries = [{label, color}], opts = {title, orientation}. Returns an
   // HTML string. Colors come from the trusted Vega scale and are emitted into a
   // style attribute as-is; label/title text is escaped.
@@ -66,13 +86,7 @@
     var horizontal = opts.orientation === 'horizontal';
     var itemsStyle = horizontal ? ITEMS_STYLE_H : ITEMS_STYLE_V;
     var parts = [];
-    if (opts.title) {
-      parts.push(
-        '<div class="legend-title" style="' + TITLE_STYLE + '">' +
-          escapeHtml(opts.title) +
-          '</div>'
-      );
-    }
+    if (opts.title) parts.push(titleMarkup(opts.title));
     var rows = (entries || []).map(function (e) {
       return (
         '<div class="legend-item" style="' + ROW_STYLE + '">' +
@@ -153,13 +167,7 @@
     opts = opts || {};
     var horizontal = opts.orientation === 'horizontal';
     var parts = [];
-    if (opts.title) {
-      parts.push(
-        '<div class="legend-title" style="' + TITLE_STYLE + '">' +
-          escapeHtml(opts.title) +
-          '</div>'
-      );
-    }
+    if (opts.title) parts.push(titleMarkup(opts.title));
     var bar =
       '<div class="legend-gradient-bar" style="' +
       (horizontal ? GRADIENT_BAR_H : GRADIENT_BAR_V) +
@@ -184,9 +192,7 @@
   function renderGradient(scale, opts) {
     opts = opts || {};
     var dom = scale && scale.domain ? scale.domain() : [];
-    if (dom.length < 2 || typeof dom[0] !== 'number' || typeof dom[dom.length - 1] !== 'number') {
-      return '';
-    }
+    if (!isContinuousDomain(dom)) return '';
     var horizontal = opts.orientation === 'horizontal';
     var css = gradientCss(gradientStops(scale, GRADIENT_STOPS), horizontal ? 'to right' : 'to top');
     var fmt = makeFormatter(opts.format);
@@ -253,13 +259,7 @@
     var itemsStyle = horizontal ? SIZE_ITEMS_STYLE_H : SIZE_ITEMS_STYLE_V;
     var maxD = opts.maxDiameter || 0;
     var parts = [];
-    if (opts.title) {
-      parts.push(
-        '<div class="legend-title" style="' + TITLE_STYLE + '">' +
-          escapeHtml(opts.title) +
-          '</div>'
-      );
-    }
+    if (opts.title) parts.push(titleMarkup(opts.title));
     var rows = (entries || []).map(function (e) {
       var cell =
         'display:inline-flex;justify-content:center;align-items:center;' +
@@ -289,9 +289,7 @@
   function renderSize(scale, opts) {
     opts = opts || {};
     var dom = scale && scale.domain ? scale.domain() : [];
-    if (dom.length < 2 || typeof dom[0] !== 'number' || typeof dom[dom.length - 1] !== 'number') {
-      return '';
-    }
+    if (!isContinuousDomain(dom)) return '';
     var values = sizeTicks(scale, SIZE_TICKS);
     var entries = sizeEntries(scale, values);
     var fmt = makeFormatter(opts.format);
@@ -396,6 +394,8 @@
 
   var api = {
     escapeHtml: escapeHtml,
+    titleMarkup: titleMarkup,
+    isContinuousDomain: isContinuousDomain,
     buildMarkup: buildMarkup,
     renderCategorical: renderCategorical,
     resolveScale: resolveScale,

@@ -29,6 +29,7 @@ from shelves.theme.merge import load_theme
 from shelves.theme.theme_schema import ThemeSpec
 from shelves.translator.layout import translate_dashboard
 from shelves.translator.layout_flatten import FlatNode, flatten_dashboard
+from shelves.translator.layout_styles import LegendLink
 
 
 def compose_dashboard(
@@ -95,8 +96,7 @@ def compose_dashboard(
         resolvers[name] = resolver
 
     # SHE-10: link legends to sheet scales + suppress in-sheet legends.
-    legends = _discover_legends(flat_tree)
-    legend_links, legend_warnings = resolve_legend_links(legends, sheets, chart_specs, resolvers)
+    legend_links, legend_warnings = link_legends(flat_tree, sheets, chart_specs, resolvers)
     for msg in legend_warnings:
         warnings.warn(msg, stacklevel=2)
 
@@ -109,6 +109,37 @@ def compose_dashboard(
         flat_tree=flat_tree,
     )
     return html
+
+
+def link_legends(
+    flat_tree: FlatNode,
+    sheets: dict[str, str],
+    chart_specs: dict[str, dict],  # MUTATED: in-sheet legend suppression
+    resolvers: dict[str, FieldTypeResolver],
+) -> tuple[dict[tuple[str, str], LegendLink], list[str]]:
+    """Discover legends in the layout tree, drop those bound to a sheet that
+    failed to compile, and resolve the rest to scales (SHE-10).
+
+    Shared by `compose_dashboard` and the Studio route so both treat legends
+    identically — discovery, the compiled-sheet filter, and resolution live in
+    one place rather than being re-implemented per surface.
+
+    The filter relies on `chart_specs` and `resolvers` being kept in lock-step
+    (every name in one is in the other), which both callers guarantee. A legend
+    whose source matches no sheet at all is *kept* so `resolve_legend_links`
+    still raises the bad-source ValueError; a legend bound to a sheet that did
+    not compile (absent from `chart_specs`) is skipped so it renders as an empty
+    box rather than dereferencing a resolver that was never built.
+    """
+    link_to_sheet: dict[str, str] = {}
+    for name, link in sheets.items():
+        link_to_sheet.setdefault(link, name)
+    legends = [
+        lg
+        for lg in _discover_legends(flat_tree)
+        if link_to_sheet.get(lg.source) is None or link_to_sheet[lg.source] in chart_specs
+    ]
+    return resolve_legend_links(legends, sheets, chart_specs, resolvers)
 
 
 def _discover_sheets(flat_tree: FlatNode) -> dict[str, str]:

@@ -72,9 +72,8 @@ async def run_dashboard_pipeline(
     flat_root = flatten_dashboard(spec)
     component_tree = build_component_tree(flat_root)
 
-    # Discover sheets (name → link) and legends — reuse the already-flattened tree.
-    from shelves.compose.dashboard import _discover_legends, _discover_sheets
-    from shelves.compose.legend_link import resolve_legend_links
+    # Discover sheets (name → link) — reuse the already-flattened tree.
+    from shelves.compose.dashboard import _discover_sheets, link_legends
     from shelves.models.loader import load_model
     from shelves.models.resolver import ModelResolver
     from shelves.schema.field_types import FieldTypeResolver
@@ -121,32 +120,22 @@ async def run_dashboard_pipeline(
                 )
             except Exception as de:
                 warnings.append(f"Data resolution skipped for '{name}': {de}")
+            # SHE-27: build the resolver before publishing either, so the spec and
+            # its resolver stay in lock-step (a sheet that failed to compile — or
+            # whose model fails to load — has neither). The legend filter keys off
+            # chart_specs, so a chart_specs entry without a matching resolver would
+            # KeyError in resolve_legend_links.
+            resolver = ModelResolver(load_model(chart_spec.data, models_dir=effective_models_dir))
             chart_specs[name] = vl
-            # SHE-27: build the resolver alongside the compiled spec so the two
-            # stay in lock-step (a sheet that failed to compile has neither).
-            resolvers[name] = ModelResolver(
-                load_model(chart_spec.data, models_dir=effective_models_dir)
-            )
+            resolvers[name] = resolver
         except Exception as e:
             warnings.append(f"Chart '{name}' ({link}): {e}")
 
-    # SHE-27: link legends to sheet scales + suppress in-sheet legends, routing
-    # warnings/errors into the Studio result dict (not warnings.warn). A legend
-    # bound to a sheet that failed to compile is skipped so it renders as an empty
-    # box rather than crashing; a legend whose source matches no sheet at all is
-    # left in the list so resolve_legend_links still raises the bad-source error.
-    link_to_sheet: dict[str, str] = {}
-    for name, link in sheets.items():
-        link_to_sheet.setdefault(link, name)
-    legends = [
-        lg
-        for lg in _discover_legends(flat_root)
-        if link_to_sheet.get(lg.source) is None or link_to_sheet[lg.source] in chart_specs
-    ]
+    # SHE-27: link legends to sheet scales + suppress in-sheet legends via the
+    # shared helper (same path as compose_dashboard), routing the bad-source
+    # ValueError into the Studio result dict rather than warnings.warn.
     try:
-        legend_links, legend_warnings = resolve_legend_links(
-            legends, sheets, chart_specs, resolvers
-        )
+        legend_links, legend_warnings = link_legends(flat_root, sheets, chart_specs, resolvers)
     except ValueError as le:
         return {
             "html": None,
