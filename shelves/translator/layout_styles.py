@@ -47,15 +47,21 @@ LINK_DEFAULTS: dict[str, str] = {
 
 @dataclass(frozen=True)
 class LegendLink:
-    """Resolved binding from a legend element to its sheet's scale (SHE-10/11)."""
+    """Resolved binding from a legend element to its sheet's encoding (SHE-10/11).
+
+    SHE-28: the binding is the bare encoding *channel* — the runtime resolves the
+    compiled Vega scale from it against the live view (exact `view.scale(channel)`
+    for single-view specs, or a `*_<channel>` suffix scan for namespaced/labeled
+    specs). Python no longer reconstructs the compiled scale name (no convention
+    coupling to Vega-Lite's `{name}_{channel}` scheme).
+    """
 
     sheet_id: str  # the linked sheet's DOM id, e.g. "sheet-sales_chart"
-    scale: str  # compiled Vega scale name (e.g. "color" or "mark_0_color")
+    channel: str  # the encoding channel ("color"/"size"/"shape") — the source of
+    # truth the browser resolves the live scale from
     title: str  # SHE-11: legend heading — explicit override or the field's model label
-    channel: str  # the bare encoding channel ("color"/"size"); the runtime's
-    # fallback key when the exact `scale` name doesn't resolve on the live view
-    format: str | None = None  # SHE-12: d3 format spec for gradient tick labels
-    # (the field's model format, e.g. "$,.0f"); None for un-formatted fields
+    format: str | None = None  # SHE-12: d3 format spec for gradient/size tick labels;
+    # None for un-formatted (e.g. nominal) fields
 
 
 # ─── Render Context ──────────────────────────────────────────────

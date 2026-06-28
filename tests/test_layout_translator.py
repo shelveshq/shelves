@@ -1094,7 +1094,7 @@ root:
         )
         legend_links = {
             ("charts/foo.yaml", "region"): LegendLink(
-                sheet_id="sheet-faceted", scale="color", title="Region", channel="color"
+                sheet_id="sheet-faceted", title="Region", channel="color"
             )
         }
         html = translate_dashboard(
@@ -2640,11 +2640,11 @@ class TestLegendRender:
         assert "height: 100%" in inner_css
         assert "overflow: hidden" in inner_css
 
-    def test_legend_js_not_inlined_for_text_containing_data_scale(self):
+    def test_legend_js_not_inlined_for_text_containing_data_channel(self):
         """#2: the legend renderer must be gated on resolved legend links, not on
         a substring scan of the rendered body. A text component that merely
-        contains the literal 'data-scale=' must NOT pull in the legend JS when no
-        legend is linked."""
+        contains the literal 'data-channel=' must NOT pull in the legend JS when
+        no legend is linked."""
         spec = parse_dashboard("""\
 dashboard: "Legend False Positive"
 canvas: { width: 800, height: 600 }
@@ -2653,7 +2653,7 @@ root:
   contains:
     - sheet: charts/foo.yaml
       name: s1
-    - text: "css snippet: data-scale=color"
+    - text: "css snippet: data-channel=color"
 """)
         html_out = translate_dashboard(
             spec,
@@ -2662,7 +2662,7 @@ root:
             legend_links={},  # no legend resolved
         )
         # The literal substring is present in the body, but no legend is linked:
-        assert "data-scale=" in html_out
+        assert "data-channel=" in html_out
         assert "global.legendRender = api" not in html_out
         assert "legendRender.populate(" not in html_out
 

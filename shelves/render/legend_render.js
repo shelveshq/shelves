@@ -1,11 +1,13 @@
 // legend_render.js — browser-side rendering for INDEPENDENT dashboard legends.
 //
-// SHE-10 bakes data-source/data-scale/data-orientation/data-title onto each
+// SHE-10 bakes data-source/data-channel/data-orientation/data-title onto each
 // legend placeholder div. After a sheet's Vega view embeds, `populate` finds the
-// legend divs bound to that sheet, reads the live scale, and renders swatch/label
-// content. Split like label_patch.js / compound_fit.js: Python owns intent (the
-// link + title + orientation as data attributes); JS owns mechanics (read the
-// scale, build markup). Authored as a plain global so it works inlined into a
+// legend divs bound to that sheet, resolves the live scale from the channel
+// (SHE-28 — Python no longer emits a compile-time scale name), and renders
+// swatch/label content. Split like label_patch.js / compound_fit.js: Python owns
+// intent (the channel + title + orientation as data attributes); JS owns
+// mechanics (resolve the scale, build markup). Authored as a plain global so it
+// works inlined into a
 // file:// page and require()d by `node --test`. The markup core (buildMarkup /
 // renderLegend / renderCategorical) is DOM-free and unit-tested with node.
 //
@@ -323,22 +325,23 @@
     if (typeof console !== 'undefined' && console.warn) console.warn(msg);
   }
 
-  // Resolve the live Vega scale for a legend, never throwing. Primary lookup is
-  // the exact name Python emitted (data-scale). Fallback: scan the view's scale
-  // names for one matching the channel — `name === channel` or `name` ending in
-  // `_<channel>`. This recovers the namespaced scale (e.g. `mark_0_color`) that
-  // Vega-Lite produces when a unit spec carries a `name` (labeled charts), so the
-  // legend is robust even if the compile-time scale name is wrong or stale.
+  // Resolve the live Vega scale for a legend from its CHANNEL, never throwing.
+  // SHE-28: the channel is the source of truth — Python no longer guesses the
+  // compiled scale name. Primary: the public `view.scale(channel)` (a single-view
+  // spec names its scale exactly `<channel>`). Fallback: scan the live view's
+  // scale names for one ending in `_<channel>` (e.g. `mark_0_color`), which is the
+  // namespaced name Vega-Lite produces when a unit spec carries a `name` (labeled
+  // charts). `view._runtime.scales` is the (internal) enumeration; there is no
+  // public scale-name enumeration API, so it is used for the scan only.
   // Returns the scale object or null.
-  function resolveScale(view, scaleName, channel) {
-    if (view && scaleName) {
-      try {
-        return view.scale(scaleName);
-      } catch (e) {
-        /* fall through to the channel scan */
-      }
+  function resolveScale(view, channel) {
+    if (!view || !channel) return null;
+    try {
+      return view.scale(channel);
+    } catch (e) {
+      /* labeled chart: scale is namespaced; fall to the suffix scan */
     }
-    if (view && channel && view._runtime && view._runtime.scales) {
+    if (view._runtime && view._runtime.scales) {
       var names = Object.keys(view._runtime.scales);
       var suffix = '_' + channel;
       for (var i = 0; i < names.length; i++) {
@@ -364,14 +367,13 @@
     if (!doc || !view) return;
     var divs = doc.querySelectorAll('div[data-source="' + sheetId + '"]');
     Array.prototype.forEach.call(divs, function (div) {
-      var scaleName = div.getAttribute('data-scale');
       var channel = div.getAttribute('data-channel');
-      if (!scaleName && !channel) return;
-      var scale = resolveScale(view, scaleName, channel);
+      if (!channel) return;
+      var scale = resolveScale(view, channel);
       if (!scale) {
         warn(
-          'legend: could not resolve scale ' + JSON.stringify(scaleName) +
-            ' (channel ' + JSON.stringify(channel) + ') on ' + sheetId
+          'legend: could not resolve a scale for channel ' +
+            JSON.stringify(channel) + ' on ' + sheetId
         );
         return;
       }

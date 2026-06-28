@@ -277,10 +277,12 @@ def _render_blank(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
 def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
     """Render a legend placeholder: an empty, box-styled div in a div-in-div wrapper.
 
-    When the legend resolves to a sheet scale (SHE-10/11), bake the link in as
-    `data-source`/`data-scale`/`data-orientation`/`data-title` so the runtime
-    (`legend_render.js`) can call `view.scale(...)` and render the swatch/label
-    content. The box stays empty at compile time — content is rendered browser-side.
+    When the legend resolves to a sheet encoding (SHE-10/11), bake the link in as
+    `data-source`/`data-channel`/`data-orientation`/`data-title` so the runtime
+    (`legend_render.js`) can resolve the live scale from the channel and render the
+    swatch/label content. SHE-28: the channel is emitted, not the compiled scale
+    name — the browser resolves the scale. The box stays empty at compile time —
+    content is rendered browser-side.
 
     Mirrors _render_sheet's id scheme (`legend-{name-or-auto-id}`) but does no
     fit/show_title bookkeeping — a legend is not a Vega embed target.
@@ -298,7 +300,6 @@ def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe
         fmt_attr = f' data-format="{html.escape(link.format, quote=True)}"' if link.format else ""
         data_attrs = (
             f' data-source="{html.escape(link.sheet_id, quote=True)}"'
-            f' data-scale="{html.escape(link.scale, quote=True)}"'
             f' data-channel="{html.escape(link.channel, quote=True)}"'
             f"{fmt_attr}"
             f' data-orientation="{html.escape(defn.orientation, quote=True)}"'
@@ -387,9 +388,9 @@ def wrap_html_page(
     legend_js = ""
     script_lines = []
     # `has_legends` gates the legend renderer + populate wiring. It is derived
-    # from the resolved legend links (a div emits data-scale iff its legend
+    # from the resolved legend links (a div emits data-channel iff its legend
     # resolved), not a substring scan of the body — so a text component that
-    # happens to contain 'data-scale=' can't pull the JS in, and an all-unresolved
+    # happens to contain 'data-channel=' can't pull the JS in, and an all-unresolved
     # dashboard (nothing to populate) correctly omits it. Non-legend dashboards
     # stay byte-identical.
     # Guard `r` before dereferencing `r.view`: compoundFit.fit's internal .catch

@@ -145,7 +145,7 @@ class TestLegendLinkHelpers:
 
         assert links == {
             ("simple_bar.yaml", "country"): LegendLink(
-                sheet_id="sheet-sales_chart", scale="color", title="country", channel="color"
+                sheet_id="sheet-sales_chart", title="country", channel="color"
             )
         }
         # In-sheet legend suppressed on the linked channel:
@@ -153,11 +153,12 @@ class TestLegendLinkHelpers:
         # Linked channel does NOT warn:
         assert warns == []
 
-    def test_resolve_links_named_spec_prefixes_scale(self):
+    def test_resolve_links_does_not_prefix_named_spec(self):
         # When the compiled VL unit spec carries a top-level `name` (set by the
         # labels machinery, e.g. "mark_0"), Vega-Lite namespaces every scale as
-        # `{name}_{channel}` — the live scale is `mark_0_color`, not `color`. The
-        # LegendLink.scale must be that runtime name so view.scale(...) resolves.
+        # `{name}_{channel}` at runtime. SHE-28: Python no longer reconstructs
+        # that compiled name — the LegendLink carries only the bare channel, and
+        # the browser resolves the live scale from it against the live view.
         color_enc = {"field": "country", "type": "nominal", "legend": {"title": "Country"}}
         vls = {
             "sales_chart": {
@@ -173,9 +174,9 @@ class TestLegendLinkHelpers:
         links, _ = resolve_legend_links(legends, sheets, vls, resolvers)
 
         link = links[("labeled.yaml", "country")]
-        assert link.scale == "mark_0_color"
-        # The bare channel is preserved as the runtime fallback key.
+        # Python emits intent only — the bare channel. No reconstructed scale name.
         assert link.channel == "color"
+        assert not hasattr(link, "scale")
 
     def test_resolve_links_explicit_empty_title_preserved(self):
         # An explicit `title: ""` suppresses the heading and must NOT fall back
@@ -242,8 +243,9 @@ class TestLegendCompose:
 
         attrs = _legend_attrs(html)
         assert 'data-source="sheet-sales_chart"' in attrs
-        assert 'data-scale="color"' in attrs
         assert 'data-channel="color"' in attrs
+        # SHE-28: Python emits only the channel intent — no compile-time scale name.
+        assert "data-scale" not in attrs
 
         specs = _embedded_specs(html)
         assert specs["sheet-sales_chart"]["encoding"]["color"]["legend"] is None
@@ -254,7 +256,8 @@ class TestLegendCompose:
             html = _compose("legend_link_size.yaml")
 
         attrs = _legend_attrs(html)
-        assert 'data-scale="size"' in attrs
+        assert 'data-channel="size"' in attrs
+        assert "data-scale" not in attrs
         assert 'data-source="sheet-scatter_chart"' in attrs
 
         specs = _embedded_specs(html)
@@ -262,17 +265,16 @@ class TestLegendCompose:
         assert enc["size"]["legend"] is None
         assert enc["color"]["legend"] is None
 
-    def test_compose_labeled_chart_uses_namespaced_scale(self):
+    def test_compose_labeled_chart_emits_channel_not_scale(self):
         """A chart with labels carries name: mark_0, so VL namespaces its color
-        scale as mark_0_color. The legend must emit that runtime scale name (and
-        the bare channel as the fallback). Regression: SHE-11 only tested
-        label-free charts, so the legend emitted `color` and rendered empty on
-        every labeled chart."""
+        scale as mark_0_color at runtime. SHE-28: Python emits only the bare
+        channel — it no longer reconstructs the namespaced scale name. The
+        browser resolves mark_0_color from the channel against the live view."""
         html = _compose("legend_link_labeled.yaml")
 
         attrs = _legend_attrs(html)
-        assert 'data-scale="mark_0_color"' in attrs
         assert 'data-channel="color"' in attrs
+        assert "data-scale" not in attrs
 
         specs = _embedded_specs(html)
         assert specs["sheet-labeled_chart"]["encoding"]["color"]["legend"] is None

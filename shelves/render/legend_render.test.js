@@ -85,30 +85,29 @@ function fakeView(scales) {
   };
 }
 
-test('resolveScale: exact data-scale name wins', () => {
+test('resolveScale: exact channel name resolves (label-free chart)', () => {
   const s = fakeScale('ordinal', { a: '#1' });
   const view = fakeView({ color: s });
-  assert.strictEqual(lr.resolveScale(view, 'color', 'color'), s);
+  assert.strictEqual(lr.resolveScale(view, 'color'), s);
 });
 
-test('resolveScale: falls back to channel-suffixed scale (mark_0_color)', () => {
-  // Labeled chart: VL namespaces the scale, so data-scale="color" throws but the
-  // live scale is mark_0_color. The channel fallback must recover it.
+test('resolveScale: recovers namespaced scale via channel suffix (mark_0_color)', () => {
+  // Labeled chart: VL namespaces the scale, so view.scale('color') throws but the
+  // live scale is mark_0_color. The channel-suffix scan must recover it.
   const s = fakeScale('ordinal', { a: '#1' });
   const view = fakeView({ mark_0_x: fakeScale('linear', {}), mark_0_color: s });
-  assert.strictEqual(lr.resolveScale(view, 'color', 'color'), s);
+  assert.strictEqual(lr.resolveScale(view, 'color'), s);
 });
 
-test('resolveScale: channel fallback recovers even if data-scale is stale', () => {
-  const s = fakeScale('ordinal', { a: '#1' });
-  const view = fakeView({ mark_0_color: s });
-  // data-scale points at a wrong/old name; channel still finds it.
-  assert.strictEqual(lr.resolveScale(view, 'wrong_name', 'color'), s);
-});
-
-test('resolveScale: returns null when nothing matches', () => {
+test('resolveScale: returns null when no scale matches the channel', () => {
   const view = fakeView({ mark_0_x: fakeScale('linear', {}) });
-  assert.strictEqual(lr.resolveScale(view, 'color', 'color'), null);
+  assert.strictEqual(lr.resolveScale(view, 'color'), null);
+});
+
+test('resolveScale: returns null for a null view or empty channel', () => {
+  const view = fakeView({ color: fakeScale('ordinal', { a: '#1' }) });
+  assert.strictEqual(lr.resolveScale(null, 'color'), null);
+  assert.strictEqual(lr.resolveScale(view, ''), null);
 });
 
 // ─── populate: DOM wiring + loud failures ──────────────────────────
@@ -144,13 +143,12 @@ function captureWarns(fn) {
   return msgs;
 }
 
-test('populate: renders markup into the bound div via channel fallback', () => {
+test('populate: renders markup into the bound div via channel', () => {
   const s = fakeScale('ordinal', { US: '#aaa', UK: '#bbb' });
-  const view = fakeView({ mark_0_color: s });
+  const view = fakeView({ mark_0_color: s });       // labeled chart
   const div = fakeDiv({
     'data-source': 'sheet-x',
-    'data-scale': 'color',     // stale (named spec) — fallback must recover
-    'data-channel': 'color',
+    'data-channel': 'color',                          // no data-scale anymore
     'data-title': 'Country',
   });
   const warns = captureWarns(() => lr.populate(view, 'sheet-x', fakeDoc([div])));
@@ -161,11 +159,11 @@ test('populate: renders markup into the bound div via channel fallback', () => {
 
 test('populate: warns (not silent) when the scale cannot be resolved', () => {
   const view = fakeView({ mark_0_x: fakeScale('linear', {}) });
-  const div = fakeDiv({ 'data-source': 'sheet-x', 'data-scale': 'color', 'data-channel': 'color' });
+  const div = fakeDiv({ 'data-source': 'sheet-x', 'data-channel': 'color' });
   const warns = captureWarns(() => lr.populate(view, 'sheet-x', fakeDoc([div])));
   assert.strictEqual(div.innerHTML, '');
   assert.strictEqual(warns.length, 1);
-  assert.ok(/could not resolve scale/i.test(warns[0]));
+  assert.ok(/could not resolve/i.test(warns[0]));
 });
 
 test('populate: warns when the scale resolves but renders no content', () => {
@@ -175,7 +173,7 @@ test('populate: warns when the scale resolves but renders no content', () => {
   const shapeScale = fakeScale('linear', {});
   shapeScale.domain = () => [0, 10];
   const view = fakeView({ shape: shapeScale });
-  const div = fakeDiv({ 'data-source': 'sheet-x', 'data-scale': 'shape', 'data-channel': 'shape' });
+  const div = fakeDiv({ 'data-source': 'sheet-x', 'data-channel': 'shape' });
   const warns = captureWarns(() => lr.populate(view, 'sheet-x', fakeDoc([div])));
   assert.strictEqual(div.innerHTML, '');
   assert.strictEqual(warns.length, 1);
