@@ -4,16 +4,33 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-28
+
+### Charts
+
+- **Data labels** — marks can now carry text labels driven by a field or measure. Bar/column and layered/dual-axis charts position labels deterministically and only render the ones that fit, via a compile-then-patch architecture that patches the compiled Vega spec in the browser rather than emitting extra Vega-Lite layers. (KAN-269, KAN-278, KAN-279)
+- **Heatmap cell labels** — `rect` (heatmap) cells support data labels with a deterministic centre placement and a fit gate that suppresses labels too large for their cell. (KAN-307)
+- **Axis grid / ruler / tick / label toggles** — charts expose per-axis `grid`, `ruler`, `ticks`, and `labels` toggles, with a themeable default for gridlines. (KAN-306)
+
 ### Dashboards
 
+- **Independent dashboard legends** — a dashboard can declare standalone `legend` components that link to sheets by field name, sharing a single color scale across the linked sheets. Legend scales are resolved in the browser at render time, and sheet/legend DOM ids are assigned once at flatten time. (SHE-9, SHE-10, SHE-11, SHE-28, SHE-29)
+- **Layout polish pass** — refined solver ↔ Vega-Lite sizing and CSS for stacked/facet sheets, padding clipping, and text/container alignment. (KAN-290)
 - **Image `fit` / `center` controls** — `image` components now accept `fit` (when `true`, scale to fit the box preserving aspect ratio; when `false`, render at natural size and scroll on overflow) and `center` (when `true`, center within the box; when `false`, anchor top-left — applies only when `fit: true`). Defaults are `fit: true`, `center: false`. (KAN-297)
 - **Asset-relative image paths** — a dashboard `image:` src is now interpreted relative to the assets directory (e.g. `image: png/logo.png`), consistent with how `sheet:` is named relative to the charts directory. External URLs and `data:` URIs pass through unchanged. The renderer emits the correct relative URL per pipeline (studio/dev serve `/assets/…`; `shelves-render` emits a path relative to the output HTML). `--assets-dir` is now available on `shelves-render` and `shelves-dev` as well as `shelves-studio` (default `<dir>/assets`). (KAN-308)
 
 ### Studio
 
+- **`--reload` flag** — `shelves-studio` accepts `--reload` to auto-reload the server on source changes during development.
 - **`shelves-studio` port-collision handling** — the CLI now pre-checks the bind port and exits with a clear "Port N already in use" message *before* printing the startup banner or opening a browser tab, instead of opening a dead tab and then crashing with a bind traceback. The advertised/opened URL now uses the loopback IP `127.0.0.1` (matching the bind host) rather than `localhost`, which on macOS can resolve to IPv6 and hit an unrelated listener such as a Docker container on port 5173. (KAN-261)
 - **Dashboard preview scrolls on overflow** — at `100%` / `50%` zoom, a dashboard whose scaled canvas is larger than the preview pane now scrolls (vertical + horizontal) so the whole canvas is reachable, instead of being clipped. `Fit` is unaffected. (KAN-298)
 - **Project assets served in the preview** — `shelves-studio` now serves files under the project's `assets/` directory at `/assets/…`, so dashboard images load in the preview iframe. Add `--assets-dir <path>` to override the location (default `<dir>/assets`); the directory need not exist at startup — an `assets/` added later is served without restarting. (KAN-297)
+
+### Internal
+
+- Renamed the remaining "Charter" references to "Shelves" across the codebase.
+- Refreshed `CLAUDE.md` files and the architecture diagram for the current scope.
+- Added a public `returncode` property to `PtyManager`. (SHE-26)
 
 ## [0.3.1] - 2026-06-14
 

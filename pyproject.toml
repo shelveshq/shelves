@@ -1,6 +1,6 @@
 [project]
 name = "shelves-bi"
-version = "0.3.1"
+version = "0.4.0"
 description = "AI-native declarative visual analytics — YAML DSL to Vega-Lite translator"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
