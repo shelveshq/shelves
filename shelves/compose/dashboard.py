@@ -145,33 +145,23 @@ def link_legends(
 def _discover_sheets(flat_tree: FlatNode) -> dict[str, str]:
     """Walk an already-flattened layout tree and find all sheet components.
 
-    Returns a dict mapping component name → link path.
-    Anonymous sheets get auto-generated names (auto-1, auto-2, ...).
+    Returns a dict mapping the sheet's `dom_id` (the explicit name, or `auto-N`
+    for anonymous sheets — assigned once by flatten, SHE-29) → link path.
     """
     sheets: dict[str, str] = {}
-    auto_counter = [0]
-    _walk_flat_tree(flat_tree, sheets, auto_counter)
+    _walk_flat_tree(flat_tree, sheets)
     return sheets
 
 
-def _walk_flat_tree(
-    node: FlatNode,
-    sheets: dict[str, str],
-    auto_counter: list[int],
-) -> None:
-    """Recursively walk a FlatNode tree and collect sheet components."""
+def _walk_flat_tree(node: FlatNode, sheets: dict[str, str]) -> None:
+    """Recursively collect sheet components, keyed by their flatten-time dom_id."""
     comp = node.component
     if isinstance(comp, SheetComponent):
-        sheet_name = node.name or f"auto-{_next_auto(auto_counter)}"
-        if sheet_name not in sheets:
-            sheets[sheet_name] = comp.link
+        assert node.dom_id is not None, "sheet node missing dom_id (flatten must assign it)"
+        if node.dom_id not in sheets:
+            sheets[node.dom_id] = comp.link
     for child in node.children:
-        _walk_flat_tree(child, sheets, auto_counter)
-
-
-def _next_auto(counter: list[int]) -> int:
-    counter[0] += 1
-    return counter[0]
+        _walk_flat_tree(child, sheets)
 
 
 def _discover_legends(flat_tree: FlatNode) -> list[LegendComponent]:

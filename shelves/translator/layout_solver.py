@@ -30,6 +30,8 @@ class ResolvedNode:
     content_width: int
     content_height: int
     children: list[ResolvedNode] = field(default_factory=list)
+    dom_id: str | None = None  # SHE-29: carried through from FlatNode.dom_id so
+    # the renderer reads the flatten-time id instead of re-deriving it.
 
 
 def parse_spacing(value: int | str | None) -> tuple[int, int, int, int]:
@@ -321,6 +323,7 @@ def _build_resolved_nodes(
                 content_width=content_w,
                 content_height=content_h,
                 children=children,
+                dom_id=flat_child.dom_id,  # SHE-29: carry the flatten-time id
             )
         )
 
@@ -420,4 +423,5 @@ def solve_layout(flat_tree: FlatNode) -> ResolvedNode:
         content_width=root_content_w,
         content_height=root_content_h,
         children=children,
+        dom_id=flat_tree.dom_id,  # SHE-29: None for the root (not a sheet/legend)
     )

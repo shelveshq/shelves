@@ -75,31 +75,15 @@ class RenderContext:
     # URL prefix prepended to relative image srcs (e.g. "assets/"). Differs per
     # render pipeline: studio/dev serve at /assets, render computes a relpath.
     asset_url_prefix: str = "assets/"
-    auto_id_counter: int = 0
-    # Legends use a SEPARATE counter from sheets. The sheet auto-id must stay in
-    # lockstep with compose's `_discover_sheets` (which counts sheets only) so a
-    # sheet's DOM id matches its embedded-spec key. If legends shared the sheet
-    # counter, a sheet rendered after a legend would be offset by one and never
-    # mount (it would look up a spec key that doesn't exist).
-    legend_auto_id_counter: int = 0
     sheet_fit_modes: dict[str, str] = field(default_factory=dict)
     sheet_show_titles: dict[str, bool] = field(default_factory=dict)
     sheet_content_dims: dict[str, tuple[int, int]] = field(default_factory=dict)
     # SHE-10: (legend.source, legend.field) -> resolved link. Empty for the
     # studio/direct-translate paths that don't resolve legends yet.
     legend_links: dict[tuple[str, str], LegendLink] = field(default_factory=dict)
-
-    def next_auto_id(self) -> str:
-        """Generate next auto-ID for anonymous sheets. Must match the sheet
-        numbering produced by compose's `_discover_sheets` (sheets only)."""
-        self.auto_id_counter += 1
-        return f"auto-{self.auto_id_counter}"
-
-    def next_legend_auto_id(self) -> str:
-        """Generate next auto-ID for anonymous legends, on a counter independent
-        of sheets so legends never perturb sheet auto-ids."""
-        self.legend_auto_id_counter += 1
-        return f"auto-{self.legend_auto_id_counter}"
+    # SHE-29: sheet/legend DOM ids are assigned once at flatten time
+    # (layout_flatten._assign_dom_ids) and read off the node — the renderer no
+    # longer maintains auto-id counters here.
 
 
 # ─── CSS Helpers ─────────────────────────────────────────────────

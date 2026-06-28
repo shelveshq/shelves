@@ -163,7 +163,11 @@ def _render_container(
 
 def _render_sheet(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
     defn = node.component
-    sheet_name = node.name or ctx.next_auto_id()
+    # SHE-29: the id is assigned once at flatten time and carried on the node;
+    # the renderer never re-derives it. flatten_dashboard guarantees a sheet
+    # node has a dom_id.
+    assert node.dom_id is not None, "sheet node missing dom_id (flatten must assign it)"
+    sheet_name = node.dom_id
     if defn.fit is not None:  # type: ignore[union-attr]
         ctx.sheet_fit_modes[sheet_name] = defn.fit  # type: ignore[union-attr]
     if not defn.show_title:  # type: ignore[union-attr]
@@ -289,7 +293,9 @@ def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe
     """
     defn = node.component
     assert isinstance(defn, LegendComponent)
-    legend_name = node.name or ctx.next_legend_auto_id()
+    # SHE-29: id assigned once at flatten time (see _assign_dom_ids).
+    assert node.dom_id is not None, "legend node missing dom_id (flatten must assign it)"
+    legend_name = node.dom_id
     safe_name = html.escape(legend_name, quote=True)
 
     link = ctx.legend_links.get((defn.source, defn.field))

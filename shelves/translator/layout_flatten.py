@@ -19,7 +19,9 @@ from shelves.schema.layout_schema import (
     Component,
     ContainerComponent,
     DashboardSpec,
+    LegendComponent,
     RootComponent,
+    SheetComponent,
     StyleProperties,
     resolve_child,
 )
@@ -43,6 +45,13 @@ class FlatNode:
     children: list[FlatNode]
     origins: dict[str, PropertyOrigin]
     canvas: Canvas | None = field(default=None)  # only present on the root node
+    # SHE-29: the single source of truth for this node's DOM identity. Assigned
+    # once by `_assign_dom_ids` for sheets and legends (the explicit `name`, or
+    # `auto-N` for anonymous nodes); None for every other node type. The renderer
+    # prefixes it (`sheet-<dom_id>` / `legend-<dom_id>`); discovery and the
+    # embedded-spec keys use it directly. Computed in exactly one place so the
+    # DOM id and its spec key can never desync.
+    dom_id: str | None = field(default=None)
 
 
 def _merge_style_onto_component(
@@ -123,6 +132,42 @@ def _flatten_children(
     return result
 
 
+def _assign_dom_ids(root: FlatNode) -> None:
+    """Assign `dom_id` to every sheet and legend node in pre-order, in place.
+
+    The single source of truth for DOM identity (SHE-29). Walks the flattened
+    tree in document (pre-order) order — the same order the renderer and
+    `_discover_sheets` walk — and stamps each sheet/legend node's `dom_id`:
+      - named node  -> its explicit `name`
+      - anonymous sheet  -> `auto-{sheet_counter}`  (sheet-only counter)
+      - anonymous legend -> `auto-{legend_counter}` (legend-only counter)
+    Counters are independent so a legend never offsets a sheet's id. All other
+    node types keep `dom_id = None`.
+    """
+    sheet_counter = 0
+    legend_counter = 0
+
+    def walk(node: FlatNode) -> None:
+        nonlocal sheet_counter, legend_counter
+        comp = node.component
+        if isinstance(comp, SheetComponent):
+            if node.name is not None:
+                node.dom_id = node.name
+            else:
+                sheet_counter += 1
+                node.dom_id = f"auto-{sheet_counter}"
+        elif isinstance(comp, LegendComponent):
+            if node.name is not None:
+                node.dom_id = node.name
+            else:
+                legend_counter += 1
+                node.dom_id = f"auto-{legend_counter}"
+        for child in node.children:
+            walk(child)
+
+    walk(root)
+
+
 def flatten_dashboard(spec: DashboardSpec) -> FlatNode:
     """Flatten a DashboardSpec into a fully-resolved tree.
 
@@ -142,10 +187,14 @@ def flatten_dashboard(spec: DashboardSpec) -> FlatNode:
     # Walk root.contains
     root_children = _flatten_children(root.contains, components, styles)
 
-    return FlatNode(
+    root_node = FlatNode(
         name=None,
         component=root,
         children=root_children,
         origins=root_origins,
         canvas=spec.canvas,
     )
+    # SHE-29: stamp DOM ids once, here, so every consumer (sheet discovery,
+    # legend discovery, the solver, the renderer) reads the same stored value.
+    _assign_dom_ids(root_node)
+    return root_node

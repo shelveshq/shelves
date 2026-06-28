@@ -292,6 +292,20 @@ class TestLegendCompose:
         spec_keys = set(_embedded_specs(html).keys())
         assert dom_sheet_ids == spec_keys
 
+    def test_compose_interleaved_legends_keep_sheet_ids_aligned(self):
+        """SHE-29: multiple legends interleaved among (and before) anonymous
+        sheets must not offset any sheet's DOM id from its embedded-spec key.
+        With the old dual-counter scheme the legends would shift later sheet
+        ids; with the single flatten-time dom_id they cannot."""
+        # scatter.yaml also color-encodes country with no legend linked → one warning.
+        with pytest.warns(UserWarning):
+            html = _compose("legend_interleaved.yaml")
+
+        dom_sheet_ids = set(re.findall(r'id="(sheet-auto-\d+)"', html))
+        spec_keys = set(_embedded_specs(html).keys())
+        assert dom_sheet_ids == spec_keys
+        assert dom_sheet_ids == {"sheet-auto-1", "sheet-auto-2", "sheet-auto-3"}
+
     def test_compose_unlinked_channel_warns(self):
         with pytest.warns(UserWarning, match=r"sales_chart.*color.*no dashboard legend"):
             html = _compose("legend_unlinked.yaml")

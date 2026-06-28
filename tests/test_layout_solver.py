@@ -1293,3 +1293,23 @@ class TestLegendPlacement:
 
         # Sibling sheet absorbs the remaining main-axis width.
         assert resolved.children[0].outer_width == 820  # 1000 - 180
+
+
+# ─── SHE-29: dom_id propagation through the solver ──────────────────────
+
+
+class TestDomIdPropagation:
+    def test_solver_copies_dom_id(self):
+        resolved = _solve("""\
+dashboard: "Dom Id"
+canvas: { width: 1200, height: 600 }
+root:
+  orientation: horizontal
+  contains:
+    - sheet: charts/foo.yaml
+      name: named_sheet
+    - sheet: charts/bar.yaml
+""")
+        assert resolved.dom_id is None  # root
+        assert resolved.children[0].dom_id == "named_sheet"
+        assert resolved.children[1].dom_id == "auto-1"
