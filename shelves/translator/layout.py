@@ -163,7 +163,11 @@ def _render_container(
 
 def _render_sheet(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
     defn = node.component
-    sheet_name = node.name or ctx.next_auto_id()
+    # SHE-29: the id is assigned once at flatten time and carried on the node;
+    # the renderer never re-derives it. flatten_dashboard guarantees a sheet
+    # node has a dom_id.
+    assert node.dom_id is not None, "sheet node missing dom_id (flatten must assign it)"
+    sheet_name = node.dom_id
     if defn.fit is not None:  # type: ignore[union-attr]
         ctx.sheet_fit_modes[sheet_name] = defn.fit  # type: ignore[union-attr]
     if not defn.show_title:  # type: ignore[union-attr]
@@ -277,17 +281,21 @@ def _render_blank(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
 def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
     """Render a legend placeholder: an empty, box-styled div in a div-in-div wrapper.
 
-    When the legend resolves to a sheet scale (SHE-10/11), bake the link in as
-    `data-source`/`data-scale`/`data-orientation`/`data-title` so the runtime
-    (`legend_render.js`) can call `view.scale(...)` and render the swatch/label
-    content. The box stays empty at compile time — content is rendered browser-side.
+    When the legend resolves to a sheet encoding (SHE-10/11), bake the link in as
+    `data-source`/`data-channel`/`data-orientation`/`data-title` so the runtime
+    (`legend_render.js`) can resolve the live scale from the channel and render the
+    swatch/label content. SHE-28: the channel is emitted, not the compiled scale
+    name — the browser resolves the scale. The box stays empty at compile time —
+    content is rendered browser-side.
 
     Mirrors _render_sheet's id scheme (`legend-{name-or-auto-id}`) but does no
     fit/show_title bookkeeping — a legend is not a Vega embed target.
     """
     defn = node.component
     assert isinstance(defn, LegendComponent)
-    legend_name = node.name or ctx.next_legend_auto_id()
+    # SHE-29: id assigned once at flatten time (see _assign_dom_ids).
+    assert node.dom_id is not None, "legend node missing dom_id (flatten must assign it)"
+    legend_name = node.dom_id
     safe_name = html.escape(legend_name, quote=True)
 
     link = ctx.legend_links.get((defn.source, defn.field))
@@ -298,7 +306,6 @@ def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe
         fmt_attr = f' data-format="{html.escape(link.format, quote=True)}"' if link.format else ""
         data_attrs = (
             f' data-source="{html.escape(link.sheet_id, quote=True)}"'
-            f' data-scale="{html.escape(link.scale, quote=True)}"'
             f' data-channel="{html.escape(link.channel, quote=True)}"'
             f"{fmt_attr}"
             f' data-orientation="{html.escape(defn.orientation, quote=True)}"'
@@ -387,9 +394,9 @@ def wrap_html_page(
     legend_js = ""
     script_lines = []
     # `has_legends` gates the legend renderer + populate wiring. It is derived
-    # from the resolved legend links (a div emits data-scale iff its legend
+    # from the resolved legend links (a div emits data-channel iff its legend
     # resolved), not a substring scan of the body — so a text component that
-    # happens to contain 'data-scale=' can't pull the JS in, and an all-unresolved
+    # happens to contain 'data-channel=' can't pull the JS in, and an all-unresolved
     # dashboard (nothing to populate) correctly omits it. Non-legend dashboards
     # stay byte-identical.
     # Guard `r` before dereferencing `r.view`: compoundFit.fit's internal .catch

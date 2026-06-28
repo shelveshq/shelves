@@ -37,7 +37,8 @@ class TestLegendDataAttrs:
     def test_color_legend_data_attrs(self):
         div = _legend_div(_compose("legend_link_color.yaml"))
         assert 'data-source="sheet-sales_chart"' in div
-        assert 'data-scale="color"' in div
+        assert 'data-channel="color"' in div
+        assert "data-scale" not in div
         assert 'data-orientation="vertical"' in div
         assert 'data-title="Country"' in div  # default = model label
 
@@ -53,8 +54,8 @@ class TestLegendDataAttrs:
     def test_gradient_color_data_attrs(self):
         div = _legend_div(_compose("legend_gradient_color.yaml"))
         assert 'data-source="sheet-heat"' in div
-        assert 'data-scale="color"' in div
         assert 'data-channel="color"' in div
+        assert "data-scale" not in div
         assert 'data-format="$,.0f"' in div  # revenue.format from the model
         assert 'data-title="Revenue"' in div  # model label default
 
@@ -68,8 +69,8 @@ class TestLegendDataAttrs:
         with pytest.warns(UserWarning, match="color"):
             div = _legend_div(_compose("legend_link_size.yaml"))
         assert 'data-source="sheet-scatter_chart"' in div
-        assert 'data-scale="size"' in div
         assert 'data-channel="size"' in div
+        assert "data-scale" not in div
         assert 'data-format="$,.0f"' in div  # revenue.format from the model
         assert 'data-title="Revenue"' in div  # model label default
 

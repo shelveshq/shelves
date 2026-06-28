@@ -1,0 +1,19 @@
+dashboard: "Interleaved Legends"
+canvas:
+  width: 2400
+  height: 600
+root:
+  orientation: horizontal
+  contains:
+    - legend: simple_bar.yaml
+      field: country
+      width: 100
+    - sheet: simple_bar.yaml
+    - legend: scatter.yaml
+      field: revenue
+      width: 100
+    - sheet: scatter.yaml
+    - legend: heatmap.yaml
+      field: revenue
+      width: 100
+    - sheet: heatmap.yaml

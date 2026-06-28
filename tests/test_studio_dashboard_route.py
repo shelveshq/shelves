@@ -127,7 +127,8 @@ class TestStudioDashboardLegends:
         # 1. The legend placeholder carries the resolved data attributes.
         attrs = _legend_attrs(html)
         assert 'data-source="sheet-sales_chart"' in attrs
-        assert 'data-scale="color"' in attrs
+        assert 'data-channel="color"' in attrs
+        assert "data-scale" not in attrs
 
         # 2. The embedded sheet spec has the in-sheet color legend suppressed.
         specs = _embedded_specs(html)
@@ -156,7 +157,8 @@ class TestStudioDashboardLegends:
 
         html = result["html"]
         attrs = _legend_attrs(html)
-        assert 'data-scale="size"' in attrs
+        assert 'data-channel="size"' in attrs
+        assert "data-scale" not in attrs
         assert 'data-source="sheet-scatter_chart"' in attrs
 
         specs = _embedded_specs(html)
@@ -168,9 +170,10 @@ class TestStudioDashboardLegends:
         # warning, surfaced in the Studio warnings list (NOT a Python warning).
         assert any("color" in w and "scatter_chart" in w for w in result["warnings"])
 
-    def test_labeled_chart_uses_namespaced_scale(self):
-        """Studio path: a legend on a labeled chart (name: mark_0) must emit the
-        namespaced runtime scale mark_0_color, mirroring the compose path."""
+    def test_labeled_chart_emits_channel_not_namespaced_scale(self):
+        """Studio path: a legend on a labeled chart (name: mark_0) emits only the
+        bare channel intent — SHE-28 no longer reconstructs mark_0_color in
+        Python. Mirrors the compose path; the browser resolves the live scale."""
         yaml_body = (
             'dashboard: "Legend Labeled"\n'
             "canvas:\n"
@@ -189,8 +192,8 @@ class TestStudioDashboardLegends:
         assert result["errors"] == []
 
         attrs = _legend_attrs(result["html"])
-        assert 'data-scale="mark_0_color"' in attrs
         assert 'data-channel="color"' in attrs
+        assert "data-scale" not in attrs
 
         specs = _embedded_specs(result["html"])
         assert specs["sheet-labeled_chart"]["encoding"]["color"]["legend"] is None

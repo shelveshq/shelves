@@ -365,3 +365,68 @@ root:
         # content = 1000-48 x 800-48
         assert tree.content_width == 952
         assert tree.content_height == 752
+
+
+# ─── SHE-29: DOM id assignment at flatten time ─────────────────────────
+
+
+class TestDomIdAssignment:
+    def test_anonymous_sheet_gets_auto_dom_id(self):
+        flat = _flatten("""\
+dashboard: "Dom Id"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+""")
+        assert flat.children[0].dom_id == "auto-1"
+        assert flat.dom_id is None  # root is not a sheet/legend
+
+    def test_named_sheet_keeps_name_as_dom_id(self):
+        flat = _flatten("""\
+dashboard: "Dom Id"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: my_chart
+""")
+        assert flat.children[0].dom_id == "my_chart"
+
+    def test_sheet_and_legend_counters_are_independent(self):
+        flat = _flatten("""\
+dashboard: "Dom Id"
+canvas: { width: 1200, height: 600 }
+root:
+  orientation: horizontal
+  contains:
+    - legend: charts/foo.yaml
+      field: country
+      width: 100
+    - sheet: charts/foo.yaml
+    - sheet: charts/bar.yaml
+""")
+        legend_node, sheet_a, sheet_b = flat.children
+        assert legend_node.dom_id == "auto-1"  # legend counter
+        assert sheet_a.dom_id == "auto-1"  # sheet counter — NOT offset by the leading legend
+        assert sheet_b.dom_id == "auto-2"
+
+    def test_container_and_text_have_no_dom_id(self):
+        flat = _flatten("""\
+dashboard: "Dom Id"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - vertical:
+        contains:
+          - text: "hello"
+          - sheet: charts/foo.yaml
+""")
+        container = flat.children[0]
+        text_node, sheet_node = container.children
+        assert container.dom_id is None
+        assert text_node.dom_id is None
+        assert sheet_node.dom_id == "auto-1"  # nested sheet still counted in pre-order
