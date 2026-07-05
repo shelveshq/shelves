@@ -16,6 +16,27 @@ function isCompoundSpec(spec) {
   return COMPOUND_KEYS.some(k => k in spec);
 }
 
+// ─── Loading Veil ─────────────────────────────────────────
+// Compiles never blank the preview: the stale render stays visible and gets
+// a dim veil + "Compiling…" pill, and only if the compile is actually slow.
+// The gate is patience-after-starting; don't tie it to COMPILE_DEBOUNCE_MS
+// (quiet-time-before-starting) — they measure different things.
+const LOADING_DELAY_MS = 150;   // don't flash a loading state for fast compiles
+let loadingTimer = null;
+
+function beginLoadingState() {
+  clearTimeout(loadingTimer);
+  loadingTimer = setTimeout(() => {
+    document.getElementById('preview-pane').classList.add('is-compiling');
+  }, LOADING_DELAY_MS);
+}
+
+function endLoadingState() {
+  clearTimeout(loadingTimer);
+  loadingTimer = null;
+  document.getElementById('preview-pane').classList.remove('is-compiling');
+}
+
 // ─── Preview Header ───────────────────────────────────────
 export function renderPreviewHeader(mode) {
   const header = document.getElementById('preview-header');
@@ -263,14 +284,16 @@ export function initPreview() {
   });
 
   document.addEventListener('shelves:compile-start', () => {
-    hideErrorOverlay();
-    if (state.dashboardMode) {
-      elPreview.style.display = 'none';
-    } else {
-      elPreview.style.display = 'none';
-      elJsonView.style.display = 'none';
-    }
+    hideErrorOverlay();          // stale errors shouldn't linger over the veil
+    beginLoadingState();         // no display:none anywhere anymore
   });
+
+  // preview.js owns the veil; every result-ish event ends it. A superseded
+  // compile never dispatches an end event (compileSeq-guarded returns), which
+  // is fine: the newer compile's start already re-armed the timer and its
+  // result will end the veil.
+  ['shelves:compile-result', 'shelves:dashboard-result', 'shelves:non-chart-file']
+    .forEach(ev => document.addEventListener(ev, endLoadingState));
 
   let resizeTimer = null;
   new ResizeObserver(() => {

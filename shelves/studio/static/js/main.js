@@ -61,6 +61,10 @@ function compileDashboardOrChart() {
 
   state.compiling = true;
   updateStatusBar();
+  // Arm the loading veil (preview.js). Every start pairs with exactly one of
+  // compile-result / dashboard-result / non-chart-file — the compile fns'
+  // success AND failure paths all dispatch one.
+  document.dispatchEvent(new CustomEvent('shelves:compile-start'));
   if (kind === 'dashboard') {
     if (!state.dashboardMode) applyDashboardLayout();
     compileDashboardContent();

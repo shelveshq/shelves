@@ -408,6 +408,35 @@ body {
   box-shadow: none;
 }
 
+/* Compile-in-progress: dim the stale render, never blank it. */
+#preview, #json-view, #dashboard-preview {
+  transition: opacity var(--dur-base) var(--ease);
+}
+#preview-pane.is-compiling #preview,
+#preview-pane.is-compiling #json-view,
+#preview-pane.is-compiling #dashboard-preview {
+  opacity: 0.45;
+  pointer-events: none;      /* a stale chart shouldn't accept tooltips/clicks */
+}
+
+.sh-compiling-pill {
+  position: absolute;
+  top: 44px; right: 20px;    /* under the preview header */
+  z-index: 5;
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-1);
+  padding: 3px 8px;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease);
+  pointer-events: none;
+}
+#preview-pane.is-compiling .sh-compiling-pill { opacity: 1; }
+
 /* Outer wrapper — provides the gap between pane edge and the card */
 #preview {
   width: 100%;

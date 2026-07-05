@@ -262,6 +262,11 @@ export async function compileCurrentContent() {
     if (seq !== compileSeq) return;
     state.compiling = false;
     console.error('[shelves] compile error:', e);
+    // Network failure: dispatch a terminal result so the veil clears and the
+    // overlay explains what happened.
+    document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+      detail: { vega_lite_spec: null, errors: [String(e)], warnings: [], path: state.currentFile?.path ?? null },
+    }));
   }
 }
 
@@ -276,6 +281,11 @@ export async function openFile(path) {
       console.warn('[shelves] file not found:', path);
       state.compiling = false;
       updateStatusBar();
+      // Terminate the compile-start dispatched above, or the loading veil
+      // sticks. Every start must pair with exactly one end event.
+      document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+        detail: { vega_lite_spec: null, errors: [], warnings: [], path: null },
+      }));
       return;
     }
     const { content } = await resp.json();
@@ -290,6 +300,9 @@ export async function openFile(path) {
   } catch (e) {
     state.compiling = false;
     console.error('[shelves] openFile error:', e);
+    document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+      detail: { vega_lite_spec: null, errors: [String(e)], warnings: [], path: null },
+    }));
   }
 }
 
