@@ -87,9 +87,13 @@ files carry the truth:
 - `studio/studio.css` — the real component stylesheet (`.sh-*` classes), portable
   wholesale.
 
-`static/styles.css` currently does **not** match: mono-forward type, `#B8531C`
-ochre-as-signal (not the current `#D85A30` coral-as-accent), sharp 2–3px radii,
-hairline-over-shadow. The real Studio layout is **3 columns + a 1px splitter**
+`static/styles.css` consumes the DS tokens via two served copies —
+`static/shelves-tokens.css` (mirror of `docs/design-system/colors_and_type.css`)
+and `static/tokens-bridge.css` (mirror of `docs/design-system/studio/tokens.css`),
+loaded in that order before `styles.css`. Re-sync = re-copy those two files.
+`styles.css`'s own `:root` holds only layout state (`--sidebar-width`,
+`--editor-width`) and `--radius-*` compat aliases. Component-level fidelity to
+`studio.css` is tracked per-ticket (SHE-34/35/36/47). The real Studio layout is **3 columns + a 1px splitter**
 (tree | editor | splitter | preview), and the inspector is a **preview mode**
 (view modes: chart / dashboard / model / theme / empty), not a permanent column.
 Multi-tab, command palette, and a recents empty state are designed but deferred.

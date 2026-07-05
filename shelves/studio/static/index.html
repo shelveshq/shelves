@@ -18,11 +18,14 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 
+  <!-- Design-system tokens (source of truth) + Studio bridge — order matters -->
+  <link rel="stylesheet" href="/static/shelves-tokens.css">
+  <link rel="stylesheet" href="/static/tokens-bridge.css">
   <!-- Styles -->
   <link rel="stylesheet" href="/static/styles.css">
 </head>
@@ -32,10 +35,10 @@
   <div id="header">
     <div class="sh-header-left">
       <div class="sh-logo">
-        <svg viewBox="0 0 90 72" fill="none">
-          <rect x="28" y="2" width="58" height="14" rx="7" fill="#2A2A2A"/>
-          <rect x="20" y="28" width="38" height="14" rx="7" fill="#D85A30"/>
-          <rect x="4" y="54" width="58" height="14" rx="7" fill="#2A2A2A"/>
+        <svg viewBox="0 0 24 24" fill="none">
+          <rect x="8" y="4" width="14" height="4" rx="2" fill="var(--ink-12)"/>
+          <rect x="6" y="10" width="8" height="4" rx="2" fill="var(--brand-ochre)"/>
+          <rect x="2" y="16" width="12" height="4" rx="2" fill="var(--ink-12)"/>
         </svg>
       </div>
       <span class="sh-brand">Shelves Studio</span>

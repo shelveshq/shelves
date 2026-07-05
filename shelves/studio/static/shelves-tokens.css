@@ -1,0 +1,358 @@
+/* ============================================================
+   Shelves — Colors & Type
+   Light-mode, paper-tinted, mono-forward.
+   A BI tool with a programmer's touch.
+
+   SOURCE OF TRUTH for the Shelves design system.
+   Mirror of Claude Design project "Shelves Design System"
+   (projectId 8d8f83ca-dfbb-4e07-aae9-216a74624d6c), file colors_and_type.css.
+   ============================================================ */
+
+/* -------- Webfonts --------
+   Primary: JetBrains Mono (display + UI + code — the "programmer's touch")
+   Text:    Inter Tight    (long-form reading, labels, data)
+   Numeric: JetBrains Mono with tabular figures (all data UIs)
+*/
+@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+
+:root {
+  /* ==========================================================
+     COLOR — Neutrals (warm paper ramp)
+     Shelves' canvas is "paper" — off-white, slightly warm,
+     to feel like a lab notebook or a well-loved terminal theme.
+     ========================================================== */
+  --paper:        #FAF8F3;   /* app background — warm off-white */
+  --paper-sunk:   #F2EFE7;   /* inset panels, code gutters */
+  --paper-raised: #FFFFFF;   /* cards, popovers, modals */
+  --paper-edge:   #E8E4D8;   /* hairline borders on paper */
+
+  --ink-12:  #0B0B0A;   /* primary text, logo, strong UI */
+  --ink-10:  #1A1916;   /* headings */
+  --ink-8:   #3A3833;   /* body */
+  --ink-6:   #6B675E;   /* secondary text, labels */
+  --ink-4:   #9A968B;   /* tertiary, placeholder */
+  --ink-2:   #C9C5B8;   /* disabled, inactive */
+  --ink-1:   #E3DFD3;   /* dividers */
+
+  /* Pure-gray cool neutrals (for chrome where warmth feels wrong) */
+  --gray-900: #17171A;
+  --gray-700: #2E2E33;
+  --gray-500: #6B6B73;
+  --gray-300: #C4C4CC;
+  --gray-100: #EDEDF0;
+  --gray-50:  #F6F6F8;
+
+  /* ==========================================================
+     COLOR — Brand / Accent
+     Monochrome-primary: ink is the brand color.
+     A single signal hue (ochre) is used sparingly for
+     keyboard focus, selection, active cursors, and the logo dot.
+     ========================================================== */
+  --brand-ink:     var(--ink-12);
+  --brand-ochre:   #B8531C;   /* signal — focus, selection, cursor */
+  --brand-ochre-2: #D26B31;   /* hover on ochre */
+  --brand-ochre-tint: #F7E9DC;/* selection background */
+
+  /* ==========================================================
+     COLOR — Semantic (muted, editorial)
+     Desaturated so they coexist with charts without competing.
+     ========================================================== */
+  --success:     #3F7A4E;
+  --success-bg:  #E6EFE5;
+  --warning:     #A8751F;
+  --warning-bg:  #F5ECD6;
+  --danger:      #A33B2A;
+  --danger-bg:   #F2DDD6;
+  --info:        #3A6278;
+  --info-bg:     #DDE8EF;
+
+  /* ==========================================================
+     COLOR — Chart palette (Observable-style, muted editorial)
+     7 categorical hues + 1 neutral. Safe to use in any order.
+     ========================================================== */
+  --chart-1: #4A6D8C;  /* slate blue */
+  --chart-2: #B8531C;  /* ochre (brand) */
+  --chart-3: #6B8E4E;  /* moss */
+  --chart-4: #8B5A9F;  /* heather */
+  --chart-5: #C2883A;  /* mustard */
+  --chart-6: #A33B2A;  /* brick */
+  --chart-7: #3F6B6B;  /* teal-gray */
+  --chart-8: #6B675E;  /* neutral */
+
+  /* Sequential ramp (single-hue, for heatmaps/gradients) */
+  --ramp-1: #F2EFE7;
+  --ramp-2: #D9CFBA;
+  --ramp-3: #BFA987;
+  --ramp-4: #9E7E4F;
+  --ramp-5: #70552F;
+  --ramp-6: #3E2E18;
+
+  /* ==========================================================
+     COLOR — Syntax (for the YAML / code surface)
+     ========================================================== */
+  --syntax-bg:      var(--paper);
+  --syntax-gutter:  var(--ink-4);
+  --syntax-plain:   var(--ink-10);
+  --syntax-key:     #3A6278;  /* YAML keys — cool */
+  --syntax-string:  #6B8E4E;  /* strings — moss */
+  --syntax-number:  #B8531C;  /* numbers — ochre */
+  --syntax-comment: var(--ink-4);
+  --syntax-bool:    #8B5A9F;  /* booleans/null — heather */
+  --syntax-ref:     #A33B2A;  /* anchors/refs — brick */
+  --syntax-select:  var(--brand-ochre-tint);
+  --syntax-cursor:  var(--brand-ochre);
+
+  /* ==========================================================
+     SEMANTIC TOKENS (fg / bg / border layers)
+     ========================================================== */
+  --fg-1: var(--ink-12);       /* primary */
+  --fg-2: var(--ink-8);        /* body */
+  --fg-3: var(--ink-6);        /* secondary */
+  --fg-4: var(--ink-4);        /* tertiary / placeholder */
+  --fg-muted: var(--ink-6);
+  --fg-inverse: var(--paper);
+
+  --bg-app:    var(--paper);
+  --bg-sunk:   var(--paper-sunk);
+  --bg-raised: var(--paper-raised);
+  --bg-inverse: var(--ink-12);
+
+  --border-1: var(--paper-edge);  /* hairline */
+  --border-2: var(--ink-2);       /* stronger divider */
+  --border-focus: var(--brand-ochre);
+
+  /* ==========================================================
+     TYPOGRAPHY — Families
+     ========================================================== */
+  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans:    "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "JetBrains Mono", ui-monospace, monospace; /* display is mono — that's the vibe */
+
+  /* ==========================================================
+     TYPOGRAPHY — Scale
+     Tight, dense, precise. 14px body default.
+     ========================================================== */
+  --fs-10: 10px;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-22: 22px;
+  --fs-28: 28px;
+  --fs-36: 36px;
+  --fs-48: 48px;
+  --fs-64: 64px;
+
+  --lh-tight: 1.15;
+  --lh-snug:  1.3;
+  --lh-base:  1.5;
+  --lh-loose: 1.65;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+  --tracking-caps: 0.08em;
+
+  /* ==========================================================
+     SPACING (4px base, dense)
+     ========================================================== */
+  --s-0:  0;
+  --s-1:  2px;
+  --s-2:  4px;
+  --s-3:  6px;
+  --s-4:  8px;
+  --s-5:  12px;
+  --s-6:  16px;
+  --s-7:  20px;
+  --s-8:  24px;
+  --s-9:  32px;
+  --s-10: 40px;
+  --s-11: 56px;
+  --s-12: 72px;
+  --s-13: 96px;
+
+  /* ==========================================================
+     RADII — Sharp & tight
+     ========================================================== */
+  --r-0: 0;
+  --r-1: 2px;   /* default — inputs, chips */
+  --r-2: 3px;   /* cards, panels */
+  --r-3: 4px;   /* larger surfaces */
+  --r-4: 6px;   /* modals (max) */
+  --r-full: 999px;
+
+  /* ==========================================================
+     SHADOWS — Flat-first, hairline-based.
+     Almost no blur. Depth from borders and 1px offsets.
+     ========================================================== */
+  --shadow-0: none;
+  --shadow-hairline: 0 0 0 1px var(--paper-edge);
+  --shadow-1: 0 1px 0 rgba(11,11,10,0.04), 0 0 0 1px var(--paper-edge);
+  --shadow-2: 0 2px 0 rgba(11,11,10,0.06), 0 0 0 1px var(--paper-edge);
+  --shadow-pop: 0 8px 24px -8px rgba(11,11,10,0.18), 0 0 0 1px var(--paper-edge);
+  --shadow-focus: 0 0 0 2px var(--paper), 0 0 0 4px var(--brand-ochre);
+
+  /* Inset for sunken panels (code gutters, input fields on raised cards) */
+  --shadow-inset: inset 0 0 0 1px var(--paper-edge);
+
+  /* ==========================================================
+     MOTION
+     Snappy, no bounce. Terminals don't bounce.
+     ========================================================== */
+  --dur-fast:  80ms;
+  --dur-base:  140ms;
+  --dur-slow:  240ms;
+  --ease:      cubic-bezier(0.2, 0.0, 0.2, 1.0);
+  --ease-out:  cubic-bezier(0.0, 0.0, 0.2, 1.0);
+
+  /* Z-layers */
+  --z-sticky: 10;
+  --z-dropdown: 100;
+  --z-modal: 1000;
+  --z-toast: 1100;
+}
+
+/* ============================================================
+   SEMANTIC TYPE STYLES
+   Use these classes/selectors instead of raw tokens when possible.
+   ============================================================ */
+
+html, body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-14);
+  line-height: var(--lh-base);
+  color: var(--fg-2);
+  background: var(--bg-app);
+  font-feature-settings: "ss01", "cv11"; /* Inter Tight — stylistic + disambiguation */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Display — big mono moments (marketing, hero, empty states) */
+.t-display, h1.display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: clamp(40px, 6vw, var(--fs-64));
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+}
+
+/* Headings */
+h1, .t-h1 {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--fs-36);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+  margin: 0;
+}
+h2, .t-h2 {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--fs-22);
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-tight);
+  color: var(--fg-1);
+  margin: 0;
+}
+h3, .t-h3 {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: var(--fs-16);
+  line-height: var(--lh-snug);
+  color: var(--fg-1);
+  margin: 0;
+}
+h4, .t-h4 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: var(--fs-13);
+  line-height: var(--lh-snug);
+  color: var(--fg-1);
+  margin: 0;
+}
+
+/* Body */
+p, .t-body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-14);
+  line-height: var(--lh-base);
+  color: var(--fg-2);
+  margin: 0;
+}
+.t-body-lg {
+  font-family: var(--font-sans);
+  font-size: var(--fs-16);
+  line-height: var(--lh-loose);
+  color: var(--fg-2);
+}
+.t-body-sm {
+  font-family: var(--font-sans);
+  font-size: var(--fs-12);
+  line-height: var(--lh-base);
+  color: var(--fg-3);
+}
+
+/* Labels & UI */
+.t-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.t-ui {
+  font-family: var(--font-sans);
+  font-size: var(--fs-13);
+  font-weight: 500;
+  color: var(--fg-1);
+}
+.t-caption {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--fg-3);
+}
+
+/* Code / Mono / Data */
+code, .t-code, .t-mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  font-feature-settings: "zero", "ss01";
+  color: var(--fg-1);
+}
+.t-data, .t-num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "zero";
+  color: var(--fg-1);
+}
+
+/* The "kbd" key — common in a programmer's tool */
+kbd, .t-kbd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  padding: 1px 5px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-1);
+  border-bottom-width: 2px;
+  border-radius: var(--r-1);
+  color: var(--fg-2);
+}
+
+/* Selection */
+::selection {
+  background: var(--brand-ochre-tint);
+  color: var(--fg-1);
+}
+
+/* Focus ring — always the ochre */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+  border-radius: var(--r-1);
+}
