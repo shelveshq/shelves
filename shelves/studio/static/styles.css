@@ -46,10 +46,12 @@ body {
   align-items: center;
   justify-content: space-between;
   background: var(--bg-surface);
-  border-bottom: 0.5px solid var(--border-default);
-  padding: 0 12px;
+  border-bottom: 1px solid var(--border-default);
+  padding: 0 10px 0 12px;
   gap: 8px;
   z-index: 10;
+  font-family: var(--font-mono);
+  user-select: none;
 }
 
 .sh-header-left {
@@ -82,18 +84,21 @@ body {
 
 .sh-crumb-sep {
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: 12px;
   flex-shrink: 0;
+  opacity: 0.45;
 }
 
 .sh-crumb {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-tertiary);
   min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
 }
 .sh-crumb span {
   white-space: nowrap;
@@ -105,14 +110,14 @@ body {
   font-weight: 500;
 }
 .sh-crumb-none {
-  font-style: italic;
   color: var(--text-muted);
+  font-style: normal;  /* DS: no italics in chrome */
 }
 .sh-dirty {
   color: var(--accent);
-  font-weight: 700;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
+  margin-left: 3px;
 }
 
 .sh-header-right {
@@ -123,21 +128,34 @@ body {
 }
 
 .sh-btn {
-  border: none;
-  cursor: pointer;
-  font-family: var(--font-ui);
+  font: inherit;
+  /* Action labels are Inter Tight — the ONE sans exception (components-buttons.html) */
+  font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 500;
-  padding: 5px 14px;
-  border-radius: var(--radius-md);
-  transition: background 0.15s;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--ink-10);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background var(--dur-base) var(--ease),
+              color var(--dur-base) var(--ease),
+              border-color var(--dur-base) var(--ease);
 }
+.sh-btn:hover  { background: rgba(11,11,10,0.04); color: var(--ink-12); }
+.sh-btn:active { background: rgba(11,11,10,0.08); }
 .sh-btn-primary {
   background: var(--ink-12);
   color: var(--paper);
+  border-color: var(--ink-12);
 }
 .sh-btn-primary:hover {
   background: var(--ink-10);
+  color: var(--paper);
 }
 
 /* ─── Workspace ───────────────────────────────────────────── */
@@ -309,19 +327,24 @@ body {
   gap: 12px;
   flex-shrink: 0;
   background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .sh-preview-label {
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
   font-weight: 500;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;  /* the DS .t-label treatment */
 }
 
 .sh-preview-ambient {
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
   margin-left: 10px;
-  font-weight: 400;
 }
 
 .sh-preview-right {
@@ -331,47 +354,47 @@ body {
 }
 #preview-pane.is-dashboard #preview-header {
   background: var(--bg-sidebar);
-  border-bottom: 0.5px solid var(--border-default);
 }
 
 /* Segmented Toggle (light variant — for preview header) */
 .sh-seg {
   display: inline-flex;
   background: var(--pill-bg);
-  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-1);
   padding: 2px;
   gap: 0;
 }
 .sh-seg-btn {
   font: inherit;
+  font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 400;
+  font-weight: 500;
   padding: 3px 10px;
   border: 0;
   background: transparent;
   color: var(--text-tertiary);
-  border-radius: 4px;
+  border-radius: 1px;
   cursor: pointer;
-  transition: background 150ms ease-out, color 150ms ease-out;
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
 }
 .sh-seg-btn.is-active {
   background: var(--paper-raised);
   color: var(--text-primary);
-  font-weight: 500;
-  box-shadow: 0 0 0 0.5px var(--border-default);
+  box-shadow: 0 0 0 1px var(--border-default);
 }
 .sh-seg-btn:hover:not(.is-active) {
-  color: var(--text-secondary);
+  color: var(--ink-10);
 }
 
 /* Segmented Toggle (dark variant — for dashboard zoom) */
 .sh-seg-dark {
   background: var(--paper-raised);
-  border: 0.5px solid var(--border-default);
+  border: 1px solid var(--border-default);
 }
 .sh-seg-dark .sh-seg-btn { color: var(--text-tertiary); }
 .sh-seg-dark .sh-seg-btn.is-active {
-  background: var(--text-primary);
+  background: var(--ink-12);
   color: var(--paper);
   box-shadow: none;
 }
@@ -565,10 +588,13 @@ body {
   justify-content: space-between;
   height: 28px;
   background: var(--bg-sidebar);
-  border-top: 0.5px solid var(--border-default);
-  padding: 0 12px;
+  border-top: 1px solid var(--border-default);
+  padding: 0 4px 0 12px;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
   z-index: 10;
 }
 
@@ -600,6 +626,7 @@ body {
 .sh-status-msg {
   color: var(--text-tertiary);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;  /* "Compiled in 142ms" digits don't jitter */
 }
 
 .sh-status-right {
@@ -611,23 +638,26 @@ body {
 .sh-status-term {
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  border-radius: var(--r-1);
   display: flex;
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  font-family: var(--font-ui);
-  transition: color 0.15s, background 0.15s;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
 }
 .sh-status-term:hover {
   color: var(--text-primary);
-  background: var(--bg-workspace);
+  background: rgba(11,11,10,0.06);
 }
 .sh-status-term.is-active {
-  color: var(--accent);
+  /* ink chip, NOT ochre text — ochre is focus/selection only (studio.css) */
+  background: var(--ink-12);
+  color: var(--paper);
 }
 .sh-status-term svg {
   width: 12px;
@@ -635,9 +665,7 @@ body {
 }
 
 .sh-status-sep {
-  width: 0.5px;
-  height: 14px;
-  background: var(--border-default);
+  color: var(--text-faint);
 }
 
 .sh-status-item {

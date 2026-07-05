@@ -37,6 +37,39 @@ export async function initEditor() {
   const monaco = await loader.init();
   window._shelvesMonaco = monaco;
 
+  // DS syntax tokens, resolved to hex — Monaco cannot read CSS variables.
+  // Sources: colors_and_type.css --syntax-* ; studio/tokens.css bridge.
+  monaco.editor.defineTheme('shelves', {
+    base: 'vs',
+    inherit: true,
+    rules: [
+      // Token names WITHOUT '#'. In Monaco's YAML tokenizer, mapping keys
+      // tokenize as 'type', scalars as 'string'/'number', true/false/null as
+      // 'keyword'.
+      { token: 'type',    foreground: '3A6278' },  // keys    — --syntax-key
+      { token: 'string',  foreground: '6B8E4E' },  // strings — --syntax-string
+      { token: 'number',  foreground: 'B8531C' },  // numbers — --syntax-number (ochre)
+      { token: 'keyword', foreground: '8B5A9F' },  // bool/null — --syntax-bool
+      { token: 'comment', foreground: '9A968B' },  // --syntax-comment (ink-4)
+    ],
+    colors: {
+      // Values WITH '#' in this map (yes, the asymmetry is real).
+      'editor.background': '#FAF8F3',                    // --paper
+      'editor.foreground': '#1A1916',                    // --syntax-plain (ink-10)
+      'editorLineNumber.foreground': '#C9C5B8',          // --ink-2 (gutter)
+      'editorLineNumber.activeForeground': '#3A3833',    // --ink-8
+      'editorCursor.foreground': '#B8531C',              // --brand-ochre
+      'editor.selectionBackground': '#F7E9DC',           // --brand-ochre-tint
+      'editor.lineHighlightBackground': '#F7E9DC',       // studio design: active line = ochre tint
+      'editor.lineHighlightBorder': '#00000000',         // kill the default box border on the active line
+      'editorIndentGuide.background1': '#E8E4D8',        // --paper-edge
+      'editorWidget.background': '#FFFFFF',              // autocomplete popup = paper-raised
+      'editorWidget.border': '#E8E4D8',
+      'editorSuggestWidget.selectedBackground': '#F7E9DC',
+      'scrollbarSlider.background': '#0B0B0A26',
+    },
+  });
+
   let schema = null;
   try {
     schema = await fetch('/schema').then(r => r.json());
@@ -56,7 +89,9 @@ export async function initEditor() {
   state.editor = monaco.editor.create(document.getElementById('editor'), {
     value: '',
     language: 'yaml',
-    theme: 'vs',
+    theme: 'shelves',
+    fontFamily: "'JetBrains Mono', 'SF Mono', Menlo, monospace",
+    fontLigatures: false,
     minimap: { enabled: settings.minimap ?? true },
     wordWrap: (settings.wordWrap ?? true) ? 'on' : 'off',
     fontSize: settings.fontSize ?? 13,
