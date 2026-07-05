@@ -153,6 +153,16 @@ export async function initEditor() {
     updateStatusBar();
   });
 
+  document.addEventListener('shelves:non-chart-file', () => {
+    // No compile runs for non-chart YAML, so nothing else clears the previous
+    // file's compile markers from the shared model — clear them here or the
+    // status dot stays red and phantom squiggles linger.
+    const model = state.editor?.getModel();
+    if (model) monaco.editor.setModelMarkers(model, 'shelves-compile', []);
+    syncMarkerCounts();
+    updateStatusBar();
+  });
+
   monaco.editor.onDidChangeMarkers((uris) => {
     const model = state.editor?.getModel();
     if (!model) return;

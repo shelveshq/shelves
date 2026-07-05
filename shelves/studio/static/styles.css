@@ -493,64 +493,77 @@ body {
 
 .error-card {
   background: var(--error-bg);
-  border: 1px solid var(--error-fg);
-  border-radius: var(--radius-lg);
-  padding: 20px;
+  border: 1px solid var(--error-fg);   /* studio.css .sh-chart-card.is-error recipe */
+  border-radius: var(--r-2);
+  padding: 16px 18px;
   max-width: 640px;
 }
 
 .error-title {
+  font-family: var(--font-mono);
   color: var(--error-fg);
   font-weight: 600;
-  font-size: 13px;
-  margin-bottom: 14px;
+  font-size: 12px;
+  margin-bottom: 12px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .error-title::before {
   content: "";
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--status-err-dot);
+  background: var(--error-fg);
   flex-shrink: 0;
 }
 
+.error-list { margin: 0; padding-left: 16px; }
 .error-item {
-  color: var(--error-fg);
+  color: var(--ink-8);
   font-family: var(--font-mono);
   font-size: 11px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   white-space: pre-wrap;
-  line-height: 1.5;
+  line-height: 1.6;
 }
+.error-meta { color: var(--error-fg); font-weight: 500; }
 
-/* ─── Preview Placeholder ─────────────────────────────────── */
-.preview-placeholder {
-  color: var(--text-muted);
-  font-size: 14px;
-  text-align: center;
-  padding: 80px 32px 48px;
-  align-self: center;
+/* ─── Empty State ─────────────────────────────────────────── */
+.sh-empty {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  /* DS ambient dot-grid (studio.css .sh-empty) */
+  background-image: radial-gradient(var(--border-default) 1px, transparent 1px);
+  background-size: 16px 16px;
+  background-position: -1px -1px;
+}
+.sh-empty-inner {
+  max-width: 380px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  line-height: 1.5;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-3);
+  padding: 28px 26px;
+  text-align: center;
 }
-.preview-placeholder::before {
-  content: "";
-  display: block;
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-lg);
-  background: var(--bg-workspace);
-  border: 0.5px solid var(--border-default);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%238B8A84' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3v18h18'/%3E%3Cpath d='m7 12 4-4 4 4 4-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 24px;
+.sh-empty-h {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+}
+.sh-empty-sub {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
 }
 
 /* ─── Dashboard Preview ──────────────────────────────────── */
@@ -789,3 +802,59 @@ body {
   justify-content: center;
   padding-top: 120px;
 }
+
+/* ═══ Reusable components (DS: components-buttons/inputs/nav.html) ═══
+   Buttons: action labels are Inter Tight (the one sans exception).
+   Everything else mono. Radii --r-1/2. Hairlines, no soft shadows
+   except --shadow-pop on floating menus.
+   .sh-input/.sh-select/.sh-menu have no consumers yet — SHE-42 (file
+   create/rename/delete) wires them; do not remove as dead CSS. */
+
+/* .sh-btn / .sh-btn-primary exist (SHE-34). Variants: */
+.sh-btn-ghost  { border-color: var(--border-default); background: var(--bg-surface); color: var(--ink-10); }
+.sh-btn-ghost:hover { border-color: var(--ink-2); background: var(--bg-primary); }
+.sh-btn-soft   { background: var(--brand-ochre-tint); color: var(--brand-ochre); border-color: transparent; }
+.sh-btn-danger { background: var(--danger); color: var(--paper); border-color: var(--danger); }
+.sh-btn-danger:hover { filter: brightness(0.92); }
+.sh-btn:disabled { background: var(--paper-edge); color: var(--text-muted); border-color: var(--paper-edge); cursor: default; }
+.sh-btn-sm { font-size: 12px; padding: 4px 10px; border-radius: var(--r-1); }
+
+.sh-input, .sh-select {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-1);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);
+}
+.sh-input:focus { outline: none; border-color: var(--brand-ochre); box-shadow: 0 0 0 2px var(--brand-ochre-tint); }
+.sh-input.is-error { border-color: var(--danger); color: var(--danger); }
+.sh-field-help { font-family: var(--font-sans); font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
+.sh-field-help.is-error { color: var(--danger); }
+.sh-field-label {
+  font-family: var(--font-mono); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-tertiary); display: block; margin-bottom: 4px;
+}
+
+.sh-menu {
+  min-width: 200px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-pop);          /* floating surface — the ONE sanctioned soft shadow */
+  padding: 4px;
+}
+.sh-menu-item {
+  font-family: var(--font-sans); font-size: 13px;
+  padding: 6px 8px; border-radius: var(--r-1);
+  color: var(--text-primary); cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.sh-menu-item:hover, .sh-menu-item.is-active { background: var(--brand-ochre-tint); }
+.sh-menu-item.is-danger { color: var(--danger); }
+.sh-menu-kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.sh-menu-sep { height: 1px; background: var(--border-default); margin: 4px 0; }

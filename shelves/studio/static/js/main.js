@@ -21,6 +21,17 @@ await initTerminal();
 connectWebSocket();
 
 // ─── Compile Router ────────────────────────────────────────
+function classifyContent(content) {
+  if (isDashboardYaml(content)) return 'dashboard';
+  // Chart YAML must have a top-level `sheet:` key — same signal the backend
+  // uses (routes/compile.py checks `"sheet" in raw`). Line-anchored, first
+  // 40 lines, mirrors isDashboardYaml's cheap heuristic. The backend remains
+  // the authority; this only decides which surface to show.
+  const head = content.split('\n').slice(0, 40);
+  if (head.some(l => /^sheet\s*:/.test(l))) return 'chart';
+  return 'other';
+}
+
 function compileDashboardOrChart() {
   const content = state.editor.getValue();
   if (!content.trim()) {
@@ -35,9 +46,22 @@ function compileDashboardOrChart() {
     updateStatusBar();
     return;
   }
+
+  const kind = classifyContent(content);
+  if (kind === 'other') {
+    // Skip the POST entirely — the backend would just return {spec:null,errors:[]}
+    state.compiling = false;
+    if (state.dashboardMode) restoreChartLayout();
+    document.dispatchEvent(new CustomEvent('shelves:non-chart-file', {
+      detail: { path: state.currentFile?.path ?? null },
+    }));
+    updateStatusBar();
+    return;
+  }
+
   state.compiling = true;
   updateStatusBar();
-  if (isDashboardYaml(content)) {
+  if (kind === 'dashboard') {
     if (!state.dashboardMode) applyDashboardLayout();
     compileDashboardContent();
   } else {

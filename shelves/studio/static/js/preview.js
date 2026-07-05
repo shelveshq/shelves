@@ -93,33 +93,33 @@ export function highlightJson(json) {
 }
 
 // ─── Error Overlay ─────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                  .replace(/"/g, '&quot;');
+}
+
 export function showErrorOverlay(errors) {
+  if (!errors || errors.length === 0) return;   // never render a zero-count card
   elPreview.style.display = 'none';
   elJsonView.style.display = 'none';
   elErrorOverlay.style.display = 'block';
 
-  const count = errors.length;
-  const items = errors
-    .map(e => {
-      if (typeof e === 'object' && (e.friendly_msg || e.msg)) {
-        const loc = e.display_loc ? e.display_loc.join('.') : '';
-        const body = String(e.friendly_msg ?? e.msg).replace(/</g, '&lt;');
-        const pos = e.line ? ` (line ${e.line})` : '';
-        const badge = e.source === 'yaml'
-          ? '<span style="color:var(--warning);font-weight:600">YAML</span> '
-          : e.source === 'dsl'
-          ? '<span style="color:var(--danger);font-weight:600">DSL</span> '
-          : '';
-        return `<li class="error-item">${badge}${loc}${pos}: ${body}</li>`;
-      }
-      return `<li class="error-item">${String(e).replace(/</g, '&lt;')}</li>`;
-    })
-    .join('');
+  const items = errors.map(e => {
+    if (typeof e === 'object' && (e.friendly_msg || e.msg)) {
+      const badge = e.source === 'yaml' ? 'YAML' : e.source === 'dsl' ? 'DSL' : '';
+      const loc   = e.display_loc?.length ? e.display_loc.join('.') : '';
+      const line  = e.line ? `line ${e.line}` : '';
+      const meta  = [badge, loc, line].filter(Boolean).join(' · ');
+      const body  = esc(e.friendly_msg ?? e.msg);
+      return `<li class="error-item">${meta ? `<span class="error-meta">${esc(meta)}</span> — ` : ''}${body}</li>`;
+    }
+    return `<li class="error-item">${esc(e)}</li>`;
+  }).join('');
 
   elErrorOverlay.innerHTML = `
     <div class="error-card">
-      <div class="error-title">Validation Error${count !== 1 ? 's' : ''} (${count})</div>
-      <ul style="margin:0;padding-left:16px">${items}</ul>
+      <div class="error-title">Can't compile this chart</div>
+      <ul class="error-list">${items}</ul>
     </div>`;
 }
 
@@ -127,12 +127,32 @@ export function hideErrorOverlay() {
   elErrorOverlay.style.display = 'none';
 }
 
+// ─── Empty State ──────────────────────────────────────────
+export function showEmptyState({ title, sub }) {
+  hideErrorOverlay();
+  elJsonView.style.display = 'none';
+  elPreview.style.display = '';
+  const card = document.getElementById('chart-card');
+  card.classList.remove('is-scroll');
+  elChartContainer.innerHTML = `
+    <div class="sh-empty">
+      <div class="sh-empty-inner">
+        <div class="sh-empty-h">${esc(title)}</div>
+        <div class="sh-empty-sub">${esc(sub)}</div>
+      </div>
+    </div>`;
+  if (state.vegaView) { try { state.vegaView.finalize(); } catch (_) {} state.vegaView = null; }
+}
+
 // ─── Chart Rendering ───────────────────────────────────────
 async function renderChart(result) {
   elJsonView.style.display = 'none';
 
   if (!result || result.vega_lite_spec === null) {
-    showErrorOverlay(result?.errors ?? ['No spec available.']);
+    // Defensive: watcher broadcasts can still deliver a null-spec/no-error
+    // result until SHE-49 lands.
+    if (result?.errors?.length) { showErrorOverlay(result.errors); }
+    else { showEmptyState({ title: 'Nothing to render yet', sub: 'The compile returned no chart and no errors.' }); }
     return;
   }
 
@@ -212,6 +232,21 @@ function renderPreview(result) {
 
 // ─── Init ──────────────────────────────────────────────────
 export function initPreview() {
+  showEmptyState({
+    title: 'Open a file to see its preview',
+    sub: 'Charts render live as you type. Pick a YAML file from the explorer.',
+  });
+
+  document.addEventListener('shelves:non-chart-file', (e) => {
+    state.lastCompileResult = null;
+    const name = e.detail.path ? e.detail.path.split('/').pop() : 'This file';
+    showEmptyState({
+      title: 'No preview for this file',
+      sub: `${name} isn't a chart or dashboard, so there's nothing to render. Edits still save normally.`,
+    });
+    renderPreviewHeader('chart');
+  });
+
   document.addEventListener('shelves:compile-result', (e) => {
     if (state.dashboardMode) return;
     state.lastCompileResult = e.detail;
