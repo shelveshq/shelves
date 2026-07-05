@@ -12,6 +12,34 @@ let collapsedDirs = new Set(
 );
 let sidebarVisible = localStorage.getItem(STORAGE_KEY_SIDEBAR_VIS) !== 'false';
 
+// ─── File-Type Icons ───────────────────────────────────────
+// Lucide icons, inlined (no runtime dep — we use 6 glyphs). 1.5px stroke,
+// currentColor, 24-grid rendered at 14px. Transcribed from lucide.dev.
+const ICON_ATTRS = 'xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
+
+const ICONS = {
+  folder:    `<svg ${ICON_ATTRS}><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`,
+  chart:     `<svg ${ICON_ATTRS}><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>`,                        // bar-chart-3
+  dashboard: `<svg ${ICON_ATTRS}><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="12" rx="1"/></svg>`,          // layout-dashboard
+  model:     `<svg ${ICON_ATTRS}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>`, // database
+  json:      `<svg ${ICON_ATTRS}><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>`,                                   // braces
+  file:      `<svg ${ICON_ATTRS}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>`,                                    // file-text
+};
+
+function iconForEntry(entry) {
+  // Route by top-level group first. Until SHE-39 lands the tree is the raw
+  // project walk, so the first path segment is the best signal we have; the
+  // names below are the *default* configured dirs.
+  // TODO(SHE-39): switch to entry group type once /project ships typed groups.
+  if (entry.type === 'dir') return ICONS.folder;
+  const top = entry.path.split('/')[0];
+  if (top === 'charts')     return ICONS.chart;
+  if (top === 'dashboards') return ICONS.dashboard;
+  if (top === 'models')     return ICONS.model;
+  if (entry.path.endsWith('.json')) return ICONS.json;
+  return ICONS.file;
+}
+
 // ─── Fetch Tree ────────────────────────────────────────────
 async function fetchTree() {
   try {
@@ -42,7 +70,7 @@ function renderTreeLevel(entries, depth) {
   const container = document.createElement('div');
   for (const entry of entries) {
     const row = document.createElement('div');
-    row.style.paddingLeft = (14 + depth * 18) + 'px';
+    row.style.paddingLeft = (14 + depth * 12) + 'px';
 
     if (entry.type === 'dir') {
       row.className = 'tree-dir';
@@ -71,10 +99,18 @@ function renderTreeLevel(entries, depth) {
       row.className = 'tree-file';
       row.dataset.path = entry.path;
 
+      // Icons are our own constant strings; names are filesystem input and
+      // must keep going through textContent, never innerHTML.
+      const icon = document.createElement('span');
+      icon.className = 'tree-icon';
+      icon.innerHTML = iconForEntry(entry);
+
       const name = document.createElement('span');
       name.className = 'tree-name';
       name.textContent = entry.name;
+      name.title = entry.name;              // long names truncate; tooltip for free
 
+      row.appendChild(icon);
       row.appendChild(name);
       row.addEventListener('click', () => window.shelvesStudio.openFile(entry.path));
       container.appendChild(row);

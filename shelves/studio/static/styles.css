@@ -181,13 +181,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  color: var(--text-tertiary);
+  padding: 8px 14px 6px;
+  color: var(--text-muted);            /* ink-4 */
+  font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 1.2px;
-  font-weight: 600;
-  border-bottom: 0.5px solid var(--border-default);
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  /* design has no rule under the group label */
   flex-shrink: 0;
 }
 
@@ -219,46 +220,54 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
+  padding: 3px 10px 3px 14px;          /* denser than the old 6px */
+  min-height: 22px;
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
-  border-radius: 0;
-  border-left: 3px solid transparent;
-  transition: background 0.1s, color 0.1s;
+  font-family: var(--font-mono);
+  /* Active accent is an inset box-shadow (below), never a border — borders
+     participate in layout and shift the text when the row (de)activates. */
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
 }
 .tree-dir {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-10);
 }
 .tree-file {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 400;
-  color: var(--text-muted);
+  color: var(--text-tertiary);
 }
-.tree-dir:hover {
-  background: var(--bg-workspace);
+.tree-dir:hover, .tree-file:hover {
+  background: rgba(11,11,10,0.04);
 }
 .tree-file:hover {
-  background: var(--bg-workspace);
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 .tree-file.active {
-  background: rgba(0,0,0,0.05);
+  background: rgba(11,11,10,0.05);
   color: var(--text-primary);
   font-weight: 500;
-  border-left-color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);   /* studio.css .sh-tree-file.is-active */
 }
 
+.tree-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-muted);            /* ink-4 */
+}
+.tree-file.active .tree-icon { color: var(--accent); }  /* active icon goes ochre */
+
 .tree-chevron {
-  width: 16px;
+  width: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   color: var(--text-muted);
-  transition: color 0.1s;
+  transition: color var(--dur-base) var(--ease);
 }
 .tree-dir:hover .tree-chevron { color: var(--text-secondary); }
 
