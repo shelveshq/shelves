@@ -5,6 +5,10 @@ import { state } from './state.js';
 
 const STORAGE_KEY_COLLAPSED   = 'shelves-studio-collapsed-dirs';
 const STORAGE_KEY_SIDEBAR_VIS = 'shelves-studio-sidebar-visible';
+const STORAGE_KEY_SIDEBAR_W   = 'shelves-studio-sidebar-width';
+
+const SIDEBAR_DEFAULT_W = 200;
+const SIDEBAR_MIN_W = 140;
 
 let treeData = [];
 let collapsedDirs = new Set(
@@ -139,27 +143,80 @@ function toggleDir(path) {
   renderTree();
 }
 
+// ─── Sidebar Resize ────────────────────────────────────────
+function clampSidebarWidth(px) {
+  return Math.max(SIDEBAR_MIN_W, Math.min(window.innerWidth * 0.5, px));
+}
+
+function setSidebarWidth(px) {
+  document.documentElement.style.setProperty('--sidebar-width', px + 'px');
+}
+
+function storedSidebarWidth() {
+  const v = parseFloat(localStorage.getItem(STORAGE_KEY_SIDEBAR_W));
+  // Clamp at read time only — persisting the clamp would let a narrow
+  // window permanently shrink the stored preference.
+  return Number.isFinite(v) ? clampSidebarWidth(v) : SIDEBAR_DEFAULT_W;
+}
+
+function applySidebarVisibility() {
+  const sidebar = document.getElementById('sidebar');
+  const handle = document.getElementById('sidebar-resize-handle');
+  if (sidebarVisible) {
+    sidebar.classList.remove('collapsed');
+    setSidebarWidth(storedSidebarWidth());
+    document.documentElement.style.setProperty('--sidebar-handle-w', '1px');
+    handle.classList.remove('hidden');
+  } else {
+    sidebar.classList.add('collapsed');
+    // Zero the width + handle track; the stored width survives for reopen.
+    document.documentElement.style.setProperty('--sidebar-width', '0px');
+    document.documentElement.style.setProperty('--sidebar-handle-w', '0px');
+    handle.classList.add('hidden');
+  }
+}
+
+function initSidebarResize() {
+  const handle = document.getElementById('sidebar-resize-handle');
+  const sidebar = document.getElementById('sidebar');
+  let dragging = false;
+
+  handle.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    handle.classList.add('dragging');
+    handle.setPointerCapture(e.pointerId);   // survives fast drags + the dashboard iframe
+    e.preventDefault();                       // no text selection while dragging
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const left = sidebar.getBoundingClientRect().left;
+    setSidebarWidth(clampSidebarWidth(e.clientX - left));
+  });
+  handle.addEventListener('pointerup', (e) => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    handle.releasePointerCapture(e.pointerId);
+    const w = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width'));
+    if (Number.isFinite(w)) localStorage.setItem(STORAGE_KEY_SIDEBAR_W, String(Math.round(w)));
+  });
+  handle.addEventListener('dblclick', () => {
+    setSidebarWidth(SIDEBAR_DEFAULT_W);
+    localStorage.setItem(STORAGE_KEY_SIDEBAR_W, String(SIDEBAR_DEFAULT_W));
+  });
+}
+
 // ─── Sidebar Toggle ────────────────────────────────────────
 export function toggleSidebar() {
   sidebarVisible = !sidebarVisible;
-  const sidebar = document.getElementById('sidebar');
-  if (sidebarVisible) {
-    sidebar.classList.remove('collapsed');
-    document.documentElement.style.setProperty('--sidebar-width', '200px');
-  } else {
-    sidebar.classList.add('collapsed');
-    document.documentElement.style.setProperty('--sidebar-width', '0px');
-  }
+  applySidebarVisibility();
   localStorage.setItem(STORAGE_KEY_SIDEBAR_VIS, String(sidebarVisible));
 }
 
 // ─── Init ──────────────────────────────────────────────────
 export function initSidebar() {
-  if (!sidebarVisible) {
-    const sidebar = document.getElementById('sidebar');
-    sidebar.classList.add('collapsed');
-    document.documentElement.style.setProperty('--sidebar-width', '0px');
-  }
+  applySidebarVisibility();
+  initSidebarResize();
 
   document.getElementById('sidebar-toggle-inner').addEventListener('click', toggleSidebar);
 
