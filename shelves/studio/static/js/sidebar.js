@@ -7,7 +7,7 @@ const STORAGE_KEY_COLLAPSED   = 'shelves-studio-collapsed-dirs';
 const STORAGE_KEY_SIDEBAR_VIS = 'shelves-studio-sidebar-visible';
 const STORAGE_KEY_SIDEBAR_W   = 'shelves-studio-sidebar-width';
 
-const SIDEBAR_DEFAULT_W = 200;
+const SIDEBAR_DEFAULT_W = 220;  // studio.css .sh-main tree column
 const SIDEBAR_MIN_W = 140;
 
 let treeData = [];

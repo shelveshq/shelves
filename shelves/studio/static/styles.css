@@ -10,7 +10,7 @@
   --radius-lg: var(--r-3);
 
   /* Layout state — written at runtime by sidebar.js / editor.js */
-  --sidebar-width: 200px;
+  --sidebar-width: 220px;
   --editor-width: 25%;
 }
 
@@ -31,7 +31,8 @@ html, body {
 /* ─── Page Layout ────────────────────────────────────────── */
 body {
   display: grid;
-  grid-template-rows: 40px 1fr auto 28px;
+  /* studio.css .sh-studio shell: 44px header / 1fr main / auto terminal / 28px status */
+  grid-template-rows: 44px 1fr auto 28px;
   grid-template-areas:
     "header"
     "workspace"
@@ -83,10 +84,12 @@ body {
 }
 
 .sh-crumb-sep {
-  color: var(--text-faint);
-  font-size: 12px;
+  /* studio.css: a 1px vertical rule, not a slash glyph */
+  width: 1px;
+  height: 16px;
+  background: var(--border-default);
+  margin: 0 2px;
   flex-shrink: 0;
-  opacity: 0.45;
 }
 
 .sh-crumb {
@@ -162,7 +165,7 @@ body {
 #workspace {
   grid-area: workspace;
   display: grid;
-  grid-template-columns: var(--sidebar-width, 200px) var(--sidebar-handle-w, 1px) var(--editor-width, 25%) 1px 1fr;
+  grid-template-columns: var(--sidebar-width, 220px) var(--sidebar-handle-w, 1px) var(--editor-width, 25%) 1px 1fr;
   overflow: hidden;
 }
 
@@ -367,9 +370,8 @@ body {
   align-items: center;
   gap: 8px;
 }
-#preview-pane.is-dashboard #preview-header {
-  background: var(--bg-sidebar);
-}
+/* Dashboard mode: the header stays on paper; only the workspace below sinks
+   (studio.css .sh-preview-dashboard .sh-pv-header). */
 
 /* Segmented Toggle (light variant — for preview header) */
 .sh-seg {
@@ -460,7 +462,7 @@ body {
   border-radius: var(--r-2);
   border: 1px solid var(--border-default);
   transition: border-color var(--dur-base) var(--ease);
-  padding: 20px 24px;
+  padding: 22px 24px;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -494,17 +496,21 @@ body {
 }
 
 /* ─── JSON View ───────────────────────────────────────────── */
+/* studio.css .sh-json-view: a sunk, hairline-bordered card (margins match
+   the chart pane gap so the two views land on the same footprint). */
 #json-view {
   display: none;
-  width: 100%;
   flex: 1;
-  padding: 20px;
-  margin: 0;
+  min-height: 0;
+  margin: 4px 20px 20px;
+  padding: 16px 18px;
   font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-primary);
-  background: var(--bg-surface);
+  line-height: 1.65;
+  color: var(--text-secondary);
+  background: var(--pill-bg);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2);
   overflow: auto;
   white-space: pre-wrap;
   scrollbar-width: thin;
@@ -577,14 +583,15 @@ body {
   background-position: -1px -1px;
 }
 .sh-empty-inner {
-  max-width: 380px;
+  width: 440px;
+  max-width: 80%;
   display: flex;
   flex-direction: column;
   align-items: center;
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
   border-radius: var(--r-3);
-  padding: 28px 26px;
+  padding: 32px 28px 28px;
   text-align: center;
 }
 .sh-empty-h {
@@ -624,6 +631,10 @@ body {
   position: relative;
   flex: 0 0 auto;   /* never let the flex container shrink the stage below its set size */
   /* width/height set inline by dashboard.js */
+  /* Hairline canvas ring (studio.css .sh-canvas) — a shadow ring on the stage,
+     not a border on the iframe, so it doesn't scale with the zoom transform. */
+  border-radius: var(--r-1);
+  box-shadow: 0 0 0 1px var(--border-canvas);
 }
 
 #dashboard-iframe {
@@ -635,7 +646,7 @@ body {
   /* width/height set inline by dashboard.js from the declared canvas (KAN-298) */
   background: var(--paper-raised);
   border-radius: var(--r-1);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+  /* No soft shadow — the DS is hairline-first; the ring lives on the stage. */
 }
 
 /* ─── Status Bar ──────────────────────────────────────────── */
