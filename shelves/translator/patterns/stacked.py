@@ -18,7 +18,7 @@ from typing import Any
 from shelves.schema.chart_schema import ChartSpec, MarkSpec, MeasureEntry
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.translator.encodings import (
-    _auto_inject_from_model,
+    auto_inject_from_model,
     build_color,
     build_field_encoding,
     build_tooltip,
@@ -187,7 +187,7 @@ def _compile_repeat(
 
     # Build shared axis encoding with auto-injected title, format, and grid
     shared_enc_with_meta: dict[str, Any] = {**shared_enc}
-    _auto_inject_from_model(shared_enc_with_meta, shared_field, resolver, None, channel=shared_axis)
+    auto_inject_from_model(shared_enc_with_meta, shared_field, resolver, None, channel=shared_axis)
 
     inner_encoding: dict[str, Any] = {
         shared_axis: shared_enc_with_meta,

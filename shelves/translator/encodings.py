@@ -188,7 +188,7 @@ def _apply_channel_axis(
     # Granular toggles first, then auto-inject so the model format merges into
     # the same axis dict.
     _apply_axis_config(encoding_channel, cfg)
-    _auto_inject_from_model(encoding_channel, field_ref, resolver, cfg, channel=channel)
+    auto_inject_from_model(encoding_channel, field_ref, resolver, cfg, channel=channel)
 
 
 def _apply_axis_config(
@@ -223,7 +223,10 @@ def _apply_axis_config(
         encoding_channel["axis"] = axis_props
 
 
-def _auto_inject_from_model(
+# ─── Model auto-injection (public — shared with stacked/layers/panel) ──
+
+
+def auto_inject_from_model(
     encoding_channel: dict[str, Any],
     field_ref: str,
     resolver: FieldTypeResolver,
@@ -232,6 +235,9 @@ def _auto_inject_from_model(
 ) -> None:
     """
     Auto-inject title and format from the model into an encoding channel dict.
+
+    Public: the pattern compilers (stacked, layers) and the panel builder all
+    consume it — it is part of this module's API, not an implementation detail.
 
     Injection rules (each skipped if chart spec already sets it):
       1. title ← resolver.resolve_label(field_ref)

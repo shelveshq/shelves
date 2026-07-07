@@ -13,7 +13,7 @@ from typing import Any
 from shelves.schema.chart_schema import ChartSpec, MeasureEntry
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.translator.encodings import (
-    _auto_inject_from_model,
+    auto_inject_from_model,
     build_color,
     build_detail,
     build_field_encoding,
@@ -42,11 +42,11 @@ def build_panel_encoding(
     encoding: dict[str, Any] = {}
 
     shared_axis_enc = {**shared_enc}
-    _auto_inject_from_model(shared_axis_enc, shared_field, resolver, None, channel=shared_axis)
+    auto_inject_from_model(shared_axis_enc, shared_field, resolver, None, channel=shared_axis)
     encoding[shared_axis] = shared_axis_enc
 
     measure_enc = build_field_encoding(entry.measure, resolver)
-    _auto_inject_from_model(measure_enc, entry.measure, resolver, None, channel=measure_axis)
+    auto_inject_from_model(measure_enc, entry.measure, resolver, None, channel=measure_axis)
     encoding[measure_axis] = measure_enc
 
     color = resolve_property(None, entry.color, spec.color)

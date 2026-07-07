@@ -86,7 +86,7 @@ from typing import Any
 from shelves.schema.chart_schema import ChartSpec, ColorSpec, LayerEntry, MarkSpec, MeasureEntry
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.translator.encodings import (
-    _auto_inject_from_model,
+    auto_inject_from_model,
     build_color,
     build_detail,
     build_field_encoding,
@@ -422,12 +422,12 @@ def _build_layer_spec(
 
     # 2a: Shared axis — copy and inject title/format/grid.
     shared_axis_enc = {**shared_enc}
-    _auto_inject_from_model(shared_axis_enc, shared_field, resolver, None, channel=shared_axis)
+    auto_inject_from_model(shared_axis_enc, shared_field, resolver, None, channel=shared_axis)
     encoding[shared_axis] = shared_axis_enc
 
     # 2b: Measure axis.
     measure_enc = build_field_encoding(measure, resolver)
-    _auto_inject_from_model(measure_enc, measure, resolver, None, channel=measure_axis)
+    auto_inject_from_model(measure_enc, measure, resolver, None, channel=measure_axis)
     encoding[measure_axis] = measure_enc
 
     # Steps 3-5: Color, detail, size (all already resolved).

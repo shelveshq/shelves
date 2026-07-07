@@ -16,6 +16,7 @@ from typing import Any, Protocol
 import httpx
 
 from shelves.data.fields import collect_chart_fields
+from shelves.errors import ShelvesError
 from shelves.models.schema import CubeSource, DataModel
 from shelves.schema.chart_schema import (
     ChartSpec,
@@ -26,7 +27,7 @@ from shelves.schema.field_types import FieldTypeResolver
 # ─── Errors ──────────────────────────────────────────────────────────
 
 
-class CubeError(Exception):
+class CubeError(ShelvesError):
     """Base error for Cube.dev client operations."""
 
 

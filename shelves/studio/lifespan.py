@@ -70,6 +70,7 @@ async def compile_file_and_broadcast(
     import yaml as _yaml
     from pydantic import ValidationError as _ValidationError
 
+    from shelves.diagnostics import capture_warnings
     from shelves.pipeline import compile_chart, resolve_model_data
 
     try:
@@ -111,20 +112,25 @@ async def compile_file_and_broadcast(
         if not isinstance(raw, dict) or "sheet" not in raw:
             return
 
-        vl_spec, spec = compile_chart(
-            content,
-            theme_path=theme_path,
-            models_dir=models_dir if models_dir.exists() else None,
-        )
-
+        # Capture Python warnings (KPI shelf conflicts, tooltip disaggregation,
+        # ...) into the structured warnings list the frontend displays — same
+        # contract as the POST /compile route.
         warnings: list[str] = []
-        try:
-            vl_spec = resolve_model_data(
-                vl_spec,
-                spec,
-                models_dir=models_dir,
-                data_base_dir=project_dir,
+        with capture_warnings(warnings):
+            vl_spec, spec = compile_chart(
+                content,
+                theme_path=theme_path,
+                models_dir=models_dir if models_dir.exists() else None,
             )
+
+        try:
+            with capture_warnings(warnings):
+                vl_spec = resolve_model_data(
+                    vl_spec,
+                    spec,
+                    models_dir=models_dir,
+                    data_base_dir=project_dir,
+                )
         except Exception as e:
             warnings.append(f"Data resolution skipped: {e}")
 

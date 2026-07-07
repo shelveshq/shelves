@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from shelves.data.fields import collect_chart_fields
+from shelves.errors import ShelvesError
 from shelves.models.schema import (
     CALC_REF_RE,
     DataModel,
@@ -30,7 +31,7 @@ from shelves.schema.chart_schema import ChartSpec, ShelfFilter
 from shelves.schema.field_types import FieldTypeResolver
 
 
-class DuckDBQueryError(Exception):
+class DuckDBQueryError(ShelvesError):
     """Error building or executing a DuckDB query."""
 
 

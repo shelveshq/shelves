@@ -100,6 +100,41 @@ class TestCompileDashboardCanvas:
         assert result["canvas"] == {"width": 1440, "height": 900}
 
 
+class TestStudioMissingChart:
+    def test_missing_chart_file_warns_and_renders_rest(self, tmp_path: Path):
+        """A missing chart link is a per-sheet warning, not a whole-dashboard
+        error — consistent with how a chart that fails to compile behaves
+        (the dashboard renders, the sheet is an empty box)."""
+        yaml_body = (
+            'dashboard: "Missing Link"\n'
+            "canvas:\n"
+            "  width: 800\n"
+            "  height: 600\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            '    - text: "Still here"\n'
+            "      preset: title\n"
+            "    - sheet: does_not_exist.yaml\n"
+            "      name: ghost\n"
+        )
+
+        async def _test():
+            return await run_dashboard_pipeline(
+                yaml_body,
+                project_dir=tmp_path,
+                charts_dir=tmp_path,
+                theme_path=None,
+                models_dir=None,
+            )
+
+        result = _run(_test())
+        assert result["html"] is not None
+        assert result["errors"] == []
+        assert "Still here" in result["html"]
+        assert any("Chart file not found" in w and "ghost" in w for w in result["warnings"])
+
+
 class TestStudioDashboardLegends:
     """SHE-27 — independent dashboard legends wired into the Studio preview."""
 

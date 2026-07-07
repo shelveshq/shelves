@@ -724,7 +724,9 @@ root:
         assert body["component_tree"] == []
 
     def test_compile_dashboard_missing_chart(self, tmp_path):
-        """POST /compile-dashboard with a missing chart reference returns errors."""
+        """POST /compile-dashboard with a missing chart reference warns and
+        still renders — the sheet is an empty box, consistent with how a chart
+        that fails to compile behaves (shared loop, fail_fast=False)."""
         from starlette.testclient import TestClient
 
         app = create_app(project_dir=tmp_path)
@@ -745,10 +747,10 @@ root:
         response = client.post("/compile-dashboard", content=yaml_body)
         assert response.status_code == 200
         body = response.json()
-        assert body["html"] is None
-        assert len(body["errors"]) > 0
-        assert any("not found" in e.lower() for e in body["errors"])
-        assert body["component_tree"] == []
+        assert body["html"] is not None
+        assert body["errors"] == []
+        assert any("not found" in w.lower() and "bad_sheet" in w for w in body["warnings"])
+        assert len(body["component_tree"]) > 0
 
 
 # ─── Terminal Endpoint ──────────────────────────────────────────
