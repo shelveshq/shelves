@@ -182,6 +182,96 @@ root:
         assert "vegaEmbed" not in html
 
 
+# ─── Warning Tests ───────────────────────────────────────────────
+
+
+class TestDashboardComposeWarnings:
+    def test_data_resolution_failure_warns_and_still_renders(self, monkeypatch):
+        """A data-resolution failure must never be silent (it used to be
+        swallowed by contextlib.suppress): the dashboard still renders — the
+        chart just has no data — and a warning names the sheet and the cause."""
+        import shelves.pipeline as pipeline_mod
+
+        def boom(vl, spec, **kwargs):
+            raise RuntimeError("simulated data failure")
+
+        monkeypatch.setattr(pipeline_mod, "resolve_model_data", boom)
+
+        with pytest.warns(UserWarning, match="Data resolution skipped for 'revenue_chart'"):
+            html = _compose("compose_minimal.yaml")
+
+        assert 'id="sheet-revenue_chart"' in html
+        assert "vegaEmbed" in html
+
+    def test_studio_route_uses_the_same_chart_loop(self, monkeypatch):
+        """Guard the unification: run_dashboard_pipeline must go through
+        compile_dashboard_charts, not its own per-sheet loop."""
+        import asyncio
+
+        import shelves.compose.dashboard as compose_mod
+        from shelves.studio.routes.dashboard import run_dashboard_pipeline
+
+        calls = {"n": 0}
+        orig = compose_mod.compile_dashboard_charts
+
+        def counting(*args, **kwargs):
+            calls["n"] += 1
+            return orig(*args, **kwargs)
+
+        monkeypatch.setattr(compose_mod, "compile_dashboard_charts", counting)
+
+        yaml_body = (
+            'dashboard: "Shared Loop"\n'
+            "canvas: { width: 800, height: 600 }\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - sheet: simple_bar.yaml\n"
+            "      name: revenue_chart\n"
+        )
+        result = asyncio.run(
+            run_dashboard_pipeline(
+                yaml_body,
+                project_dir=DATA_DIR,
+                charts_dir=YAML_DIR,
+                theme_path=None,
+                models_dir=MODELS_DIR,
+            )
+        )
+        assert result["html"] is not None
+        assert calls["n"] == 1
+
+    def test_relative_parent_links_still_work_in_compose(self, tmp_path):
+        """Link containment (restrict_links) is a Studio-surface concern — the
+        CLI compose path deliberately keeps ../ links working, since local
+        dashboards may legitimately reference charts outside --chart-dir."""
+        import shutil
+
+        charts = tmp_path / "charts"
+        charts.mkdir()
+        shutil.copy(YAML_DIR / "simple_bar.yaml", tmp_path / "outside.yaml")
+
+        dashboard_path = tmp_path / "dash.yaml"
+        dashboard_path.write_text(
+            'dashboard: "Parent Link"\n'
+            "canvas: { width: 800, height: 600 }\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - sheet: ../outside.yaml\n"
+            "      name: outside_chart\n"
+        )
+
+        html = compose_dashboard(
+            dashboard_path=dashboard_path,
+            chart_base_dir=charts,
+            data_dir=DATA_DIR,
+            models_dir=MODELS_DIR,
+        )
+        assert 'id="sheet-outside_chart"' in html
+        assert "vegaEmbed" in html
+
+
 # ─── Error Tests ─────────────────────────────────────────────────
 
 

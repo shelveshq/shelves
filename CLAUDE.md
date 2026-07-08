@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Area-specific context lives in sub-directory `CLAUDE.md` files (`shelves/schema/`, `shelves/translator/`, `shelves/theme/`, `shelves/data/`, `shelves/models/`, `shelves/render/`, `docs/`, `tests/`).
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Area-specific context lives in sub-directory `CLAUDE.md` files (`shelves/schema/`, `shelves/translator/`, `shelves/theme/`, `shelves/data/`, `shelves/models/`, `shelves/render/`, `shelves/compose/`, `docs/`, `tests/`).
 
 ## What This Project Is
 

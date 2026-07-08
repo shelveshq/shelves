@@ -8,6 +8,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from shelves.diagnostics import capture_warnings
 from shelves.studio.yaml_position import resolve_locs
 
 _FRIENDLY_MESSAGES: dict[str, str | Callable[[str], str]] = {
@@ -114,12 +115,17 @@ async def compile_yaml(request: Request) -> JSONResponse:
     models_dir = request.app.state.models_dir
     theme_path: Path | None = request.app.state.theme_path
 
+    # Python warnings emitted during compile (KPI shelf conflicts, tooltip
+    # disaggregation, ...) are invisible to Studio unless captured into the
+    # structured warnings list the frontend displays.
+    warnings: list[str] = []
     try:
-        vl_spec, spec = compile_chart(
-            yaml_body,
-            theme_path=theme_path,
-            models_dir=models_dir if models_dir.exists() else None,
-        )
+        with capture_warnings(warnings):
+            vl_spec, spec = compile_chart(
+                yaml_body,
+                theme_path=theme_path,
+                models_dir=models_dir if models_dir.exists() else None,
+            )
     except ValidationError as e:
         return JSONResponse(
             {
@@ -156,14 +162,14 @@ async def compile_yaml(request: Request) -> JSONResponse:
             }
         )
 
-    warnings: list[str] = []
     try:
-        vl_spec = resolve_model_data(
-            vl_spec,
-            spec,
-            models_dir=models_dir,
-            data_base_dir=request.app.state.project_dir,
-        )
+        with capture_warnings(warnings):
+            vl_spec = resolve_model_data(
+                vl_spec,
+                spec,
+                models_dir=models_dir,
+                data_base_dir=request.app.state.project_dir,
+            )
     except Exception as e:
         warnings.append(f"Data resolution skipped: {e}")
 

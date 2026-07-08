@@ -58,7 +58,6 @@ async def run_dashboard_pipeline(
     models_dir: Path | None = None,
 ) -> dict:
     """Run the dashboard compilation pipeline and return a result dict."""
-    from shelves.pipeline import compile_chart, resolve_model_data
     from shelves.schema.layout_schema import parse_dashboard
     from shelves.theme.merge import load_theme
     from shelves.translator.layout import translate_dashboard
@@ -73,10 +72,11 @@ async def run_dashboard_pipeline(
     component_tree = build_component_tree(flat_root)
 
     # Discover sheets (name → link) — reuse the already-flattened tree.
-    from shelves.compose.dashboard import _discover_sheets, link_legends
-    from shelves.models.loader import load_model
-    from shelves.models.resolver import ModelResolver
-    from shelves.schema.field_types import FieldTypeResolver
+    from shelves.compose.dashboard import (
+        _discover_sheets,
+        compile_dashboard_charts,
+        link_legends,
+    )
 
     sheets = _discover_sheets(flat_root)
 
@@ -88,48 +88,26 @@ async def run_dashboard_pipeline(
 
         theme = ThemeSpec()
 
-    # Resolve a models_dir usable for both chart compile and the per-sheet resolver.
+    # Resolve a models_dir usable for both chart compile and the per-sheet
+    # resolver AND data resolution — one value, threaded everywhere, so the two
+    # halves of a compile can never read different model directories.
     effective_models_dir = models_dir if models_dir and models_dir.exists() else None
 
-    # Compile each referenced chart (resolved relative to charts_dir)
-    warnings: list[str] = []
-    chart_specs: dict[str, dict] = {}
-    resolvers: dict[str, FieldTypeResolver] = {}
-    for name, link in sheets.items():
-        chart_path = charts_dir / link
-        if not chart_path.exists():
-            return {
-                "html": None,
-                "errors": [f"Chart file not found: {link} (sheet '{name}')"],
-                "warnings": [],
-                "component_tree": [],
-            }
-        try:
-            chart_yaml = chart_path.read_text()
-            vl, chart_spec = compile_chart(
-                chart_yaml,
-                theme=theme,
-                models_dir=effective_models_dir,
-            )
-            try:
-                vl = resolve_model_data(
-                    vl,
-                    chart_spec,
-                    models_dir=models_dir,
-                    data_base_dir=project_dir,
-                )
-            except Exception as de:
-                warnings.append(f"Data resolution skipped for '{name}': {de}")
-            # SHE-27: build the resolver before publishing either, so the spec and
-            # its resolver stay in lock-step (a sheet that failed to compile — or
-            # whose model fails to load — has neither). The legend filter keys off
-            # chart_specs, so a chart_specs entry without a matching resolver would
-            # KeyError in resolve_legend_links.
-            resolver = ModelResolver(load_model(chart_spec.data, models_dir=effective_models_dir))
-            chart_specs[name] = vl
-            resolvers[name] = resolver
-        except Exception as e:
-            warnings.append(f"Chart '{name}' ({link}): {e}")
+    # Compile each referenced chart via the shared per-sheet loop (the same one
+    # compose_dashboard uses — Studio is a surface, not a second compiler).
+    # fail_fast=False: a missing/broken chart becomes a warning and an empty
+    # sheet box; the rest of the dashboard still renders.
+    # restrict_links=True: YAML posted to the server must not read files
+    # outside charts_dir (absolute or ../ links are skipped with a warning).
+    chart_specs, resolvers, warnings = compile_dashboard_charts(
+        sheets,
+        charts_dir,
+        theme,
+        models_dir=effective_models_dir,
+        data_base_dir=project_dir,
+        fail_fast=False,
+        restrict_links=True,
+    )
 
     # SHE-27: link legends to sheet scales + suppress in-sheet legends via the
     # shared helper (same path as compose_dashboard), routing the bad-source
