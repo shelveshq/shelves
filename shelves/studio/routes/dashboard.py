@@ -97,6 +97,8 @@ async def run_dashboard_pipeline(
     # compose_dashboard uses — Studio is a surface, not a second compiler).
     # fail_fast=False: a missing/broken chart becomes a warning and an empty
     # sheet box; the rest of the dashboard still renders.
+    # restrict_links=True: YAML posted to the server must not read files
+    # outside charts_dir (absolute or ../ links are skipped with a warning).
     chart_specs, resolvers, warnings = compile_dashboard_charts(
         sheets,
         charts_dir,
@@ -104,6 +106,7 @@ async def run_dashboard_pipeline(
         models_dir=effective_models_dir,
         data_base_dir=project_dir,
         fail_fast=False,
+        restrict_links=True,
     )
 
     # SHE-27: link legends to sheet scales + suppress in-sheet legends via the

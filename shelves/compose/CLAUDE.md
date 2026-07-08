@@ -25,7 +25,12 @@ Per-surface presentation is the only difference:
 | | compose (CLI) | Studio route |
 |---|---|---|
 | `fail_fast` | `True` — missing file raises `FileNotFoundError`, compile error raises `RuntimeError` | `False` — both become warnings; the sheet renders as an empty box |
+| `restrict_links` | `False` — local dashboards may reference charts outside `--chart-dir` via `../` | `True` — links resolving outside `charts_dir` (absolute or `../`) are skipped with a warning (mirrors `resolve_safe`) |
 | returned warnings | re-emitted via `warnings.warn` | returned in the `warnings: [...]` payload |
+
+Warning messages show the link as written in the YAML; only the fail-fast
+exceptions include the resolved absolute path (never surfaced to Studio
+clients).
 
 Invariants the loop guarantees (do not break):
 

@@ -133,6 +133,51 @@ class TestStudioMissingChart:
         assert result["errors"] == []
         assert "Still here" in result["html"]
         assert any("Chart file not found" in w and "ghost" in w for w in result["warnings"])
+        # The warning shows the link the user typed, not the server's absolute
+        # path (PR #58 review: don't leak filesystem paths to Studio users).
+        assert not any(str(tmp_path) in w for w in result["warnings"])
+
+    def test_traversal_link_is_rejected_with_warning(self, tmp_path: Path):
+        """A link that escapes charts_dir (../ or absolute) is skipped with a
+        warning in the Studio pipeline — dashboard YAML must not read files
+        outside the charts directory (PR #58 review; mirrors resolve_safe)."""
+        charts = tmp_path / "charts"
+        charts.mkdir()
+        # A perfectly valid chart OUTSIDE charts_dir — reachable only by traversal.
+        (tmp_path / "outside.yaml").write_text(
+            "sheet: Outside\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n"
+        )
+
+        for link in ("../outside.yaml", str(tmp_path / "outside.yaml")):
+            yaml_body = (
+                'dashboard: "Traversal"\n'
+                "canvas:\n"
+                "  width: 800\n"
+                "  height: 600\n"
+                "root:\n"
+                "  orientation: vertical\n"
+                "  contains:\n"
+                f"    - sheet: {link}\n"
+                "      name: sneaky\n"
+            )
+
+            async def _test(body=yaml_body):
+                return await run_dashboard_pipeline(
+                    body,
+                    project_dir=tmp_path,
+                    charts_dir=charts,
+                    theme_path=None,
+                    models_dir=MODELS_DIR,
+                )
+
+            result = _run(_test())
+            assert result["html"] is not None
+            assert result["errors"] == []
+            assert any(
+                "outside the charts directory" in w and "sneaky" in w for w in result["warnings"]
+            ), f"no traversal warning for link {link!r}: {result['warnings']}"
+            # The chart must NOT have been compiled/embedded.
+            assert "Outside" not in result["html"]
 
 
 class TestStudioDashboardLegends:

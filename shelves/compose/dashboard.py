@@ -119,6 +119,7 @@ def compile_dashboard_charts(
     data_base_dir: Path | None = None,
     no_theme: bool = False,
     fail_fast: bool = False,
+    restrict_links: bool = False,
 ) -> tuple[dict[str, dict], dict[str, FieldTypeResolver], list[str]]:
     """Compile every sheet's chart through the shared pipeline.
 
@@ -135,6 +136,16 @@ def compile_dashboard_charts(
         dashboard still renders, the sheet is an empty box).
       - Data-resolution error: ALWAYS a warning ("Data resolution skipped for
         '<sheet>': ..."), never fatal — the chart renders without data.
+      - `restrict_links=True` (the Studio server): a link that resolves
+        outside `charts_dir` (absolute path or `..` traversal) is skipped with
+        a warning — dashboard YAML posted to the server must not read
+        arbitrary files (mirrors the route-level `resolve_safe` rule). The CLI
+        compose surface leaves this off: local dashboards may legitimately
+        reference charts outside --chart-dir via `../`.
+
+    Warning messages show the link as written in the YAML; only the fail-fast
+    exceptions carry the resolved absolute path (useful in CLI tracebacks,
+    not something to surface to Studio clients).
       - Python warnings emitted during a sheet's compile (KPI shelf conflicts,
         tooltip disaggregation, ...) are captured into the returned list,
         prefixed with the sheet name, so Studio can display them.
@@ -162,11 +173,18 @@ def compile_dashboard_charts(
 
     for name, link in sheets.items():
         chart_path = charts_dir / link
+        if restrict_links and not _link_is_contained(chart_path, charts_dir):
+            warnings_out.append(
+                f"Chart link '{link}' (sheet '{name}') is outside the charts "
+                "directory and was skipped."
+            )
+            continue
         if not chart_path.exists():
-            msg = f"Chart file not found: {chart_path} (referenced by sheet '{name}')"
             if fail_fast:
-                raise FileNotFoundError(msg)
-            warnings_out.append(msg)
+                raise FileNotFoundError(
+                    f"Chart file not found: {chart_path} (referenced by sheet '{name}')"
+                )
+            warnings_out.append(f"Chart file not found: {link} (sheet '{name}')")
             continue
 
         try:
@@ -199,6 +217,18 @@ def compile_dashboard_charts(
         resolvers[name] = resolver
 
     return chart_specs, resolvers, warnings_out
+
+
+def _link_is_contained(chart_path: Path, charts_dir: Path) -> bool:
+    """True if `chart_path` resolves to a location inside `charts_dir`.
+
+    Resolves symlinks and `..` segments; an unresolvable path is treated as
+    escaping (fail closed).
+    """
+    try:
+        return chart_path.resolve().is_relative_to(charts_dir.resolve())
+    except OSError:
+        return False
 
 
 def link_legends(

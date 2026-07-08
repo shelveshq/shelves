@@ -241,6 +241,36 @@ class TestDashboardComposeWarnings:
         assert result["html"] is not None
         assert calls["n"] == 1
 
+    def test_relative_parent_links_still_work_in_compose(self, tmp_path):
+        """Link containment (restrict_links) is a Studio-surface concern — the
+        CLI compose path deliberately keeps ../ links working, since local
+        dashboards may legitimately reference charts outside --chart-dir."""
+        import shutil
+
+        charts = tmp_path / "charts"
+        charts.mkdir()
+        shutil.copy(YAML_DIR / "simple_bar.yaml", tmp_path / "outside.yaml")
+
+        dashboard_path = tmp_path / "dash.yaml"
+        dashboard_path.write_text(
+            'dashboard: "Parent Link"\n'
+            "canvas: { width: 800, height: 600 }\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - sheet: ../outside.yaml\n"
+            "      name: outside_chart\n"
+        )
+
+        html = compose_dashboard(
+            dashboard_path=dashboard_path,
+            chart_base_dir=charts,
+            data_dir=DATA_DIR,
+            models_dir=MODELS_DIR,
+        )
+        assert 'id="sheet-outside_chart"' in html
+        assert "vegaEmbed" in html
+
 
 # ─── Error Tests ─────────────────────────────────────────────────
 
