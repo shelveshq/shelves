@@ -1,0 +1,75 @@
+/* Shelves Studio — token bridge onto the design system.
+   shelves-tokens.css (== ../colors_and_type.css) is loaded via <link> BEFORE this file.
+
+   This is the MIGRATION KEY: it maps Studio's existing CSS variable names
+   (the same ones already in shelves/studio/static/styles.css — --bg-primary,
+   --text-*, --accent, --term-*, --font-ui, …) onto the design-system tokens.
+   Adopting this file flips the whole app to paper + mono + ochre WITHOUT
+   renaming the variables the current styles.css already uses. */
+
+:root {
+  --bg-primary:   var(--paper);
+  --bg-sidebar:   var(--paper-sunk);
+  --bg-workspace: var(--paper-sunk);
+  --bg-surface:   var(--paper-raised);
+  --border-default: var(--paper-edge);
+  --border-canvas:  var(--ink-2);
+
+  --text-primary:   var(--ink-12);
+  --text-secondary: var(--ink-8);
+  --text-tertiary:  var(--ink-6);
+  --text-muted:     var(--ink-4);
+  --text-faint:     var(--ink-2);
+  --pill-bg:        var(--paper-sunk);
+
+  --accent: var(--brand-ochre);
+
+  --syn-key:     var(--syntax-key);
+  --syn-string:  var(--syntax-string);
+  --syn-keyword: var(--syntax-number);
+  --syn-comment: var(--syntax-comment);
+  --syn-line-bg: var(--brand-ochre-tint);
+
+  --series-1: var(--chart-1);
+  --series-2: var(--chart-3);
+  --series-3: var(--chart-4);
+  --series-4: var(--chart-5);
+
+  --status-ok-dot:   var(--success);
+  --status-ok-text:  var(--success);
+  --status-warn-dot: var(--warning);
+  --status-warn-text:var(--warning);
+  --status-err-dot:  var(--danger);
+  --status-err-text: var(--danger);
+
+  --valid-bg:  var(--success-bg);
+  --valid-fg:  var(--success);
+  --error-bg:  var(--danger-bg);
+  --error-fg:  var(--danger);
+
+  --term-bg:       var(--ink-12);
+  --term-header:   var(--ink-10);
+  --term-border:   var(--ink-8);
+  --term-fg:       var(--paper-edge);
+  --term-prompt:   #9DD6B1;
+  --term-dir:      #9DB7D6;
+  --term-branch:   var(--brand-ochre-2);
+
+  --font-ui: var(--font-mono);
+}
+
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-12);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "zero", "ss01";
+}
+
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(11,11,10,0.15); border-radius: 2px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(11,11,10,0.28); }

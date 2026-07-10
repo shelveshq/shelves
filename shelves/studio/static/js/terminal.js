@@ -25,11 +25,14 @@ function createTerminal() {
   const term = new Terminal({
     fontFamily: 'JetBrains Mono, monospace',
     fontSize: 13,
+    // xterm needs literal colors (no CSS vars). Values mirror the DS tokens:
+    // --term-bg (ink-12), --term-fg (paper-edge), caret/selection --brand-ochre.
+    // Full ANSI palette is SHE-47.
     theme: {
-      background: '#1F1E1B',
-      foreground: '#E5E3DB',
-      cursor: '#D85A30',
-      selectionBackground: '#D85A3033',
+      background: '#0B0B0A',
+      foreground: '#E8E4D8',
+      cursor: '#B8531C',
+      selectionBackground: '#B8531C33',
     },
     cursorBlink: true,
     scrollback: 5000,

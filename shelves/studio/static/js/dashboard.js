@@ -65,7 +65,7 @@ function renderDashboardPreview(result) {
   elJsonView.style.display = 'none';
 
   if (!result || result.html === null) {
-    showErrorOverlay(result?.errors ?? ['Dashboard compile failed.']);
+    showErrorOverlay(result?.errors, "Can't compile this dashboard");
     elDashboardPreview.style.display = 'none';
     return;
   }
@@ -80,8 +80,8 @@ function renderDashboardPreview(result) {
   elDashboardIframe.style.width  = `${canvasW}px`;
   elDashboardIframe.style.height = `${canvasH}px`;
 
-  elDashboardIframe.removeAttribute('srcdoc');
-  void elDashboardIframe.offsetHeight;
+  // Direct srcdoc assignment keeps the old document painted until the new
+  // one is ready; the old remove+reflow blanked the iframe for a frame.
   elDashboardIframe.srcdoc = result.html;
   scaleDashboardIframe();
 }
@@ -150,8 +150,9 @@ export function initDashboard() {
   new ResizeObserver(scaleDashboardIframe).observe(elDashboardPreview);
 
   document.addEventListener('shelves:compile-start', () => {
+    // No hiding on start — the stale dashboard stays visible under the veil
+    // (preview.js) until the new result paints.
     if (state.dashboardMode) {
-      elDashboardPreview.style.display = 'none';
       hideErrorOverlay();
     }
   });

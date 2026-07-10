@@ -1,44 +1,16 @@
-/* ─── Design Tokens ─────────────────────────────────────── */
+/* ─── Studio-local tokens ─────────────────────────────────
+   All color/type/motion tokens come from shelves-tokens.css
+   (design system) + tokens-bridge.css (legacy-name bridge),
+   loaded before this file. Only layout state (set from JS)
+   and radius compat live here. */
 :root {
-  --bg-primary:   #FAF9F6;
-  --bg-sidebar:   #F5F3EC;
-  --bg-workspace: #EFEDE5;
-  --bg-surface:   #FFFFFF;
+  /* Radius compat → DS radii (sharpens 4/6/8px → 2/3/4px) */
+  --radius-sm: var(--r-1);
+  --radius-md: var(--r-2);
+  --radius-lg: var(--r-3);
 
-  --border-default: #E5E3DB;
-  --border-canvas:  #D8D6CD;
-
-  --text-primary:   #1F1E1B;
-  --text-secondary: #3C3B37;
-  --text-tertiary:  #6B6A65;
-  --text-muted:     #8B8A84;
-  --text-faint:     #C4C2B8;
-  --pill-bg:        #EFEDE5;
-
-  --accent:         #D85A30;
-  --accent-hover:   #C04E28;
-  --accent-surface: #D85A3015;
-
-  --status-ok-dot:   #1D9E75;
-  --status-warn-dot: #BA7517;
-  --status-err-dot:  #E24B4A;
-
-  --error-bg: #FCEBEB;
-  --error-fg: #791F1F;
-
-  --term-bg:     #1F1E1B;
-  --term-header: #272624;
-  --term-border: #3C3B37;
-  --term-fg:     #E5E3DB;
-
-  --font-ui:   'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-
-  --sidebar-width: 200px;
+  /* Layout state — written at runtime by sidebar.js / editor.js */
+  --sidebar-width: 220px;
   --editor-width: 25%;
 }
 
@@ -59,7 +31,8 @@ html, body {
 /* ─── Page Layout ────────────────────────────────────────── */
 body {
   display: grid;
-  grid-template-rows: 40px 1fr auto 28px;
+  /* studio.css .sh-studio shell: 44px header / 1fr main / auto terminal / 28px status */
+  grid-template-rows: 44px 1fr auto 28px;
   grid-template-areas:
     "header"
     "workspace"
@@ -74,10 +47,12 @@ body {
   align-items: center;
   justify-content: space-between;
   background: var(--bg-surface);
-  border-bottom: 0.5px solid var(--border-default);
-  padding: 0 12px;
+  border-bottom: 1px solid var(--border-default);
+  padding: 0 10px 0 12px;
   gap: 8px;
   z-index: 10;
+  font-family: var(--font-mono);
+  user-select: none;
 }
 
 .sh-header-left {
@@ -87,43 +62,46 @@ body {
   min-width: 0;
 }
 
-.sh-logo {
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-primary);
-  display: flex;
+.sh-brand-row {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 7px;
   flex-shrink: 0;
 }
-.sh-logo svg {
-  width: 15px;
-  height: 12px;
-}
+.sh-mark { display: block; }
 
 .sh-brand {
+  font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.01em;
   flex-shrink: 0;
 }
+.sh-brand::after {
+  content: '.';
+  color: var(--brand-ochre);
+}
 
 .sh-crumb-sep {
-  color: var(--text-faint);
-  font-size: 11px;
+  /* studio.css: a 1px vertical rule, not a slash glyph */
+  width: 1px;
+  height: 16px;
+  background: var(--border-default);
+  margin: 0 2px;
   flex-shrink: 0;
 }
 
 .sh-crumb {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-tertiary);
   min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
 }
 .sh-crumb span {
   white-space: nowrap;
@@ -135,14 +113,14 @@ body {
   font-weight: 500;
 }
 .sh-crumb-none {
-  font-style: italic;
   color: var(--text-muted);
+  font-style: normal;  /* DS: no italics in chrome */
 }
 .sh-dirty {
   color: var(--accent);
-  font-weight: 700;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
+  margin-left: 3px;
 }
 
 .sh-header-right {
@@ -153,35 +131,47 @@ body {
 }
 
 .sh-btn {
-  border: none;
-  cursor: pointer;
-  font-family: var(--font-ui);
+  font: inherit;
+  /* Action labels are Inter Tight — the ONE sans exception (components-buttons.html) */
+  font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 500;
-  padding: 5px 14px;
-  border-radius: var(--radius-md);
-  transition: background 0.15s;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--ink-10);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background var(--dur-base) var(--ease),
+              color var(--dur-base) var(--ease),
+              border-color var(--dur-base) var(--ease);
 }
+.sh-btn:hover  { background: rgba(11,11,10,0.04); color: var(--ink-12); }
+.sh-btn:active { background: rgba(11,11,10,0.08); }
 .sh-btn-primary {
-  background: var(--accent);
-  color: #FFFFFF;
+  background: var(--ink-12);
+  color: var(--paper);
+  border-color: var(--ink-12);
 }
 .sh-btn-primary:hover {
-  background: var(--accent-hover);
+  background: var(--ink-10);
+  color: var(--paper);
 }
 
 /* ─── Workspace ───────────────────────────────────────────── */
 #workspace {
   grid-area: workspace;
   display: grid;
-  grid-template-columns: var(--sidebar-width, 200px) var(--editor-width, 1fr) 5px 1fr;
+  grid-template-columns: var(--sidebar-width, 220px) var(--sidebar-handle-w, 1px) var(--editor-width, 25%) 1px 1fr;
   overflow: hidden;
 }
 
 /* ─── Sidebar ─────────────────────────────────────────────── */
 #sidebar {
   background: var(--bg-sidebar);
-  border-right: 0.5px solid var(--border-default);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -193,13 +183,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  color: var(--text-tertiary);
+  padding: 8px 14px 6px;
+  color: var(--text-muted);            /* ink-4 */
+  font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 1.2px;
-  font-weight: 600;
-  border-bottom: 0.5px solid var(--border-default);
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  /* design has no rule under the group label */
   flex-shrink: 0;
 }
 
@@ -224,56 +215,61 @@ body {
   overflow-y: auto;
   padding: 8px 0;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0,0,0,0.15) transparent;
+  scrollbar-color: rgba(11,11,10,0.15) transparent;
 }
-#file-tree::-webkit-scrollbar { width: 5px; }
-#file-tree::-webkit-scrollbar-track { background: transparent; }
-#file-tree::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
 
 .tree-dir, .tree-file {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
+  padding: 3px 10px 3px 14px;          /* denser than the old 6px */
+  min-height: 22px;
   cursor: pointer;
   white-space: nowrap;
   user-select: none;
-  border-radius: 0;
-  border-left: 3px solid transparent;
-  transition: background 0.1s, color 0.1s;
+  font-family: var(--font-mono);
+  /* Active accent is an inset box-shadow (below), never a border — borders
+     participate in layout and shift the text when the row (de)activates. */
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
 }
 .tree-dir {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-10);
 }
 .tree-file {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 400;
-  color: var(--text-muted);
+  color: var(--text-tertiary);
 }
-.tree-dir:hover {
-  background: var(--bg-workspace);
+.tree-dir:hover, .tree-file:hover {
+  background: rgba(11,11,10,0.04);
 }
 .tree-file:hover {
-  background: var(--bg-workspace);
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 .tree-file.active {
-  background: rgba(0,0,0,0.05);
+  background: rgba(11,11,10,0.05);
   color: var(--text-primary);
   font-weight: 500;
-  border-left-color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);   /* studio.css .sh-tree-file.is-active */
 }
 
+.tree-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-muted);            /* ink-4 */
+}
+.tree-file.active .tree-icon { color: var(--accent); }  /* active icon goes ochre */
+
 .tree-chevron {
-  width: 16px;
+  width: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   color: var(--text-muted);
-  transition: color 0.1s;
+  transition: color var(--dur-base) var(--ease);
 }
 .tree-dir:hover .tree-chevron { color: var(--text-secondary); }
 
@@ -296,7 +292,6 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border-right: 0.5px solid var(--border-default);
 }
 #editor {
   flex: 1;
@@ -304,24 +299,32 @@ body {
   height: 100%;
 }
 
-/* ─── Resize Handle ───────────────────────────────────────── */
-#resize-handle {
-  background: transparent;
-  border-left: 0.5px solid var(--border-default);
+/* ─── Splitters (studio.css .sh-splitter recipe) ──────────── */
+/* 1px hairline that thickens to 2px ochre on hover/drag; the element is
+   centered in its track so the grid never changes size (no layout shift).
+   ::after widens the invisible hit area. */
+#sidebar-resize-handle, #resize-handle {
+  background: var(--ink-2);
+  width: 1px;
+  justify-self: center;
   cursor: col-resize;
-  transition: border-color 0.2s;
   position: relative;
+  transition: background var(--dur-base) var(--ease);
 }
-#resize-handle::after {
+#sidebar-resize-handle::after, #resize-handle::after {
   content: "";
   position: absolute;
-  inset: -3px;
+  inset: 0 -4px;
   z-index: 5;
 }
-#resize-handle:hover,
-#resize-handle.dragging {
-  border-left-color: var(--accent);
+#sidebar-resize-handle:hover, #sidebar-resize-handle.dragging,
+#resize-handle:hover, #resize-handle.dragging {
+  background: var(--brand-ochre);
+  width: 2px;
 }
+/* Collapsed sidebar: the track is zeroed from JS; keep the element in flow
+   (display:none would shift #editor-pane into the wrong grid track). */
+#sidebar-resize-handle.hidden { visibility: hidden; pointer-events: none; }
 
 /* ─── Preview Pane ────────────────────────────────────────── */
 #preview-pane {
@@ -342,19 +345,24 @@ body {
   gap: 12px;
   flex-shrink: 0;
   background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .sh-preview-label {
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
   font-weight: 500;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;  /* the DS .t-label treatment */
 }
 
 .sh-preview-ambient {
+  font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
   margin-left: 10px;
-  font-weight: 400;
 }
 
 .sh-preview-right {
@@ -362,52 +370,80 @@ body {
   align-items: center;
   gap: 8px;
 }
-#preview-pane.is-dashboard #preview-header {
-  background: var(--bg-sidebar);
-  border-bottom: 0.5px solid var(--border-default);
-}
+/* Dashboard mode: the header stays on paper; only the workspace below sinks
+   (studio.css .sh-preview-dashboard .sh-pv-header). */
 
 /* Segmented Toggle (light variant — for preview header) */
 .sh-seg {
   display: inline-flex;
   background: var(--pill-bg);
-  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-1);
   padding: 2px;
   gap: 0;
 }
 .sh-seg-btn {
   font: inherit;
+  font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 400;
+  font-weight: 500;
   padding: 3px 10px;
   border: 0;
   background: transparent;
   color: var(--text-tertiary);
-  border-radius: 4px;
+  border-radius: 1px;
   cursor: pointer;
-  transition: background 150ms ease-out, color 150ms ease-out;
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
 }
 .sh-seg-btn.is-active {
-  background: #fff;
+  background: var(--paper-raised);
   color: var(--text-primary);
-  font-weight: 500;
-  box-shadow: 0 0 0 0.5px var(--border-default);
+  box-shadow: 0 0 0 1px var(--border-default);
 }
 .sh-seg-btn:hover:not(.is-active) {
-  color: var(--text-secondary);
+  color: var(--ink-10);
 }
 
 /* Segmented Toggle (dark variant — for dashboard zoom) */
 .sh-seg-dark {
-  background: #fff;
-  border: 0.5px solid var(--border-default);
+  background: var(--paper-raised);
+  border: 1px solid var(--border-default);
 }
 .sh-seg-dark .sh-seg-btn { color: var(--text-tertiary); }
 .sh-seg-dark .sh-seg-btn.is-active {
-  background: var(--text-primary);
-  color: #fff;
+  background: var(--ink-12);
+  color: var(--paper);
   box-shadow: none;
 }
+
+/* Compile-in-progress: dim the stale render, never blank it. */
+#preview, #json-view, #dashboard-preview {
+  transition: opacity var(--dur-base) var(--ease);
+}
+#preview-pane.is-compiling #preview,
+#preview-pane.is-compiling #json-view,
+#preview-pane.is-compiling #dashboard-preview {
+  opacity: 0.45;
+  pointer-events: none;      /* a stale chart shouldn't accept tooltips/clicks */
+}
+
+.sh-compiling-pill {
+  position: absolute;
+  top: 44px; right: 20px;    /* under the preview header */
+  z-index: 5;
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-1);
+  padding: 3px 8px;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease);
+  pointer-events: none;
+}
+#preview-pane.is-compiling .sh-compiling-pill { opacity: 1; }
 
 /* Outer wrapper — provides the gap between pane edge and the card */
 #preview {
@@ -422,10 +458,11 @@ body {
 #chart-card {
   width: 100%;
   height: 100%;
-  background: #fff;
-  border-radius: 8px;
-  border: 0.5px solid var(--border-default);
-  padding: 20px 24px;
+  background: var(--paper-raised);
+  border-radius: var(--r-2);
+  border: 1px solid var(--border-default);
+  transition: border-color var(--dur-base) var(--ease);
+  padding: 22px 24px;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -459,31 +496,32 @@ body {
 }
 
 /* ─── JSON View ───────────────────────────────────────────── */
+/* studio.css .sh-json-view: a sunk, hairline-bordered card (margins match
+   the chart pane gap so the two views land on the same footprint). */
 #json-view {
   display: none;
-  width: 100%;
   flex: 1;
-  padding: 20px;
-  margin: 0;
+  min-height: 0;
+  margin: 4px 20px 20px;
+  padding: 16px 18px;
   font-family: var(--font-mono);
   font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-primary);
-  background: var(--bg-surface);
+  line-height: 1.65;
+  color: var(--text-secondary);
+  background: var(--pill-bg);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2);
   overflow: auto;
   white-space: pre-wrap;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0,0,0,0.15) transparent;
+  scrollbar-color: rgba(11,11,10,0.15) transparent;
 }
-#json-view::-webkit-scrollbar { width: 6px; }
-#json-view::-webkit-scrollbar-track { background: transparent; }
-#json-view::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
 
-.json-key    { color: #9C5A30; }
-.json-string { color: #2D7D46; }
-.json-number { color: #1D6EA5; }
-.json-bool   { color: #8B5CF6; }
-.json-null   { color: #8B5CF6; font-style: italic; }
+.json-key    { color: var(--syntax-key); }
+.json-string { color: var(--syntax-string); }
+.json-number { color: var(--syntax-number); }
+.json-bool   { color: var(--syntax-bool); }
+.json-null   { color: var(--syntax-bool); font-style: italic; }
 
 /* ─── Error Overlay ───────────────────────────────────────── */
 #error-overlay {
@@ -497,64 +535,78 @@ body {
 
 .error-card {
   background: var(--error-bg);
-  border: 1px solid #F5C6C6;
-  border-radius: var(--radius-lg);
-  padding: 20px;
+  border: 1px solid var(--error-fg);   /* studio.css .sh-chart-card.is-error recipe */
+  border-radius: var(--r-2);
+  padding: 16px 18px;
   max-width: 640px;
 }
 
 .error-title {
+  font-family: var(--font-mono);
   color: var(--error-fg);
   font-weight: 600;
-  font-size: 13px;
-  margin-bottom: 14px;
+  font-size: 12px;
+  margin-bottom: 12px;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 .error-title::before {
   content: "";
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--status-err-dot);
+  background: var(--error-fg);
   flex-shrink: 0;
 }
 
+.error-list { margin: 0; padding-left: 16px; }
 .error-item {
-  color: var(--error-fg);
+  color: var(--ink-8);
   font-family: var(--font-mono);
   font-size: 11px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   white-space: pre-wrap;
-  line-height: 1.5;
+  line-height: 1.6;
 }
+.error-meta { color: var(--error-fg); font-weight: 500; }
 
-/* ─── Preview Placeholder ─────────────────────────────────── */
-.preview-placeholder {
-  color: var(--text-muted);
-  font-size: 14px;
-  text-align: center;
-  padding: 80px 32px 48px;
-  align-self: center;
+/* ─── Empty State ─────────────────────────────────────────── */
+.sh-empty {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  /* DS ambient dot-grid (studio.css .sh-empty) */
+  background-image: radial-gradient(var(--border-default) 1px, transparent 1px);
+  background-size: 16px 16px;
+  background-position: -1px -1px;
+}
+.sh-empty-inner {
+  width: 440px;
+  max-width: 80%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  line-height: 1.5;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-3);
+  padding: 32px 28px 28px;
+  text-align: center;
 }
-.preview-placeholder::before {
-  content: "";
-  display: block;
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-lg);
-  background: var(--bg-workspace);
-  border: 0.5px solid var(--border-default);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%238B8A84' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3v18h18'/%3E%3Cpath d='m7 12 4-4 4 4 4-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 24px;
+.sh-empty-h {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+}
+.sh-empty-sub {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.5;
 }
 
 /* ─── Dashboard Preview ──────────────────────────────────── */
@@ -579,6 +631,10 @@ body {
   position: relative;
   flex: 0 0 auto;   /* never let the flex container shrink the stage below its set size */
   /* width/height set inline by dashboard.js */
+  /* Hairline canvas ring (studio.css .sh-canvas) — a shadow ring on the stage,
+     not a border on the iframe, so it doesn't scale with the zoom transform. */
+  border-radius: var(--r-1);
+  box-shadow: 0 0 0 1px var(--border-canvas);
 }
 
 #dashboard-iframe {
@@ -588,9 +644,9 @@ body {
   top: 0;
   left: 0;
   /* width/height set inline by dashboard.js from the declared canvas (KAN-298) */
-  background: #fff;
-  border-radius: 2px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+  background: var(--paper-raised);
+  border-radius: var(--r-1);
+  /* No soft shadow — the DS is hairline-first; the ring lives on the stage. */
 }
 
 /* ─── Status Bar ──────────────────────────────────────────── */
@@ -601,10 +657,13 @@ body {
   justify-content: space-between;
   height: 28px;
   background: var(--bg-sidebar);
-  border-top: 0.5px solid var(--border-default);
-  padding: 0 12px;
+  border-top: 1px solid var(--border-default);
+  padding: 0 4px 0 12px;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
   z-index: 10;
 }
 
@@ -636,6 +695,7 @@ body {
 .sh-status-msg {
   color: var(--text-tertiary);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;  /* "Compiled in 142ms" digits don't jitter */
 }
 
 .sh-status-right {
@@ -647,23 +707,26 @@ body {
 .sh-status-term {
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  border-radius: var(--r-1);
   display: flex;
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  font-family: var(--font-ui);
-  transition: color 0.15s, background 0.15s;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
 }
 .sh-status-term:hover {
   color: var(--text-primary);
-  background: var(--bg-workspace);
+  background: rgba(11,11,10,0.06);
 }
 .sh-status-term.is-active {
-  color: var(--accent);
+  /* ink chip, NOT ochre text — ochre is focus/selection only (studio.css) */
+  background: var(--ink-12);
+  color: var(--paper);
 }
 .sh-status-term svg {
   width: 12px;
@@ -671,9 +734,7 @@ body {
 }
 
 .sh-status-sep {
-  width: 0.5px;
-  height: 14px;
-  background: var(--border-default);
+  color: var(--text-faint);
 }
 
 .sh-status-item {
@@ -681,10 +742,7 @@ body {
   font-size: 11px;
 }
 
-/* ─── Scrollbar Defaults ──────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 4px; }
+/* Scrollbars: global webkit styling ships from tokens-bridge.css. */
 
 /* ─── Terminal Panel ─────────────────────────────────────────── */
 #terminal-panel {
@@ -791,3 +849,59 @@ body {
   justify-content: center;
   padding-top: 120px;
 }
+
+/* ═══ Reusable components (DS: components-buttons/inputs/nav.html) ═══
+   Buttons: action labels are Inter Tight (the one sans exception).
+   Everything else mono. Radii --r-1/2. Hairlines, no soft shadows
+   except --shadow-pop on floating menus.
+   .sh-input/.sh-select/.sh-menu have no consumers yet — SHE-42 (file
+   create/rename/delete) wires them; do not remove as dead CSS. */
+
+/* .sh-btn / .sh-btn-primary exist (SHE-34). Variants: */
+.sh-btn-ghost  { border-color: var(--border-default); background: var(--bg-surface); color: var(--ink-10); }
+.sh-btn-ghost:hover { border-color: var(--ink-2); background: var(--bg-primary); }
+.sh-btn-soft   { background: var(--brand-ochre-tint); color: var(--brand-ochre); border-color: transparent; }
+.sh-btn-danger { background: var(--danger); color: var(--paper); border-color: var(--danger); }
+.sh-btn-danger:hover { filter: brightness(0.92); }
+.sh-btn:disabled { background: var(--paper-edge); color: var(--text-muted); border-color: var(--paper-edge); cursor: default; }
+.sh-btn-sm { font-size: 12px; padding: 4px 10px; border-radius: var(--r-1); }
+
+.sh-input, .sh-select {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-1);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease);
+}
+.sh-input:focus { outline: none; border-color: var(--brand-ochre); box-shadow: 0 0 0 2px var(--brand-ochre-tint); }
+.sh-input.is-error { border-color: var(--danger); color: var(--danger); }
+.sh-field-help { font-family: var(--font-sans); font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
+.sh-field-help.is-error { color: var(--danger); }
+.sh-field-label {
+  font-family: var(--font-mono); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-tertiary); display: block; margin-bottom: 4px;
+}
+
+.sh-menu {
+  min-width: 200px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-pop);          /* floating surface — the ONE sanctioned soft shadow */
+  padding: 4px;
+}
+.sh-menu-item {
+  font-family: var(--font-sans); font-size: 13px;
+  padding: 6px 8px; border-radius: var(--r-1);
+  color: var(--text-primary); cursor: pointer;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.sh-menu-item:hover, .sh-menu-item.is-active { background: var(--brand-ochre-tint); }
+.sh-menu-item.is-danger { color: var(--danger); }
+.sh-menu-kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+.sh-menu-sep { height: 1px; background: var(--border-default); margin: 4px 0; }

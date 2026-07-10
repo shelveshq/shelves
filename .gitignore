@@ -21,3 +21,6 @@ docs/plans/
 
 # Design system source bundle (not shipped)
 assets/Shelves Design System.zip
+
+# Design system mirror (local working copy from Claude Design; not published)
+docs/design-system/

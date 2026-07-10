@@ -18,15 +18,31 @@ export function setCompileFunction(fn) {
 
 export async function initEditor() {
   const loader = (await import('https://cdn.jsdelivr.net/npm/@monaco-editor/loader@1.5.0/+esm')).default;
-  const { configureMonacoYaml } = await import('https://cdn.jsdelivr.net/npm/monaco-yaml@5/+esm');
+  const { configureMonacoYaml } = await import('https://cdn.jsdelivr.net/npm/monaco-yaml@5.5.1/+esm');
 
   window.MonacoEnvironment = {
     getWorker(_, label) {
       if (label === 'yaml') {
-        const url = 'https://cdn.jsdelivr.net/npm/monaco-yaml@5/lib/esm/yaml.worker.js';
-        const blob = new Blob([`importScripts("${url}");`], { type: 'text/javascript' });
-        return new Worker(URL.createObjectURL(blob));
+        // monaco-yaml v5 ships its worker at the package ROOT as an ES module.
+        // The old `lib/esm/yaml.worker.js` path is a v4-era layout and 404s on
+        // every 5.x, which blanked the whole editor (SHE-64).
+        //
+        // A Worker's top-level script must be SAME-ORIGIN — a cross-origin CDN
+        // URL is rejected ("cannot be accessed from origin ..."), even with
+        // { type: 'module' }. So we point the worker at a same-origin blob whose
+        // module body `import`s the cross-origin CDN build: module imports (not
+        // the worker script itself) ARE allowed cross-origin under CORS, which
+        // jsdelivr serves. We use jsdelivr's `/+esm` build so the worker's bare
+        // imports are rewritten to absolute URLs the module graph can resolve.
+        // Version pinned (not the floating `@5` tag) to avoid the silent CDN
+        // drift that caused this (see SHE-6 / SHE-76).
+        const workerUrl = 'https://cdn.jsdelivr.net/npm/monaco-yaml@5.5.1/yaml.worker.js/+esm';
+        const blob = new Blob([`import ${JSON.stringify(workerUrl)};`], { type: 'text/javascript' });
+        return new Worker(URL.createObjectURL(blob), { type: 'module' });
       }
+      // monaco-editor's own worker is a classic (UMD) script. A cross-origin
+      // *classic* worker isn't allowed, so wrap it in a same-origin blob that
+      // importScripts() the CDN URL.
       const editorUrl = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/base/worker/workerMain.js';
       const blob = new Blob([`importScripts("${editorUrl}");`], { type: 'text/javascript' });
       return new Worker(URL.createObjectURL(blob));
@@ -36,6 +52,39 @@ export async function initEditor() {
   const settings = loadSettings();
   const monaco = await loader.init();
   window._shelvesMonaco = monaco;
+
+  // DS syntax tokens, resolved to hex — Monaco cannot read CSS variables.
+  // Sources: colors_and_type.css --syntax-* ; studio/tokens.css bridge.
+  monaco.editor.defineTheme('shelves', {
+    base: 'vs',
+    inherit: true,
+    rules: [
+      // Token names WITHOUT '#'. In Monaco's YAML tokenizer, mapping keys
+      // tokenize as 'type', scalars as 'string'/'number', true/false/null as
+      // 'keyword'.
+      { token: 'type',    foreground: '3A6278' },  // keys    — --syntax-key
+      { token: 'string',  foreground: '6B8E4E' },  // strings — --syntax-string
+      { token: 'number',  foreground: 'B8531C' },  // numbers — --syntax-number (ochre)
+      { token: 'keyword', foreground: '8B5A9F' },  // bool/null — --syntax-bool
+      { token: 'comment', foreground: '9A968B' },  // --syntax-comment (ink-4)
+    ],
+    colors: {
+      // Values WITH '#' in this map (yes, the asymmetry is real).
+      'editor.background': '#FAF8F3',                    // --paper
+      'editor.foreground': '#1A1916',                    // --syntax-plain (ink-10)
+      'editorLineNumber.foreground': '#C9C5B8',          // --ink-2 (gutter)
+      'editorLineNumber.activeForeground': '#3A3833',    // --ink-8
+      'editorCursor.foreground': '#B8531C',              // --brand-ochre
+      'editor.selectionBackground': '#F7E9DC',           // --brand-ochre-tint
+      'editor.lineHighlightBackground': '#F7E9DC',       // studio design: active line = ochre tint
+      'editor.lineHighlightBorder': '#00000000',         // kill the default box border on the active line
+      'editorIndentGuide.background1': '#E8E4D8',        // --paper-edge
+      'editorWidget.background': '#FFFFFF',              // autocomplete popup = paper-raised
+      'editorWidget.border': '#E8E4D8',
+      'editorSuggestWidget.selectedBackground': '#F7E9DC',
+      'scrollbarSlider.background': '#0B0B0A26',
+    },
+  });
 
   let schema = null;
   try {
@@ -56,7 +105,9 @@ export async function initEditor() {
   state.editor = monaco.editor.create(document.getElementById('editor'), {
     value: '',
     language: 'yaml',
-    theme: 'vs',
+    theme: 'shelves',
+    fontFamily: "'JetBrains Mono', 'SF Mono', Menlo, monospace",
+    fontLigatures: false,
     minimap: { enabled: settings.minimap ?? true },
     wordWrap: (settings.wordWrap ?? true) ? 'on' : 'off',
     fontSize: settings.fontSize ?? 13,
@@ -114,6 +165,16 @@ export async function initEditor() {
     const resultPath = e.detail.path ?? null;
     if (resultPath && state.currentFile && resultPath !== state.currentFile.path) return;
     applyCompileMarkers(e.detail);
+    syncMarkerCounts();
+    updateStatusBar();
+  });
+
+  document.addEventListener('shelves:non-chart-file', () => {
+    // No compile runs for non-chart YAML, so nothing else clears the previous
+    // file's compile markers from the shared model — clear them here or the
+    // status dot stays red and phantom squiggles linger.
+    const model = state.editor?.getModel();
+    if (model) monaco.editor.setModelMarkers(model, 'shelves-compile', []);
     syncMarkerCounts();
     updateStatusBar();
   });
@@ -217,6 +278,11 @@ export async function compileCurrentContent() {
     if (seq !== compileSeq) return;
     state.compiling = false;
     console.error('[shelves] compile error:', e);
+    // Network failure: dispatch a terminal result so the veil clears and the
+    // overlay explains what happened.
+    document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+      detail: { vega_lite_spec: null, errors: [String(e)], warnings: [], path: state.currentFile?.path ?? null },
+    }));
   }
 }
 
@@ -231,6 +297,11 @@ export async function openFile(path) {
       console.warn('[shelves] file not found:', path);
       state.compiling = false;
       updateStatusBar();
+      // Terminate the compile-start dispatched above, or the loading veil
+      // sticks. Every start must pair with exactly one end event.
+      document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+        detail: { vega_lite_spec: null, errors: [], warnings: [], path: null },
+      }));
       return;
     }
     const { content } = await resp.json();
@@ -245,6 +316,9 @@ export async function openFile(path) {
   } catch (e) {
     state.compiling = false;
     console.error('[shelves] openFile error:', e);
+    document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+      detail: { vega_lite_spec: null, errors: [String(e)], warnings: [], path: null },
+    }));
   }
 }
 
