@@ -467,6 +467,7 @@ def wrap_html_page(
 
         specs_json = json.dumps(specs_obj, indent=2).replace("</", r"<\/")
         script_lines.append(f"    const specs = {specs_json};")
+        script_lines.append("    const embeds = [];")
 
         if fit_targets:
             # Compound concat sheets need the browser sizer: inline it and route
@@ -480,25 +481,40 @@ def wrap_html_page(
             script_lines.append("      const box = fitTargets[id];")
             script_lines.append("      if (box && window.compoundFit) {")
             script_lines.append(
-                "        compoundFit.fit(`#${id}`, spec, box,"
-                " { actions: false, patch: labelPatch })" + populate_tail + ".catch(console.error);"
+                "        embeds.push(compoundFit.fit(`#${id}`, spec, box,"
+                " { actions: false, patch: labelPatch })"
+                + populate_tail
+                + ".catch(console.error));"
             )
             script_lines.append("      } else {")
             script_lines.append(
-                "        vegaEmbed(`#${id}`, spec, { actions: false, patch: labelPatch })"
+                "        embeds.push(vegaEmbed(`#${id}`, spec,"
+                " { actions: false, patch: labelPatch })"
                 + populate_tail
-                + ".catch(console.error);"
+                + ".catch(console.error));"
             )
             script_lines.append("      }")
             script_lines.append("    });")
         else:
             script_lines.append("    Object.entries(specs).forEach(([id, spec]) => {")
             script_lines.append(
-                "      vegaEmbed(`#${id}`, spec, { actions: false, patch: labelPatch })"
+                "      embeds.push(vegaEmbed(`#${id}`, spec, { actions: false, patch: labelPatch })"
                 + populate_tail
-                + ".catch(console.error);"
+                + ".catch(console.error));"
             )
             script_lines.append("    });")
+    else:
+        script_lines.append("    const embeds = [];")
+
+    # Rendered signal (SHE-67): fires once every embed promise has settled.
+    # Studio's dashboard preview holds its loading veil until this message;
+    # any other host (standalone file, top-level tab) simply never listens —
+    # with no charts it fires immediately.
+    script_lines.append("    Promise.allSettled(embeds).then(() => {")
+    script_lines.append(
+        "      try { parent.postMessage({ type: 'shelves:rendered' }, '*'); } catch (e) {}"
+    )
+    script_lines.append("    });")
 
     script_block = "\n".join(script_lines)
     patch_block = f"  <script>\n{patch_js}\n  </script>\n" if patch_js else ""

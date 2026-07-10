@@ -1,11 +1,15 @@
 // Runs preview.js + dashboard.js under node with a minimal DOM stub and a
-// working document-event bus, then replays the watcher-broadcast scenarios
-// from SHE-49: results stamped with a foreign path must not repaint the
-// preview, the JSON view, the dashboard iframe, or end the loading veil.
+// working document-event bus, then replays the compile/dashboard event flow:
+//   - SHE-49: results stamped with a foreign path must not repaint the
+//     preview, the JSON view, the dashboard iframe, or end the loading veil.
+//   - SHE-50: dashboard results feed the status-bar error/warning counters.
+//   - SHE-67: the dashboard veil ends on the iframe's rendered signal, not
+//     on the compile result.
 //
 // Usage: node run_broadcast_guard.mjs
 // Prints one JSON object of observations (asserted by
-// tests/test_studio_broadcast_guard.py).
+// tests/test_studio_broadcast_guard.py, test_studio_status_bar.py, and
+// test_studio_dashboard_rendered.py).
 
 const els = new Map();
 
@@ -57,6 +61,19 @@ globalThis.CustomEvent = class CustomEvent {
     this.type = type;
     this.detail = opts?.detail;
   }
+};
+
+// dashboard.js listens on window for the composed page's postMessage
+// rendered signal (SHE-67); the harness fires it via fireWindowEvent.
+const windowListeners = new Map();
+globalThis.window = {
+  addEventListener(type, fn) {
+    if (!windowListeners.has(type)) windowListeners.set(type, []);
+    windowListeners.get(type).push(fn);
+  },
+};
+const fireWindowEvent = (type, ev) => {
+  for (const fn of windowListeners.get(type) ?? []) fn(ev);
 };
 
 globalThis.ResizeObserver = class ResizeObserver {
@@ -160,4 +177,33 @@ state.dashboardErrors = 3;
 restoreChartLayout();
 out.dashboardCountersReset = state.dashboardErrors === 0 && state.dashboardWarnings === 0;
 
+// ── SHE-67: dashboard veil persists until the iframe reports rendered ──
+state.currentFile = { path: 'dashboards/x.yaml', dirty: false };
+state.dashboardMode = true;
+state.currentView = 'chart';
+
+dispatch('shelves:compile-start');
+await sleep(200);
+out.dashVeilArmed = previewPane.classList.contains('is-compiling');
+
+// Result arrives: HTML string exists but nothing has painted — veil stays.
+dispatch('shelves:dashboard-result', {
+  html: '<html>y</html>', errors: [], warnings: [], component_tree: [],
+});
+out.dashVeilAfterResult = previewPane.classList.contains('is-compiling');
+
+// The composed page posts its rendered signal — veil ends.
+// (stub iframe has no contentWindow, so source: undefined matches)
+fireWindowEvent('message', { data: { type: 'shelves:rendered' }, source: undefined });
+out.dashVeilAfterRendered = previewPane.classList.contains('is-compiling');
+
+// Error results paint the overlay synchronously — veil ends at the result.
+dispatch('shelves:compile-start');
+await sleep(200);
+dispatch('shelves:dashboard-result', {
+  html: null, errors: ['bad'], warnings: [], component_tree: [],
+});
+out.dashVeilAfterError = previewPane.classList.contains('is-compiling');
+
 console.log(JSON.stringify(out));
+process.exit(0);  // pending rendered-fallback timers must not delay exit

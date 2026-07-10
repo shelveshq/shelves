@@ -295,11 +295,14 @@ export function initPreview() {
 
   // preview.js owns the veil; every result-ish event for the OPEN file ends
   // it — a watcher broadcast for another file must not end a veil that is
-  // still waiting on the local compile (SHE-49). A superseded compile never
-  // dispatches an end event (compileSeq-guarded returns), which is fine: the
-  // newer compile's start already re-armed the timer and its result will end
-  // the veil.
-  ['shelves:compile-result', 'shelves:dashboard-result', 'shelves:non-chart-file']
+  // still waiting on the local compile (SHE-49). Dashboards end on
+  // `dashboard-rendered`, not `dashboard-result`: the result only proves the
+  // HTML string exists, the iframe still has to render it (SHE-67);
+  // dashboard.js guarantees exactly one rendered event per accepted result.
+  // A superseded compile never dispatches an end event (compileSeq-guarded
+  // returns), which is fine: the newer compile's start already re-armed the
+  // timer and its result will end the veil.
+  ['shelves:compile-result', 'shelves:dashboard-rendered', 'shelves:non-chart-file']
     .forEach(ev => document.addEventListener(ev, (e) => {
       if (!resultIsForCurrentFile(e.detail)) return;
       endLoadingState();
