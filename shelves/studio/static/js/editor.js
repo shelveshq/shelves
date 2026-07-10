@@ -3,7 +3,7 @@
 
 import {
   state, COMPILE_DEBOUNCE_MS, STORAGE_KEY_SETTINGS, STORAGE_KEY_PANE_WIDTH,
-  updateStatusBar, updateBreadcrumb,
+  updateStatusBar, updateBreadcrumb, resultIsForCurrentFile,
 } from './state.js';
 
 let _compileFn = null;
@@ -162,8 +162,7 @@ export async function initEditor() {
     // Ignore broadcasts for a file other than the one currently open —
     // otherwise a watcher result for another file paints its markers
     // (at its line numbers) onto the active editor.
-    const resultPath = e.detail.path ?? null;
-    if (resultPath && state.currentFile && resultPath !== state.currentFile.path) return;
+    if (!resultIsForCurrentFile(e.detail)) return;
     applyCompileMarkers(e.detail);
     syncMarkerCounts();
     updateStatusBar();

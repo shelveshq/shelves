@@ -1,7 +1,7 @@
 // ─── Dashboard Module ──────────────────────────────────────
 // Dashboard detection, compile, preview, zoom control.
 
-import { state, updateStatusBar } from './state.js';
+import { state, updateStatusBar, resultIsForCurrentFile } from './state.js';
 import { highlightJson, showErrorOverlay, hideErrorOverlay, renderPreviewHeader } from './preview.js';
 
 const DEFAULT_CANVAS_W = 1440;
@@ -158,6 +158,11 @@ export function initDashboard() {
   });
 
   document.addEventListener('shelves:dashboard-result', (e) => {
+    // Watcher broadcasts stamp the changed file's path; local compiles don't.
+    // A foreign file must not repaint the preview, and a broadcast for the
+    // open file only applies while the dashboard surface is active (SHE-49).
+    if (!resultIsForCurrentFile(e.detail)) return;
+    if ((e.detail.path ?? null) !== null && !state.dashboardMode) return;
     lastDashboardResult = e.detail;
     renderDashboardView(lastDashboardResult);
   });

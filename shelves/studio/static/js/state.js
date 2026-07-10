@@ -13,6 +13,15 @@ export const state = {
   markerWarnings: 0,
 };
 
+// True when a compile/dashboard result belongs to the open buffer. Local
+// compiles stamp the current file's path (or null when nothing is open);
+// watcher broadcasts stamp the changed file's path — a result for a foreign
+// path must not repaint this client's preview, markers, or status.
+export function resultIsForCurrentFile(detail) {
+  const path = detail?.path ?? null;
+  return path === null || path === (state.currentFile?.path ?? null);
+}
+
 // ─── Constants ─────────────────────────────────────────────
 export const COMPILE_DEBOUNCE_MS = 300;
 export const WS_RECONNECT_MS = 2000;
