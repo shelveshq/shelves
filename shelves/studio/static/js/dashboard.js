@@ -37,7 +37,6 @@ export async function compileDashboardContent() {
     document.dispatchEvent(new CustomEvent('shelves:dashboard-result', {
       detail: { html: null, errors: [], warnings: [], component_tree: [] },
     }));
-    updateStatusBar([], []);
     return;
   }
   try {
@@ -48,14 +47,12 @@ export async function compileDashboardContent() {
     state.lastCompileTimeMs = Math.round(performance.now() - t0);
     state.compiling = false;
     document.dispatchEvent(new CustomEvent('shelves:dashboard-result', { detail: result }));
-    updateStatusBar(result.errors ?? [], result.warnings ?? []);
   } catch (e) {
     if (seq !== compileSeq) return;
     state.compiling = false;
     document.dispatchEvent(new CustomEvent('shelves:dashboard-result', {
       detail: { html: null, errors: [String(e)], warnings: [], component_tree: [] },
     }));
-    updateStatusBar([String(e)]);
   }
 }
 
@@ -126,6 +123,8 @@ export function applyDashboardLayout() {
 
 export function restoreChartLayout() {
   state.dashboardMode = false;
+  state.dashboardErrors = 0;
+  state.dashboardWarnings = 0;
   state.currentView = 'chart';
   document.getElementById('preview-pane').classList.remove('is-dashboard');
   elDashboardPreview.style.display = 'none';
@@ -164,6 +163,12 @@ export function initDashboard() {
     if (!resultIsForCurrentFile(e.detail)) return;
     if ((e.detail.path ?? null) !== null && !state.dashboardMode) return;
     lastDashboardResult = e.detail;
+    // This handler owns the status bar for dashboard results — local compiles
+    // and watcher broadcasts alike (SHE-50). Dashboard errors have no Monaco
+    // markers, so the counters are fed directly from the result.
+    state.dashboardErrors = (e.detail.errors ?? []).length;
+    state.dashboardWarnings = (e.detail.warnings ?? []).length;
+    updateStatusBar();
     renderDashboardView(lastDashboardResult);
   });
 

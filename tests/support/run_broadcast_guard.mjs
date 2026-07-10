@@ -137,4 +137,27 @@ dispatch('shelves:dashboard-result', {
 });
 out.localDashboardPainted = iframe.srcdoc === '<html>local</html>';
 
+// ── SHE-50: dashboard compile errors reach the status bar ──
+// Still in dashboard mode with dashboards/x.yaml open.
+const statusDot = stubEl('doc::#statusbar .sh-status-dot');
+const statusMsg = stubEl('doc::#statusbar .sh-status-msg');
+
+dispatch('shelves:dashboard-result', {
+  html: null, errors: ['boom'], warnings: ['careful'], component_tree: [],
+});
+out.dashboardErrorDot = statusDot.className;
+out.dashboardErrorMsg = statusMsg.textContent;
+
+dispatch('shelves:dashboard-result', {
+  html: '<html>ok</html>', errors: [], warnings: [], component_tree: [],
+});
+out.dashboardOkDot = statusDot.className;
+
+// Chart mode must stay marker-driven: leaving dashboard mode resets the
+// dashboard counters so they can't bleed into chart status.
+const { restoreChartLayout } = await import('../../shelves/studio/static/js/dashboard.js');
+state.dashboardErrors = 3;
+restoreChartLayout();
+out.dashboardCountersReset = state.dashboardErrors === 0 && state.dashboardWarnings === 0;
+
 console.log(JSON.stringify(out));

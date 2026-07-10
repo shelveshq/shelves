@@ -11,6 +11,10 @@ export const state = {
   compiling: false,
   markerErrors: 0,
   markerWarnings: 0,
+  // Dashboard compile diagnostics have no Monaco markers (plain strings, no
+  // line mapping), so they feed the status bar through their own counters.
+  dashboardErrors: 0,
+  dashboardWarnings: 0,
 };
 
 // True when a compile/dashboard result belongs to the open buffer. Local
@@ -40,8 +44,8 @@ export function updateStatusBar() {
     return;
   }
 
-  const ec = state.markerErrors ?? 0;
-  const wc = state.markerWarnings ?? 0;
+  const ec = (state.dashboardMode ? state.dashboardErrors : state.markerErrors) ?? 0;
+  const wc = (state.dashboardMode ? state.dashboardWarnings : state.markerWarnings) ?? 0;
 
   if (ec > 0 && wc > 0) {
     dot.className = 'sh-status-dot error';
