@@ -65,7 +65,7 @@ function renderDashboardPreview(result) {
   elJsonView.style.display = 'none';
 
   if (!result || result.html === null) {
-    showErrorOverlay(result?.errors ?? ['Dashboard compile failed.']);
+    showErrorOverlay(result?.errors, "Can't compile this dashboard");
     elDashboardPreview.style.display = 'none';
     return;
   }

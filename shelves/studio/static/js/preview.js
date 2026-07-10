@@ -119,13 +119,18 @@ function esc(s) {
                   .replace(/"/g, '&quot;');
 }
 
-export function showErrorOverlay(errors) {
-  if (!errors || errors.length === 0) return;   // never render a zero-count card
+export function showErrorOverlay(errors, title = "Can't compile this chart") {
   elPreview.style.display = 'none';
   elJsonView.style.display = 'none';
   elErrorOverlay.style.display = 'block';
 
-  const items = errors.map(e => {
+  // Callers hide every other pane before invoking, so an empty error list
+  // must still render feedback — a no-op here means a fully blank preview.
+  const list = errors?.length
+    ? errors
+    : ['The compile failed without reporting an error. Check the terminal for details.'];
+
+  const items = list.map(e => {
     if (typeof e === 'object' && (e.friendly_msg || e.msg)) {
       const badge = e.source === 'yaml' ? 'YAML' : e.source === 'dsl' ? 'DSL' : '';
       const loc   = e.display_loc?.length ? e.display_loc.join('.') : '';
@@ -139,7 +144,7 @@ export function showErrorOverlay(errors) {
 
   elErrorOverlay.innerHTML = `
     <div class="error-card">
-      <div class="error-title">Can't compile this chart</div>
+      <div class="error-title">${esc(title)}</div>
       <ul class="error-list">${items}</ul>
     </div>`;
 }
@@ -222,7 +227,7 @@ async function renderChart(result) {
     state.vegaView = view;
   } catch (e) {
     buf.remove();
-    showErrorOverlay([String(e)]);
+    showErrorOverlay([String(e)], "Can't render this chart");
   }
 }
 

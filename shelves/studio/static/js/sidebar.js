@@ -192,14 +192,20 @@ function initSidebarResize() {
     const left = sidebar.getBoundingClientRect().left;
     setSidebarWidth(clampSidebarWidth(e.clientX - left));
   });
-  handle.addEventListener('pointerup', (e) => {
+  // pointerup is not the only way a drag ends: touch scrolling, OS gestures,
+  // or losing capture fire pointercancel/lostpointercapture instead, and the
+  // drag must terminate on those too or the handle sticks in dragging mode.
+  function endDrag(e) {
     if (!dragging) return;
     dragging = false;
     handle.classList.remove('dragging');
-    handle.releasePointerCapture(e.pointerId);
+    try { handle.releasePointerCapture(e.pointerId); } catch (_) {}  // capture may already be gone
     const w = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sidebar-width'));
     if (Number.isFinite(w)) localStorage.setItem(STORAGE_KEY_SIDEBAR_W, String(Math.round(w)));
-  });
+  }
+  handle.addEventListener('pointerup', endDrag);
+  handle.addEventListener('pointercancel', endDrag);
+  handle.addEventListener('lostpointercapture', endDrag);
   handle.addEventListener('dblclick', () => {
     setSidebarWidth(SIDEBAR_DEFAULT_W);
     localStorage.setItem(STORAGE_KEY_SIDEBAR_W, String(SIDEBAR_DEFAULT_W));
