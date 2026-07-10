@@ -15,6 +15,10 @@ export const state = {
   // line mapping), so they feed the status bar through their own counters.
   dashboardErrors: 0,
   dashboardWarnings: 0,
+  // Broadcast-WS connection: 'connected' | 'reconnecting' | 'unreachable'.
+  // While not connected, live reload and watcher broadcasts are dead even
+  // though local editing still works (SHE-66).
+  wsStatus: 'connected',
 };
 
 // True when a compile/dashboard result belongs to the open buffer. Local
@@ -29,6 +33,8 @@ export function resultIsForCurrentFile(detail) {
 // ─── Constants ─────────────────────────────────────────────
 export const COMPILE_DEBOUNCE_MS = 300;
 export const WS_RECONNECT_MS = 2000;
+export const WS_DOWN_GATE_MS = 1000;    // don't flash "Reconnecting…" on a blip
+export const WS_UNREACHABLE_AFTER = 5;  // failed retries before escalating
 export const STORAGE_KEY_SETTINGS = 'shelves-studio-settings';
 export const STORAGE_KEY_PANE_WIDTH = 'shelves-studio-pane-width';
 
@@ -37,6 +43,19 @@ export function updateStatusBar() {
   const dot = document.querySelector('#statusbar .sh-status-dot');
   const msg = document.querySelector('#statusbar .sh-status-msg');
   if (!dot || !msg) return;
+
+  // Connection state outranks everything: with the server down, live reload
+  // is dead and any in-flight compile will fail anyway (SHE-66).
+  if (state.wsStatus === 'reconnecting') {
+    dot.className = 'sh-status-dot reconnecting';
+    msg.textContent = 'Reconnecting…';
+    return;
+  }
+  if (state.wsStatus === 'unreachable') {
+    dot.className = 'sh-status-dot reconnecting';
+    msg.textContent = 'Server unreachable — is shelves-studio still running?';
+    return;
+  }
 
   if (state.compiling) {
     dot.className = 'sh-status-dot compiling';

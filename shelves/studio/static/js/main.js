@@ -76,6 +76,12 @@ function compileDashboardOrChart() {
 
 setCompileFunction(compileDashboardOrChart);
 
+// After a reconnect the preview may be stale (the server restarted; watcher
+// results were lost while down) — recompile the open buffer (SHE-66).
+document.addEventListener('shelves:ws-reconnected', () => {
+  if (state.currentFile) compileDashboardOrChart();
+});
+
 // ─── Status Bar Terminal Toggle ───────────────────────────
 const termBtn = document.querySelector('#statusbar .sh-status-term');
 if (termBtn) {

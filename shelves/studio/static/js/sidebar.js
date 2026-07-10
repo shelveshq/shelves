@@ -234,5 +234,9 @@ export function initSidebar() {
 
   document.addEventListener('shelves:active-file-changed', () => highlightActiveFile());
 
+  // The server restarted while we were disconnected — files may have changed
+  // without any file_change broadcast reaching us (SHE-66).
+  document.addEventListener('shelves:ws-reconnected', () => fetchTree());
+
   fetchTree();
 }

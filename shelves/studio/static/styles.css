@@ -683,6 +683,7 @@ body {
 }
 .sh-status-dot.warn { background: var(--status-warn-dot); }
 .sh-status-dot.error { background: var(--status-err-dot); }
+.sh-status-dot.reconnecting { background: var(--ink-4); }
 .sh-status-dot.compiling {
   background: var(--text-tertiary);
   animation: pulse-dot 1s ease-in-out infinite;
