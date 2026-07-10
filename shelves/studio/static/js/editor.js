@@ -18,15 +18,31 @@ export function setCompileFunction(fn) {
 
 export async function initEditor() {
   const loader = (await import('https://cdn.jsdelivr.net/npm/@monaco-editor/loader@1.5.0/+esm')).default;
-  const { configureMonacoYaml } = await import('https://cdn.jsdelivr.net/npm/monaco-yaml@5/+esm');
+  const { configureMonacoYaml } = await import('https://cdn.jsdelivr.net/npm/monaco-yaml@5.5.1/+esm');
 
   window.MonacoEnvironment = {
     getWorker(_, label) {
       if (label === 'yaml') {
-        const url = 'https://cdn.jsdelivr.net/npm/monaco-yaml@5/lib/esm/yaml.worker.js';
-        const blob = new Blob([`importScripts("${url}");`], { type: 'text/javascript' });
-        return new Worker(URL.createObjectURL(blob));
+        // monaco-yaml v5 ships its worker at the package ROOT as an ES module.
+        // The old `lib/esm/yaml.worker.js` path is a v4-era layout and 404s on
+        // every 5.x, which blanked the whole editor (SHE-64).
+        //
+        // A Worker's top-level script must be SAME-ORIGIN — a cross-origin CDN
+        // URL is rejected ("cannot be accessed from origin ..."), even with
+        // { type: 'module' }. So we point the worker at a same-origin blob whose
+        // module body `import`s the cross-origin CDN build: module imports (not
+        // the worker script itself) ARE allowed cross-origin under CORS, which
+        // jsdelivr serves. We use jsdelivr's `/+esm` build so the worker's bare
+        // imports are rewritten to absolute URLs the module graph can resolve.
+        // Version pinned (not the floating `@5` tag) to avoid the silent CDN
+        // drift that caused this (see SHE-6 / SHE-76).
+        const workerUrl = 'https://cdn.jsdelivr.net/npm/monaco-yaml@5.5.1/yaml.worker.js/+esm';
+        const blob = new Blob([`import ${JSON.stringify(workerUrl)};`], { type: 'text/javascript' });
+        return new Worker(URL.createObjectURL(blob), { type: 'module' });
       }
+      // monaco-editor's own worker is a classic (UMD) script. A cross-origin
+      // *classic* worker isn't allowed, so wrap it in a same-origin blob that
+      // importScripts() the CDN URL.
       const editorUrl = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/base/worker/workerMain.js';
       const blob = new Blob([`importScripts("${editorUrl}");`], { type: 'text/javascript' });
       return new Worker(URL.createObjectURL(blob));
