@@ -50,6 +50,7 @@ def translate_dashboard(
     asset_url_prefix: str = "assets/",
     legend_links: dict[tuple[str, str], LegendLink] | None = None,
     flat_tree: FlatNode | None = None,
+    vega_src_base: str | None = None,
 ) -> str:
     """Translate a DashboardSpec to a complete HTML page.
 
@@ -64,6 +65,11 @@ def translate_dashboard(
     `flat_tree` lets a caller pass an already-flattened layout tree (compose
     flattens once and reuses it for sheet/legend discovery); when None the tree
     is flattened here.
+
+    `vega_src_base` overrides where the vega/vega-lite/vega-embed scripts load
+    from. Studio passes "/static/vendor" so its preview iframe loads the
+    vendored same-origin copies (SHE-77); standalone HTML (render CLI) keeps
+    the default pinned CDN URLs.
     """
     ctx = RenderContext(
         theme=theme,
@@ -90,6 +96,7 @@ def translate_dashboard(
         sheet_show_titles=ctx.sheet_show_titles,
         sheet_content_dims=ctx.sheet_content_dims,
         has_legends=bool(ctx.legend_links),
+        vega_src_base=vega_src_base,
     )
 
 
@@ -381,8 +388,11 @@ def wrap_html_page(
     sheet_show_titles: dict[str, bool] | None = None,
     sheet_content_dims: dict[str, tuple[int, int]] | None = None,
     has_legends: bool = False,
+    vega_src_base: str | None = None,
 ) -> str:
     """Wrap rendered component tree in a full HTML page."""
+    from shelves.render.to_html import vega_script_tags
+
     fit_modes = sheet_fit_modes or {}
     show_titles = sheet_show_titles or {}
     content_dims = sheet_content_dims or {}
@@ -526,9 +536,7 @@ def wrap_html_page(
 <head>
   <meta charset="utf-8" />
   <title>{html.escape(dashboard_name)}</title>
-  <script src="https://cdn.jsdelivr.net/npm/vega@5.33.1/build/vega.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6.29.0/build/vega-embed.min.js"></script>
+{vega_script_tags(vega_src_base)}
   <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
     body {{ font-family: {body_font}; }}

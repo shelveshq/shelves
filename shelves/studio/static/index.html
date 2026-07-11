@@ -5,12 +5,12 @@
   <title>Shelves Studio</title>
 
   <!-- Vega / Vega-Lite / vega-embed (global scripts for chart rendering).
-       Pinned to exact versions + explicit files: bare `@major` URLs hit
-       jsDelivr's default-file resolver, which intermittently serves a
-       cached 400 (text/plain) that nosniff then refuses to execute. -->
-  <script src="https://cdn.jsdelivr.net/npm/vega@5.33.1/build/vega.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6.29.0/build/vega-embed.min.js"></script>
+       Vendored same-origin copies (SHE-77) — a CDN blip or content blocker
+       must not be able to break chart rendering. Versions are pinned by
+       filename; the canonical list is VEGA_LIB_FILES in shelves/render/to_html.py. -->
+  <script src="/static/vendor/vega-5.33.1.min.js"></script>
+  <script src="/static/vendor/vega-lite-6.4.3.min.js"></script>
+  <script src="/static/vendor/vega-embed-6.29.0.min.js"></script>
 
   <!-- Label patch (window.labelPatch) — shared with CLI renderer -->
   <script src="/label-patch.js"></script>

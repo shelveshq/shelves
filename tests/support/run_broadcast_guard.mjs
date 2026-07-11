@@ -205,5 +205,19 @@ dispatch('shelves:dashboard-result', {
 });
 out.dashVeilAfterError = previewPane.classList.contains('is-compiling');
 
+// ── SHE-77: chart render with the vegaEmbed global missing ──
+// The window stub never defines vegaEmbed, so this exercises the real failure
+// mode (render-lib script blocked/failed): the guard must paint a named error
+// card instead of letting vegaEmbed throw a bare TypeError.
+const errorOverlay = stubEl('error-overlay');
+state.currentFile = { path: 'charts/a.yaml', dirty: false };
+state.dashboardMode = false;
+state.currentView = 'chart';
+dispatch('shelves:compile-result', {
+  path: 'charts/a.yaml', vega_lite_spec: { mark: 'bar' }, errors: [], warnings: [],
+});
+out.rendererGuardOverlayShown = errorOverlay.style.display === 'block';
+out.rendererGuardHtml = errorOverlay.innerHTML;
+
 console.log(JSON.stringify(out));
 process.exit(0);  // pending rendered-fallback timers must not delay exit

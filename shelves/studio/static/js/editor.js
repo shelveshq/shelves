@@ -50,6 +50,12 @@ export async function initEditor() {
   };
 
   const settings = loadSettings();
+  // Pin the monaco-editor build the loader fetches to the same version the
+  // classic worker URL above names — the loader's own default is whatever its
+  // release pinned and can drift apart from our worker pin (SHE-77).
+  loader.config({
+    paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' },
+  });
   const monaco = await loader.init();
   window._shelvesMonaco = monaco;
 

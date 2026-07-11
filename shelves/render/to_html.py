@@ -48,6 +48,32 @@ def load_legend_render_js() -> str:
 LABEL_PATCH_JS = load_label_patch_js()
 
 
+# ─── Browser render libs (vega / vega-lite / vega-embed) ────────────────────
+# Single source of truth for the three libs every render surface loads.
+# Studio serves the vendored copies (shelves/studio/static/vendor/) same-origin
+# so a CDN blip or content blocker can't break the editor (SHE-77); standalone
+# CLI HTML falls back to the pinned CDN URLs — exact versions with explicit
+# file paths, because bare `@major` URLs hit jsDelivr's default-file resolver,
+# which has served cached 400s that nosniff then refuses to execute.
+# The vendored filenames must stay in lockstep with these versions.
+VEGA_LIB_FILES: tuple[str, ...] = (
+    "vega-5.33.1.min.js",
+    "vega-lite-6.4.3.min.js",
+    "vega-embed-6.29.0.min.js",
+)
+VEGA_LIB_CDN_URLS: tuple[str, ...] = (
+    "https://cdn.jsdelivr.net/npm/vega@5.33.1/build/vega.min.js",
+    "https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js",
+    "https://cdn.jsdelivr.net/npm/vega-embed@6.29.0/build/vega-embed.min.js",
+)
+
+
+def vega_script_tags(src_base: str | None = None) -> str:
+    """`<script>` tags for the render libs — vendored under `src_base`, else CDN."""
+    srcs = [f"{src_base}/{f}" for f in VEGA_LIB_FILES] if src_base else list(VEGA_LIB_CDN_URLS)
+    return "\n".join(f'  <script src="{s}"></script>' for s in srcs)
+
+
 def render_html(spec: dict, title: str | None = None) -> str:
     """Generate a standalone HTML page embedding a Vega-Lite spec."""
     spec_json = json.dumps(spec, indent=2).replace("</", r"<\/")
@@ -60,9 +86,7 @@ def render_html(spec: dict, title: str | None = None) -> str:
 <head>
   <meta charset="utf-8" />
   <title>{page_title}</title>
-  <script src="https://cdn.jsdelivr.net/npm/vega@5.33.1/build/vega.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6.29.0/build/vega-embed.min.js"></script>
+{vega_script_tags()}
   <style>
     body {{
       margin: 0; padding: 24px;

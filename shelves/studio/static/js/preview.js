@@ -204,6 +204,18 @@ async function renderChart(result) {
         autosize: { type: 'fit', contains: 'padding' },
       });
 
+  // The renderer globals load as classic <script> tags; if any of them failed
+  // (network, ad-blocker), calling vegaEmbed throws a bare TypeError with no
+  // hint of the cause. Name the problem instead (SHE-77).
+  if (typeof window.vegaEmbed !== 'function') {
+    showErrorOverlay(
+      ['The vega render scripts did not load. Check your connection or '
+       + 'ad-blocker, then reload the page.'],
+      'Chart renderer failed to load',
+    );
+    return;
+  }
+
   const buf = document.createElement('div');
   buf.style.cssText = 'position:absolute;inset:0;visibility:hidden;';
   elChartContainer.appendChild(buf);

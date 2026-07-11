@@ -217,6 +217,40 @@ root:
         assert "parent.postMessage({ type: 'shelves:rendered' }, '*')" in html
 
 
+class TestVegaScriptSources:
+    """SHE-77: standalone HTML loads the pinned CDN URLs; a caller (Studio)
+    can redirect the three render libs to a same-origin vendored base."""
+
+    def test_compose_defaults_to_pinned_cdn(self):
+        from shelves.render.to_html import VEGA_LIB_CDN_URLS
+
+        html = _compose("compose_multi.yaml")
+        for url in VEGA_LIB_CDN_URLS:
+            assert f'<script src="{url}"></script>' in html
+
+    def test_vega_src_base_swaps_to_vendored(self):
+        from shelves.render.to_html import VEGA_LIB_FILES
+        from shelves.schema.layout_schema import parse_dashboard
+        from shelves.translator.layout import translate_dashboard
+
+        yaml_str = """\
+dashboard: "Vendored"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Just text"
+      preset: title
+"""
+        spec = parse_dashboard(yaml_str)
+        html = translate_dashboard(
+            spec, load_theme(), chart_specs={}, vega_src_base="/static/vendor"
+        )
+        for name in VEGA_LIB_FILES:
+            assert f'<script src="/static/vendor/{name}"></script>' in html
+        assert "jsdelivr.net/npm/vega" not in html
+
+
 # ─── Warning Tests ───────────────────────────────────────────────
 
 
