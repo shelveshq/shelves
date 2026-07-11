@@ -52,7 +52,10 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
 - `js/` (each module subscribes to DOM `CustomEvent`s — no cross-module imports of
   state beyond `state.js`):
   - `main.js` — bootstraps modules; the compile router that dispatches YAML to the
-    chart vs dashboard path (`isDashboardYaml`).
+    chart vs dashboard path (`isDashboardYaml`). Boot is **parallel** (SHE-64):
+    tree/preview/WS start immediately and must never be awaited behind Monaco;
+    `initEditor` self-guards (error card in `#editor-boot` on failure/timeout)
+    and `openFile` awaits its `editorReady` promise.
   - `state.js` — shared `state` object, constants, status-bar + breadcrumb render.
   - `editor.js` — Monaco setup, debounced compile (`POST /compile`), Cmd+S save,
     compile-marker application, and the **editor/preview pane resize handle**.
@@ -111,8 +114,6 @@ See `docs/design-system/studio/README.md` for the full adherence analysis.
 
 - **File tree is unscoped** — `build_tree` walks the whole project dir; should be
   limited to the configured charts/dashboards/models (+assets) dirs.
-- **No loading states** — compile hides the preview then repaints; there is no
-  skeleton/spinner and open-file has no perceptible loading affordance.
 - **Pane resize is crude** — global `mousemove` listeners, no pointer capture, no
   iframe-overlay during drag (dashboard iframe swallows mouse events mid-drag).
 - **No editor/preview history** — no back/forward between opened files.

@@ -292,11 +292,44 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  position: relative;           /* anchors the #editor-boot veil */
 }
 #editor {
   flex: 1;
   width: 100%;
   height: 100%;
+}
+
+/* ─── Editor Boot Veil (SHE-64) ───────────────────────────── */
+/* Covers the editor pane while Monaco loads; editor.js removes it on ready
+   or swaps in an .error-card on failure/timeout. */
+#editor-boot {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+}
+#editor-boot .sh-boot-pill {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--r-1);
+  padding: 3px 8px;
+  /* SHE-37 gate: don't flash a loading state on a warm/instant load. */
+  opacity: 0;
+  animation: sh-boot-fade-in var(--dur-base, 150ms) ease 150ms forwards;
+}
+@keyframes sh-boot-fade-in {
+  to { opacity: 1; }
+}
+#editor-boot.is-error {
+  padding: 20px;
 }
 
 /* ─── Splitters (studio.css .sh-splitter recipe) ──────────── */

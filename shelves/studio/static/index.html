@@ -60,11 +60,18 @@
         <span>Project</span>
         <button id="sidebar-toggle-inner" title="Collapse sidebar">&#9664;</button>
       </div>
-      <div id="file-tree"></div>
+      <!-- Pending state from FIRST PAINT (SHE-64): fetchTree swaps it for the
+           real tree (or the error/empty placeholder) — never a blank strip. -->
+      <div id="file-tree"><div class="tree-placeholder">Loading project&hellip;</div></div>
     </div>
     <div id="sidebar-resize-handle" title="Drag to resize; double-click to reset"></div>
     <div id="editor-pane">
       <div id="editor"></div>
+      <!-- Boot veil (SHE-64): removed when Monaco is ready, swapped for an
+           error card if the load fails/times out — a guaranteed terminal
+           transition either way. The pill fades in after 150ms so a warm
+           load never flashes it. -->
+      <div id="editor-boot"><span class="sh-boot-pill">Loading editor&hellip;</span></div>
     </div>
     <div id="resize-handle"></div>
     <div id="preview-pane">

@@ -13,12 +13,17 @@ import {
 import { initTerminal, toggleTerminalPanel } from './terminal.js';
 
 // ─── Initialize Modules ───────────────────────────────────
-await initEditor();
+// Boot is PARALLEL (SHE-64): the file tree, preview, and live reload must
+// neither wait on Monaco's multi-second CDN load nor die with it — a rejected
+// top-level await here used to abort the whole module and leave the entire UI
+// blank. initEditor guards its own failure (error card in the editor pane);
+// the terminal is best-effort.
 initPreview();
 initSidebar();
 initDashboard();
-await initTerminal();
 connectWebSocket();
+initEditor();
+initTerminal().catch((e) => console.error('[shelves] terminal init failed:', e));
 
 // ─── Compile Router ────────────────────────────────────────
 function classifyContent(content) {
