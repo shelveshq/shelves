@@ -34,10 +34,13 @@ class TestRenderHTML:
         assert "<title>Test Chart</title>" in html
 
     def test_includes_cdn_scripts(self):
+        # Exact pins with explicit file paths — bare `@major` URLs hit
+        # jsDelivr's default-file resolver, which has served cached 400s
+        # that nosniff refuses to execute (broke every chart surface).
         html = render_html({"mark": "point"})
-        assert "cdn.jsdelivr.net/npm/vega@5" in html
-        assert "cdn.jsdelivr.net/npm/vega-lite@6" in html
-        assert "cdn.jsdelivr.net/npm/vega-embed@6" in html
+        assert "cdn.jsdelivr.net/npm/vega@5.33.1/build/vega.min.js" in html
+        assert "cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js" in html
+        assert "cdn.jsdelivr.net/npm/vega-embed@6.29.0/build/vega-embed.min.js" in html
 
     def test_default_title_when_none(self):
         html = render_html({"mark": "bar"})

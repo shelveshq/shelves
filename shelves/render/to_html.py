@@ -60,9 +60,9 @@ def render_html(spec: dict, title: str | None = None) -> str:
 <head>
   <meta charset="utf-8" />
   <title>{page_title}</title>
-  <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-lite@6"></script>
-  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega@5.33.1/build/vega.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4.3/build/vega-lite.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6.29.0/build/vega-embed.min.js"></script>
   <style>
     body {{
       margin: 0; padding: 24px;
