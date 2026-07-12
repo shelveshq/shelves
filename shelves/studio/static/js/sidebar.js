@@ -173,6 +173,10 @@ function applySidebarVisibility() {
     document.documentElement.style.setProperty('--sidebar-handle-w', '0px');
     handle.classList.add('hidden');
   }
+  // Single sync point for the status-bar chip — both toggles and boot
+  // flow through here (SHE-41).
+  document.getElementById('sidebar-toggle-status')
+    ?.classList.toggle('is-active', sidebarVisible);
 }
 
 function initSidebarResize() {
@@ -224,6 +228,7 @@ export function initSidebar() {
   initSidebarResize();
 
   document.getElementById('sidebar-toggle-inner').addEventListener('click', toggleSidebar);
+  document.getElementById('sidebar-toggle-status')?.addEventListener('click', toggleSidebar);
 
   let treeRefreshTimer = null;
   document.addEventListener('shelves:file-change', () => {

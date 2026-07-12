@@ -126,8 +126,6 @@ See `docs/design-system/studio/README.md` for the full adherence analysis.
 - **Pane resize is crude** — global `mousemove` listeners, no pointer capture, no
   iframe-overlay during drag (dashboard iframe swallows mouse events mid-drag).
 - **No editor/preview history** — no back/forward between opened files.
-- **Sidebar can't be reopened** once collapsed from inside the sidebar (the only
-  toggle lives *in* the sidebar header).
 - **No file creation** from the UI (create/rename/delete); `PUT /file` can create,
   but nothing drives it.
 - **Multi-tab editor** from the design (`editor.html`) is not implemented — Studio

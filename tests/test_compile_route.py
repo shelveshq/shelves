@@ -138,6 +138,17 @@ class TestLabelPatchAsset:
         assert "patch: window.labelPatch" in preview_js
 
 
+class TestIndexSidebarToggle:
+    """The status bar must carry a persistent sidebar toggle so a collapsed
+    sidebar can be reopened (SHE-41)."""
+
+    def test_index_has_sidebar_toggle(self, tmp_path: Path):
+        client = _make_client(tmp_path)
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert 'id="sidebar-toggle-status"' in resp.text
+
+
 class TestFriendlyErrors:
     """Tests for friendly error messages and source tagging (KAN-266-B)."""
 

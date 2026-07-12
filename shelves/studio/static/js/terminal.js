@@ -149,7 +149,8 @@ function closeTerminal(id) {
 export function toggleTerminalPanel() {
   terminalPanelVisible = !terminalPanelVisible;
   const panel = document.getElementById('terminal-panel');
-  const termBtn = document.querySelector('#statusbar .sh-status-term');
+  // By id, not `.sh-status-term` — the Files chip shares that class (SHE-41).
+  const termBtn = document.getElementById('terminal-toggle-status');
   if (terminalPanelVisible) {
     if (terminals.length === 0) createTerminal();
     panel.classList.remove('collapsed');
