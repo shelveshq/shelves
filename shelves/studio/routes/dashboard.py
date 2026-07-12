@@ -124,8 +124,16 @@ async def run_dashboard_pipeline(
         }
     warnings.extend(legend_warnings)
 
+    # vega_src_base: the preview iframe (srcdoc) resolves relative URLs against
+    # the studio origin, so it loads the vendored same-origin copies instead of
+    # the CDN — immune to CDN blips and content blockers (SHE-77).
     html = translate_dashboard(
-        spec, theme, chart_specs, legend_links=legend_links, flat_tree=flat_root
+        spec,
+        theme,
+        chart_specs,
+        legend_links=legend_links,
+        flat_tree=flat_root,
+        vega_src_base="/static/vendor",
     )
 
     return {

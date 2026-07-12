@@ -1,7 +1,7 @@
 // ─── Dashboard Module ──────────────────────────────────────
 // Dashboard detection, compile, preview, zoom control.
 
-import { state, updateStatusBar } from './state.js';
+import { state, updateStatusBar, resultIsForCurrentFile } from './state.js';
 import { highlightJson, showErrorOverlay, hideErrorOverlay, renderPreviewHeader } from './preview.js';
 
 const DEFAULT_CANVAS_W = 1440;
@@ -22,6 +22,44 @@ let lastDashboardResult = null;
 let dashboardZoom = 'fit';
 let compileSeq = 0;
 
+// ─── Rendered Signal (SHE-67) ─────────────────────────────
+// A dashboard result only means the HTML *string* exists — the iframe still
+// has to parse it, fetch Vega from the CDN, and render every sheet. The
+// loading veil therefore ends on `shelves:dashboard-rendered`, dispatched
+// when the composed page posts {type:'shelves:rendered'} (after its embed
+// promises settle), with load+timeout fallbacks so the veil can never stick.
+const RENDERED_FALLBACK_MS = 15000;  // absolute cap from srcdoc assignment
+const RENDERED_AFTER_LOAD_MS = 3000; // iframe loaded but no signal arrived
+
+let awaitingRendered = false;
+let awaitingRenderedPath = null;  // file the armed signal belongs to
+let renderedTimer = null;
+
+function armRenderedFallback(ms) {
+  clearTimeout(renderedTimer);
+  renderedTimer = setTimeout(signalDashboardRendered, ms);
+}
+
+function signalDashboardRendered() {
+  clearTimeout(renderedTimer);
+  renderedTimer = null;
+  if (!awaitingRendered) return;
+  awaitingRendered = false;
+  // Stamp the path captured when the result was accepted: a slow iframe's
+  // late signal must not pass preview.js's resultIsForCurrentFile guard and
+  // end a veil armed for a DIFFERENT file opened meanwhile (PR#60 review).
+  document.dispatchEvent(new CustomEvent('shelves:dashboard-rendered', {
+    detail: { path: awaitingRenderedPath },
+  }));
+}
+
+function disarmRenderedSignal() {
+  clearTimeout(renderedTimer);
+  renderedTimer = null;
+  awaitingRendered = false;
+  awaitingRenderedPath = null;
+}
+
 // ─── Dashboard Detection ──────────────────────────────────
 export function isDashboardYaml(content) {
   const lines = content.split('\n').slice(0, 20);
@@ -37,7 +75,6 @@ export async function compileDashboardContent() {
     document.dispatchEvent(new CustomEvent('shelves:dashboard-result', {
       detail: { html: null, errors: [], warnings: [], component_tree: [] },
     }));
-    updateStatusBar([], []);
     return;
   }
   try {
@@ -48,14 +85,12 @@ export async function compileDashboardContent() {
     state.lastCompileTimeMs = Math.round(performance.now() - t0);
     state.compiling = false;
     document.dispatchEvent(new CustomEvent('shelves:dashboard-result', { detail: result }));
-    updateStatusBar(result.errors ?? [], result.warnings ?? []);
   } catch (e) {
     if (seq !== compileSeq) return;
     state.compiling = false;
     document.dispatchEvent(new CustomEvent('shelves:dashboard-result', {
       detail: { html: null, errors: [String(e)], warnings: [], component_tree: [] },
     }));
-    updateStatusBar([String(e)]);
   }
 }
 
@@ -67,6 +102,7 @@ function renderDashboardPreview(result) {
   if (!result || result.html === null) {
     showErrorOverlay(result?.errors, "Can't compile this dashboard");
     elDashboardPreview.style.display = 'none';
+    signalDashboardRendered();  // error overlay paints synchronously
     return;
   }
 
@@ -82,6 +118,7 @@ function renderDashboardPreview(result) {
 
   // Direct srcdoc assignment keeps the old document painted until the new
   // one is ready; the old remove+reflow blanked the iframe for a frame.
+  if (awaitingRendered) armRenderedFallback(RENDERED_FALLBACK_MS);
   elDashboardIframe.srcdoc = result.html;
   scaleDashboardIframe();
 }
@@ -126,6 +163,11 @@ export function applyDashboardLayout() {
 
 export function restoreChartLayout() {
   state.dashboardMode = false;
+  state.dashboardErrors = 0;
+  state.dashboardWarnings = 0;
+  // A signal armed for the departed dashboard must not fire into chart mode
+  // via a late postMessage or fallback timer (PR#60 review).
+  disarmRenderedSignal();
   state.currentView = 'chart';
   document.getElementById('preview-pane').classList.remove('is-dashboard');
   elDashboardPreview.style.display = 'none';
@@ -140,6 +182,7 @@ function renderDashboardView(result) {
     hideErrorOverlay();
     elJsonView.style.display = 'block';
     elJsonView.innerHTML = highlightJson(JSON.stringify(result.component_tree, null, 2));
+    signalDashboardRendered();  // JSON view paints synchronously
   } else {
     renderDashboardPreview(result);
   }
@@ -158,8 +201,39 @@ export function initDashboard() {
   });
 
   document.addEventListener('shelves:dashboard-result', (e) => {
+    // Watcher broadcasts stamp the changed file's path; local compiles don't.
+    // A foreign file must not repaint the preview, and a broadcast for the
+    // open file only applies while the dashboard surface is active (SHE-49).
+    if (!resultIsForCurrentFile(e.detail)) return;
+    if ((e.detail.path ?? null) !== null && !state.dashboardMode) return;
     lastDashboardResult = e.detail;
+    // This handler owns the status bar for dashboard results — local compiles
+    // and watcher broadcasts alike (SHE-50). Dashboard errors have no Monaco
+    // markers, so the counters are fed directly from the result.
+    state.dashboardErrors = (e.detail.errors ?? []).length;
+    state.dashboardWarnings = (e.detail.warnings ?? []).length;
+    updateStatusBar();
+    // Every result arms exactly one rendered signal (SHE-37 invariant):
+    // error/JSON paths fire it synchronously inside renderDashboardView; the
+    // iframe path fires it on the page's postMessage or a fallback timer.
+    // Broadcasts carry the file's path; local compiles are stamped with the
+    // open file so a late signal can be attributed (see signalDashboardRendered).
+    awaitingRendered = true;
+    awaitingRenderedPath = e.detail.path ?? state.currentFile?.path ?? null;
     renderDashboardView(lastDashboardResult);
+  });
+
+  window.addEventListener('message', (e) => {
+    if (e.data?.type === 'shelves:rendered' && e.source === elDashboardIframe.contentWindow) {
+      signalDashboardRendered();
+    }
+  });
+
+  elDashboardIframe.addEventListener('load', () => {
+    // load fires before the embeds settle; give the page's own rendered
+    // signal a grace window, then clear anyway (composed HTML predating the
+    // postMessage hook would otherwise pin the veil to the absolute cap).
+    if (awaitingRendered) armRenderedFallback(RENDERED_AFTER_LOAD_MS);
   });
 
   document.addEventListener('shelves:view-change', () => {

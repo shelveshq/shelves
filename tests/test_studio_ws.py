@@ -284,6 +284,53 @@ class TestWatcherYamlSyntaxError:
         asyncio.run(_test())
 
 
+# ─── Watcher broadcasts structured runtime errors ────────────────
+
+
+class TestWatcherRuntimeError:
+    """A generic (non-YAML, non-validation) exception on the file-watch path
+    must broadcast the same structured error dict as POST /compile's
+    runtime-error path — not a bare string (SHE-50 / review finding #13)."""
+
+    def test_runtime_error_broadcasts_structured_dict(self, tmp_path, monkeypatch):
+        import shelves.pipeline
+
+        def _boom(*_args, **_kwargs):
+            raise RuntimeError("translator exploded")
+
+        monkeypatch.setattr(shelves.pipeline, "compile_chart", _boom)
+
+        async def _test():
+            chart_path = tmp_path / "chart.yaml"
+            chart_path.write_text(VALID_YAML)
+
+            captured: list[dict] = []
+
+            class _Capture:
+                async def broadcast(self, msg: dict) -> None:
+                    captured.append(msg)
+
+            await _compile_file_and_broadcast(
+                chart_path,
+                "chart.yaml",
+                _Capture(),  # type: ignore[arg-type]
+                models_dir=MODELS_DIR,
+                theme_path=None,
+            )
+
+            assert captured, "No broadcast emitted"
+            errors = captured[-1]["errors"]
+            assert len(errors) == 1
+            err = errors[0]
+            assert isinstance(err, dict), f"Expected structured error, got {err!r}"
+            assert err["source"] == "runtime"
+            assert err["type"] == "runtime_error"
+            assert err["msg"] == "translator exploded"
+            assert err["friendly_msg"] == "translator exploded"
+
+        asyncio.run(_test())
+
+
 # ─── Vanished-file race (transient temp/atomic-save files) ───────
 
 

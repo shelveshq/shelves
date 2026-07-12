@@ -40,13 +40,22 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
 
 - `index.html` — the shell: header, `#workspace` grid (sidebar | editor |
   resize-handle | preview), terminal panel, status bar. Loads Vega/Vega-Lite/
-  vega-embed + Monaco from CDN.
+  vega-embed from `static/vendor/` (same-origin, see below) and Monaco from CDN.
+- `vendor/` — committed pinned UMD builds of vega, vega-lite, vega-embed
+  (SHE-77). Served at `/static/vendor/`; the dashboard preview iframe loads the
+  same copies via `translate_dashboard(vega_src_base="/static/vendor")`. The
+  canonical file list is `VEGA_LIB_FILES` in `shelves/render/to_html.py` —
+  upgrading a version means re-downloading the file AND updating that constant
+  (standalone CLI HTML uses the matching pinned CDN URLs).
 - `styles.css` — all styling. Has its **own** `:root` design tokens that predate
   and **diverge from** the Shelves design system (see `docs/design-system/`).
 - `js/` (each module subscribes to DOM `CustomEvent`s — no cross-module imports of
   state beyond `state.js`):
   - `main.js` — bootstraps modules; the compile router that dispatches YAML to the
-    chart vs dashboard path (`isDashboardYaml`).
+    chart vs dashboard path (`isDashboardYaml`). Boot is **parallel** (SHE-64):
+    tree/preview/WS start immediately and must never be awaited behind Monaco;
+    `initEditor` self-guards (error card in `#editor-boot` on failure/timeout)
+    and `openFile` awaits its `editorReady` promise.
   - `state.js` — shared `state` object, constants, status-bar + breadcrumb render.
   - `editor.js` — Monaco setup, debounced compile (`POST /compile`), Cmd+S save,
     compile-marker application, and the **editor/preview pane resize handle**.
@@ -67,8 +76,10 @@ same events for external file edits over `/ws`.
 
 ## Conventions
 
-- **No build step.** Plain ES modules + CDN libs. Keep it that way unless a ticket
-  says otherwise.
+- **No build step.** Plain ES modules; render libs are vendored static bundles
+  (`static/vendor/`, SHE-77 — same-origin beats CDN-at-runtime), Monaco still
+  loads from a version-pinned CDN. Keep it that way unless a ticket says
+  otherwise.
 - Modules communicate via `document` `CustomEvent`s, not direct calls, so a new
   surface can subscribe without touching existing modules.
 - Compile requests are sequence-guarded (`compileSeq`) so a slow response can't
@@ -103,8 +114,6 @@ See `docs/design-system/studio/README.md` for the full adherence analysis.
 
 - **File tree is unscoped** — `build_tree` walks the whole project dir; should be
   limited to the configured charts/dashboards/models (+assets) dirs.
-- **No loading states** — compile hides the preview then repaints; there is no
-  skeleton/spinner and open-file has no perceptible loading affordance.
 - **Pane resize is crude** — global `mousemove` listeners, no pointer capture, no
   iframe-overlay during drag (dashboard iframe swallows mouse events mid-drag).
 - **No editor/preview history** — no back/forward between opened files.

@@ -72,6 +72,7 @@ include = ["shelves*"]
     "static/*.css",
     "static/*.svg",
     "static/js/*.js",
+    "static/vendor/*.js",
 ]
 
 [tool.setuptools.exclude-package-data]

@@ -3,7 +3,7 @@
 
 import {
   state, COMPILE_DEBOUNCE_MS, STORAGE_KEY_SETTINGS, STORAGE_KEY_PANE_WIDTH,
-  updateStatusBar, updateBreadcrumb,
+  updateStatusBar, updateBreadcrumb, resultIsForCurrentFile,
 } from './state.js';
 
 let _compileFn = null;
@@ -16,7 +16,67 @@ export function setCompileFunction(fn) {
   _compileFn = fn;
 }
 
+// ─── Boot Lifecycle (SHE-64) ──────────────────────────────
+// Boot is parallel: the rest of Studio never waits on Monaco. Anything that
+// needs the editor (openFile) awaits `editorReady` instead; the promise
+// settles exactly once — resolve on a working editor, reject on load
+// failure/timeout, with the error card as the visible terminal state.
+const EDITOR_LOAD_TIMEOUT_MS = 20000;
+
+let _editorReadyResolve, _editorReadyReject;
+const editorReady = new Promise((res, rej) => {
+  _editorReadyResolve = res;
+  _editorReadyReject = rej;
+});
+editorReady.catch(() => {});  // rejection is surfaced via the error card
+
+function escText(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function hideEditorBoot() {
+  document.getElementById('editor-boot')?.remove();
+}
+
+function showEditorBootError(e) {
+  const boot = document.getElementById('editor-boot');
+  if (!boot) return;
+  boot.classList.add('is-error');
+  boot.innerHTML = `
+    <div class="error-card">
+      <div class="error-title">Editor failed to load</div>
+      <ul class="error-list">
+        <li class="error-item">Monaco couldn't be fetched — check your connection or ad-blocker, then reload the page. Everything else (file tree, preview, terminal) keeps working.</li>
+        <li class="error-item">${escText(e)}</li>
+      </ul>
+    </div>`;
+}
+
 export async function initEditor() {
+  initResizeHandle();  // the pane splitter needs no Monaco — never gate it
+  let timeoutId = null;
+  const timeout = new Promise((_, rej) => {
+    timeoutId = setTimeout(
+      () => rej(new Error(`Timed out after ${EDITOR_LOAD_TIMEOUT_MS / 1000}s`)),
+      EDITOR_LOAD_TIMEOUT_MS,
+    );
+  });
+  try {
+    await Promise.race([initMonacoEditor(), timeout]);
+    hideEditorBoot();
+    _editorReadyResolve();
+  } catch (e) {
+    // Without this guard a Monaco CDN failure used to reject main.js's
+    // top-level await and blank the ENTIRE UI with no in-page error (SHE-64).
+    console.error('[shelves] editor failed to load:', e);
+    showEditorBootError(e);
+    _editorReadyReject(e);
+  } finally {
+    clearTimeout(timeoutId);  // don't leave a 20s timer pending after settle
+  }
+}
+
+async function initMonacoEditor() {
   const loader = (await import('https://cdn.jsdelivr.net/npm/@monaco-editor/loader@1.5.0/+esm')).default;
   const { configureMonacoYaml } = await import('https://cdn.jsdelivr.net/npm/monaco-yaml@5.5.1/+esm');
 
@@ -50,6 +110,12 @@ export async function initEditor() {
   };
 
   const settings = loadSettings();
+  // Pin the monaco-editor build the loader fetches to the same version the
+  // classic worker URL above names — the loader's own default is whatever its
+  // release pinned and can drift apart from our worker pin (SHE-77).
+  loader.config({
+    paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' },
+  });
   const monaco = await loader.init();
   window._shelvesMonaco = monaco;
 
@@ -156,14 +222,11 @@ export async function initEditor() {
     }
   });
 
-  initResizeHandle();
-
   document.addEventListener('shelves:compile-result', (e) => {
     // Ignore broadcasts for a file other than the one currently open —
     // otherwise a watcher result for another file paints its markers
     // (at its line numbers) onto the active editor.
-    const resultPath = e.detail.path ?? null;
-    if (resultPath && state.currentFile && resultPath !== state.currentFile.path) return;
+    if (!resultIsForCurrentFile(e.detail)) return;
     applyCompileMarkers(e.detail);
     syncMarkerCounts();
     updateStatusBar();
@@ -187,9 +250,12 @@ export async function initEditor() {
     syncMarkerCounts();
     updateStatusBar();
   });
-
-  window.shelvesStudio = { openFile };
 }
+
+// Registered at module scope, not from initMonacoEditor: the sidebar renders
+// (and is clickable) long before Monaco arrives now that boot is parallel —
+// openFile itself awaits editorReady (SHE-64).
+window.shelvesStudio = { openFile };
 
 // ─── Compile Markers ──────────────────────────────────────
 export function applyCompileMarkers(result) {
@@ -288,6 +354,14 @@ export async function compileCurrentContent() {
 
 // ─── Open File ────────────────────────────────────────────
 export async function openFile(path) {
+  // No editor, no open: wait for Monaco (a click during boot), and if the
+  // editor failed to load, the boot error card already explains the state —
+  // don't arm a veil that nothing will ever terminate.
+  try {
+    await editorReady;
+  } catch {
+    return;
+  }
   try {
     state.compiling = true;
     updateStatusBar();

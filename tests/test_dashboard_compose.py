@@ -182,6 +182,75 @@ root:
         assert "vegaEmbed" not in html
 
 
+# ─── Rendered Signal (SHE-67) ────────────────────────────────────
+
+
+class TestDashboardRenderedSignal:
+    """The composed page must post {type:'shelves:rendered'} to its parent
+    once every embed promise has settled — Studio's dashboard preview holds
+    its loading veil until this message; other hosts simply never listen."""
+
+    def test_embeds_collected_and_signal_posted(self):
+        html = _compose("compose_multi.yaml")
+        assert "embeds.push(vegaEmbed" in html
+        assert "Promise.allSettled(embeds)" in html
+        assert "parent.postMessage({ type: 'shelves:rendered' }, '*')" in html
+
+    def test_no_sheet_dashboard_still_posts_signal(self):
+        """With no charts the signal must fire immediately, or Studio's veil
+        would only clear on its fallback timeout."""
+        from shelves.schema.layout_schema import parse_dashboard
+        from shelves.translator.layout import translate_dashboard
+
+        yaml_str = """\
+dashboard: "Text Only"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Just text"
+      preset: title
+"""
+        spec = parse_dashboard(yaml_str)
+        html = translate_dashboard(spec, load_theme(), chart_specs={})
+        assert "Promise.allSettled(embeds)" in html
+        assert "parent.postMessage({ type: 'shelves:rendered' }, '*')" in html
+
+
+class TestVegaScriptSources:
+    """SHE-77: standalone HTML loads the pinned CDN URLs; a caller (Studio)
+    can redirect the three render libs to a same-origin vendored base."""
+
+    def test_compose_defaults_to_pinned_cdn(self):
+        from shelves.render.to_html import VEGA_LIB_CDN_URLS
+
+        html = _compose("compose_multi.yaml")
+        for url in VEGA_LIB_CDN_URLS:
+            assert f'<script src="{url}"></script>' in html
+
+    def test_vega_src_base_swaps_to_vendored(self):
+        from shelves.render.to_html import VEGA_LIB_FILES
+        from shelves.schema.layout_schema import parse_dashboard
+        from shelves.translator.layout import translate_dashboard
+
+        yaml_str = """\
+dashboard: "Vendored"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - text: "Just text"
+      preset: title
+"""
+        spec = parse_dashboard(yaml_str)
+        html = translate_dashboard(
+            spec, load_theme(), chart_specs={}, vega_src_base="/static/vendor"
+        )
+        for name in VEGA_LIB_FILES:
+            assert f'<script src="/static/vendor/{name}"></script>' in html
+        assert "jsdelivr.net/npm/vega" not in html
+
+
 # ─── Warning Tests ───────────────────────────────────────────────
 
 

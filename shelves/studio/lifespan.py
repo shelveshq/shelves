@@ -168,12 +168,25 @@ async def compile_file_and_broadcast(
             }
         )
     except Exception as e:
+        # Same structured dict shape as POST /compile's runtime-error path, so
+        # every consumer (markers, overlay, status counts) renders uniformly.
         await manager.broadcast(
             {
                 "type": "compile_result",
                 "path": rel,
                 "vega_lite_spec": None,
-                "errors": [str(e)],
+                "errors": [
+                    {
+                        "loc": [],
+                        "display_loc": [],
+                        "msg": str(e),
+                        "friendly_msg": str(e),
+                        "source": "runtime",
+                        "type": "runtime_error",
+                        "line": None,
+                        "col": None,
+                    }
+                ],
                 "warnings": [],
             }
         )

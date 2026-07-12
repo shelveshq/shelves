@@ -1,7 +1,7 @@
 // ─── Preview Module ────────────────────────────────────────
 // Chart rendering, JSON syntax highlighting, error overlay, preview header.
 
-import { state } from './state.js';
+import { state, resultIsForCurrentFile } from './state.js';
 
 const elPreview        = document.getElementById('preview');
 const elChartContainer = document.getElementById('chart-container');
@@ -175,8 +175,7 @@ async function renderChart(result) {
   elJsonView.style.display = 'none';
 
   if (!result || result.vega_lite_spec === null) {
-    // Defensive: watcher broadcasts can still deliver a null-spec/no-error
-    // result until SHE-49 lands.
+    // A local compile of non-chart content still yields null-spec/no-error.
     if (result?.errors?.length) { showErrorOverlay(result.errors); }
     else { showEmptyState({ title: 'Nothing to render yet', sub: 'The compile returned no chart and no errors.' }); }
     return;
@@ -204,6 +203,18 @@ async function renderChart(result) {
         height: 'container',
         autosize: { type: 'fit', contains: 'padding' },
       });
+
+  // The renderer globals load as classic <script> tags; if any of them failed
+  // (network, ad-blocker), calling vegaEmbed throws a bare TypeError with no
+  // hint of the cause. Name the problem instead (SHE-77).
+  if (typeof window.vegaEmbed !== 'function') {
+    showErrorOverlay(
+      ['The vega render scripts did not load. Check your connection or '
+       + 'ad-blocker, then reload the page.'],
+      'Chart renderer failed to load',
+    );
+    return;
+  }
 
   const buf = document.createElement('div');
   buf.style.cssText = 'position:absolute;inset:0;visibility:hidden;';
@@ -275,6 +286,7 @@ export function initPreview() {
 
   document.addEventListener('shelves:compile-result', (e) => {
     if (state.dashboardMode) return;
+    if (!resultIsForCurrentFile(e.detail)) return;  // watcher broadcast for another file (SHE-49)
     state.lastCompileResult = e.detail;
     renderPreview(state.lastCompileResult);
     updateAmbientTime();
@@ -293,12 +305,20 @@ export function initPreview() {
     beginLoadingState();         // no display:none anywhere anymore
   });
 
-  // preview.js owns the veil; every result-ish event ends it. A superseded
-  // compile never dispatches an end event (compileSeq-guarded returns), which
-  // is fine: the newer compile's start already re-armed the timer and its
-  // result will end the veil.
-  ['shelves:compile-result', 'shelves:dashboard-result', 'shelves:non-chart-file']
-    .forEach(ev => document.addEventListener(ev, endLoadingState));
+  // preview.js owns the veil; every result-ish event for the OPEN file ends
+  // it — a watcher broadcast for another file must not end a veil that is
+  // still waiting on the local compile (SHE-49). Dashboards end on
+  // `dashboard-rendered`, not `dashboard-result`: the result only proves the
+  // HTML string exists, the iframe still has to render it (SHE-67);
+  // dashboard.js guarantees exactly one rendered event per accepted result.
+  // A superseded compile never dispatches an end event (compileSeq-guarded
+  // returns), which is fine: the newer compile's start already re-armed the
+  // timer and its result will end the veil.
+  ['shelves:compile-result', 'shelves:dashboard-rendered', 'shelves:non-chart-file']
+    .forEach(ev => document.addEventListener(ev, (e) => {
+      if (!resultIsForCurrentFile(e.detail)) return;
+      endLoadingState();
+    }));
 
   let resizeTimer = null;
   new ResizeObserver(() => {

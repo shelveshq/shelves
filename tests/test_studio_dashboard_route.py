@@ -442,3 +442,37 @@ class TestStudioDashboardLegends:
         attrs = _legend_attrs(result["html"])
         assert "data-source" not in attrs
         assert "data-scale" not in attrs
+
+
+class TestVendoredVegaSources:
+    """SHE-77: the Studio dashboard preview (iframe srcdoc resolves relative
+    URLs against the studio origin) must load the vendored same-origin render
+    libs, never the CDN."""
+
+    def test_pipeline_html_uses_vendored_libs(self, tmp_path: Path):
+        from shelves.render.to_html import VEGA_LIB_FILES
+
+        yaml_body = (
+            'dashboard: "Vendor Test"\n'
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            '    - text: "Hello"\n'
+            "      preset: title\n"
+        )
+
+        async def _test():
+            return await run_dashboard_pipeline(
+                yaml_body,
+                project_dir=tmp_path,
+                charts_dir=tmp_path,
+                theme_path=None,
+                models_dir=None,
+            )
+
+        result = _run(_test())
+        html = result["html"]
+        assert html is not None
+        for name in VEGA_LIB_FILES:
+            assert f'<script src="/static/vendor/{name}"></script>' in html
+        assert "jsdelivr.net/npm/vega" not in html
