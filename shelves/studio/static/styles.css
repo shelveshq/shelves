@@ -490,11 +490,12 @@ body {
 }
 #preview-pane.is-compiling .sh-compiling-pill { opacity: 1; }
 
-/* Outer wrapper — provides the gap between pane edge and the card */
+/* Outer wrapper — provides the gap between pane edge and the card.
+   Top/side gap matches #dashboard-preview so both views breathe the same. */
 #preview {
   width: 100%;
   flex: 1;
-  padding: 4px 20px 20px;
+  padding: 24px 24px 20px;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -547,7 +548,7 @@ body {
   display: none;
   flex: 1;
   min-height: 0;
-  margin: 4px 20px 20px;
+  margin: 24px 24px 20px;
   padding: 16px 18px;
   font-family: var(--font-mono);
   font-size: 12px;
