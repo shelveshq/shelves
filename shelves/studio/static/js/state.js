@@ -23,6 +23,9 @@ export const state = {
   // or until the user resumes typing; 'saved' is a transient flash.
   saveStatus: null,     // null | 'saving' | 'saved' | 'failed'
   saveError: null,      // string when failed
+  // The open file was deleted on disk (SHE-51). The buffer is never
+  // auto-closed — it may be the only surviving copy; saving recreates it.
+  fileDeleted: false,
 };
 
 // True when a compile/dashboard result belongs to the open buffer. Local
@@ -84,6 +87,13 @@ export function updateStatusBar() {
     return;
   }
 
+  // Deletion outranks compile chatter but not an in-flight compile (SHE-51).
+  if (state.fileDeleted && state.currentFile) {
+    dot.className = 'sh-status-dot warn';
+    msg.textContent = `${state.currentFile.path} deleted on disk — saving will recreate it`;
+    return;
+  }
+
   const ec = (state.dashboardMode ? state.dashboardErrors : state.markerErrors) ?? 0;
   const wc = (state.dashboardMode ? state.dashboardWarnings : state.markerWarnings) ?? 0;
 
@@ -127,6 +137,9 @@ export function updateBreadcrumb(path, dirty) {
   html += `<span class="sh-crumb-file">${fileName}</span>`;
   if (dirty) {
     html += '<span class="sh-dirty">•</span>';
+  }
+  if (state.fileDeleted) {
+    html += '<span class="sh-crumb-deleted">deleted</span>';
   }
   crumb.innerHTML = html;
 }

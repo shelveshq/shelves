@@ -63,6 +63,9 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     classifies as chart YAML (`shelves:buffer-kind` event from main.js's router).
     Saves are confirmed: dirty clears only on a 2xx PUT; failures surface as a
     persistent status-bar error (150ms-gated "Saving…" / 2s "Saved" otherwise).
+    Dirty buffers are guarded (beforeunload + confirm-on-switch); a
+    deleted-on-disk open file shows a status/breadcrumb notice and is never
+    auto-closed.
   - `preview.js` — chart render via `vegaEmbed` (with the shared label patch),
     JSON view, error overlay, `ResizeObserver` re-fit.
   - `dashboard.js` — dashboard compile + iframe preview, canvas scaling / zoom.

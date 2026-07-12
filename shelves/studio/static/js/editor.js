@@ -231,8 +231,32 @@ async function initMonacoEditor() {
     () => saveCurrentFile(),
   );
 
+  // Closing/reloading the tab with unsaved changes must prompt (SHE-51).
+  // preventDefault shows the browser's generic dialog; custom text is ignored.
+  window.addEventListener('beforeunload', (e) => {
+    if (state.currentFile?.dirty) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
   document.addEventListener('shelves:file-change', (e) => {
     const msg = e.detail;
+    // Deleted-on-disk tracking (SHE-51). The buffer stays open and editable;
+    // Cmd+S recreates the file (and clears the notice).
+    if (state.currentFile && msg.path === state.currentFile.path) {
+      if (msg.event === 'deleted') {
+        state.fileDeleted = true;
+        updateBreadcrumb(state.currentFile.path, state.currentFile.dirty);
+        updateStatusBar();
+        return;                    // do NOT fall through to the reload fetch
+      }
+      if (state.fileDeleted && (msg.event === 'created' || msg.event === 'modified')) {
+        state.fileDeleted = false; // resurrected externally
+        updateBreadcrumb(state.currentFile.path, state.currentFile.dirty);
+        updateStatusBar();
+      }
+    }
     if (state.currentFile && state.currentFile.path === msg.path && !state.currentFile.dirty) {
       if (msg.path === _lastSavePath && (Date.now() - _lastSaveTs) < 2000) return;
       fetch(`/file?path=${encodeURIComponent(msg.path)}`)
@@ -386,6 +410,13 @@ export async function compileCurrentContent() {
 
 // ─── Open File ────────────────────────────────────────────
 export async function openFile(path) {
+  // Dirty-buffer guard (SHE-51): runs synchronously BEFORE anything arms a
+  // veil or compile state, so a cancel leaves the session exactly as it was.
+  if (state.currentFile?.path === path) return;               // same file: no-op
+  if (state.currentFile?.dirty) {
+    const ok = window.confirm(`Discard unsaved changes to ${state.currentFile.path}?`);
+    if (!ok) return;
+  }
   // No editor, no open: wait for Monaco (a click during boot), and if the
   // editor failed to load, the boot error card already explains the state —
   // don't arm a veil that nothing will ever terminate.
@@ -412,6 +443,7 @@ export async function openFile(path) {
     }
     const { content } = await resp.json();
     state.currentFile = { path, dirty: false };
+    state.fileDeleted = false;
     _suppressDirty = true;
     state.editor.setValue(content);
     _suppressDirty = false;
@@ -477,6 +509,7 @@ async function saveCurrentFile() {
     _lastSaveTs = Date.now();
     state.saveStatus = 'saved';
     state.saveError = null;
+    state.fileDeleted = false;   // a confirmed write recreates a deleted file
     updateBreadcrumb(path, false);
     updateStatusBar();
     _savedClearTimer = setTimeout(() => {
