@@ -106,22 +106,16 @@ async function initMonacoEditor() {
   window.MonacoEnvironment = {
     getWorker(_, label) {
       if (label === 'yaml') {
-        // monaco-yaml v5 ships its worker at the package ROOT as an ES module.
-        // The old `lib/esm/yaml.worker.js` path is a v4-era layout and 404s on
-        // every 5.x, which blanked the whole editor (SHE-64).
-        //
-        // A Worker's top-level script must be SAME-ORIGIN — a cross-origin CDN
-        // URL is rejected ("cannot be accessed from origin ..."), even with
-        // { type: 'module' }. So we point the worker at a same-origin blob whose
-        // module body `import`s the cross-origin CDN build: module imports (not
-        // the worker script itself) ARE allowed cross-origin under CORS, which
-        // jsdelivr serves. We use jsdelivr's `/+esm` build so the worker's bare
-        // imports are rewritten to absolute URLs the module graph can resolve.
-        // Version pinned (not the floating `@5` tag) to avoid the silent CDN
-        // drift that caused this (see SHE-6 / SHE-76).
-        const workerUrl = 'https://cdn.jsdelivr.net/npm/monaco-yaml@5.5.1/yaml.worker.js/+esm';
-        const blob = new Blob([`import ${JSON.stringify(workerUrl)};`], { type: 'text/javascript' });
-        return new Worker(URL.createObjectURL(blob), { type: 'module' });
+        // Vendored same-origin bundle (static/vendor/), built from
+        // monaco-yaml@5.5.1's root yaml.worker.js WITH monaco-editor@0.52.2 —
+        // the same version the main editor pins below. The previous jsdelivr
+        // `/+esm` worker silently bundled monaco-editor@0.33.0 (below
+        // monaco-yaml's own >=0.36 peer range): the 0.33 worker protocol
+        // choked on 0.52's handshake ("e is not iterable"), Monaco fell back
+        // to a main-thread worker that crashed the same way, and every
+        // monaco-yaml diagnostic was dead. Same-origin also drops the blob
+        // indirection the cross-origin CDN worker needed (SHE-48/SHE-77).
+        return new Worker('/static/vendor/monaco-yaml-worker-5.5.1.min.js');
       }
       // monaco-editor's own worker is a classic (UMD) script. A cross-origin
       // *classic* worker isn't allowed, so wrap it in a same-origin blob that

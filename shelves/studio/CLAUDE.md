@@ -46,7 +46,11 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
   same copies via `translate_dashboard(vega_src_base="/static/vendor")`. The
   canonical file list is `VEGA_LIB_FILES` in `shelves/render/to_html.py` —
   upgrading a version means re-downloading the file AND updating that constant
-  (standalone CLI HTML uses the matching pinned CDN URLs).
+  (standalone CLI HTML uses the matching pinned CDN URLs). Also holds the
+  monaco-yaml worker bundle (`monaco-yaml-worker-*.min.js`, SHE-48): built
+  from monaco-yaml's `yaml.worker.js` against the SAME monaco-editor version
+  editor.js's loader pins (rebuild command in the file's banner) — a
+  version-mismatched worker kills all YAML diagnostics silently.
 - `styles.css` — all styling. Has its **own** `:root` design tokens that predate
   and **diverge from** the Shelves design system (see `docs/design-system/`).
 - `js/` (each module subscribes to DOM `CustomEvent`s — no cross-module imports of
@@ -83,10 +87,10 @@ same events for external file edits over `/ws`.
 
 ## Conventions
 
-- **No build step.** Plain ES modules; render libs are vendored static bundles
-  (`static/vendor/`, SHE-77 — same-origin beats CDN-at-runtime), Monaco still
-  loads from a version-pinned CDN. Keep it that way unless a ticket says
-  otherwise.
+- **No build step.** Plain ES modules; render libs and the monaco-yaml worker
+  are vendored static bundles (`static/vendor/`, SHE-77/SHE-48 — same-origin
+  beats CDN-at-runtime), the Monaco editor itself still loads from a
+  version-pinned CDN. Keep it that way unless a ticket says otherwise.
 - Modules communicate via `document` `CustomEvent`s, not direct calls, so a new
   surface can subscribe without touching existing modules.
 - Compile requests are sequence-guarded (`compileSeq`) so a slow response can't

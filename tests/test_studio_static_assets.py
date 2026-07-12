@@ -65,3 +65,35 @@ def test_index_loads_vendored_libs_not_cdn():
     for name in VEGA_LIB_FILES:
         assert f'src="/static/vendor/{name}"' in index
     assert "jsdelivr.net/npm/vega" not in index
+
+
+# ─── Vendored monaco-yaml worker (SHE-48) ────────────────────────────────────
+# The jsdelivr /+esm worker bundle silently pinned monaco-editor@0.33.0 (below
+# monaco-yaml's own >=0.36 peer range) while the main editor runs 0.52.2; the
+# protocol mismatch killed every monaco-yaml diagnostic. The worker is now a
+# committed same-origin bundle built against the SAME monaco-editor version
+# the editor.js loader pins.
+
+YAML_WORKER = "monaco-yaml-worker-5.5.1.min.js"
+
+
+def test_vendored_yaml_worker_present_and_plausible():
+    path = STATIC / "vendor" / YAML_WORKER
+    assert path.is_file(), f"missing vendored yaml worker: {YAML_WORKER}"
+    assert path.stat().st_size > 500_000, f"{YAML_WORKER} looks truncated/corrupt"
+    head = path.read_text(errors="replace")[:300]
+    assert "monaco-editor@0.52.2" in head, (
+        "the worker bundle's provenance banner must name the monaco-editor "
+        "version it was built with — it must match editor.js's loader pin"
+    )
+
+
+def test_editor_uses_vendored_yaml_worker_not_cdn():
+    editor = (STATIC / "js" / "editor.js").read_text()
+    assert f"/static/vendor/{YAML_WORKER}" in editor
+    # The main-thread configureMonacoYaml import may stay on the pinned CDN
+    # (like Monaco itself); the WORKER must never come from a CDN bundle —
+    # jsdelivr resolves its monaco-editor dep to an incompatible version.
+    assert "yaml.worker.js/+esm" not in editor
+    # The loader pin the worker bundle must stay in lockstep with.
+    assert "monaco-editor@0.52.2" in editor
