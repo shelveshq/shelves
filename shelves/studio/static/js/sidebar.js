@@ -214,8 +214,18 @@ function initSidebarResize() {
 }
 
 // ─── Sidebar Toggle ────────────────────────────────────────
+// Arm the workspace slide for this toggle only (drag-resize must stay 1:1).
+function animateWorkspaceOnce() {
+  const ws = document.getElementById('workspace');
+  ws.classList.add('animating');
+  const clear = () => ws.classList.remove('animating');
+  ws.addEventListener('transitionend', clear, { once: true });
+  setTimeout(clear, 400);   // fallback: browsers that can't animate grid tracks never fire transitionend
+}
+
 export function toggleSidebar() {
   sidebarVisible = !sidebarVisible;
+  animateWorkspaceOnce();
   applySidebarVisibility();
   localStorage.setItem(STORAGE_KEY_SIDEBAR_VIS, String(sidebarVisible));
 }

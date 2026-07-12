@@ -180,6 +180,12 @@ body {
   grid-template-columns: var(--sidebar-width, 220px) var(--sidebar-handle-w, 1px) var(--editor-width, 25%) 1px 1fr;
   overflow: hidden;
 }
+/* Sliding collapse/expand (SHE-41). Gated behind a class that toggleSidebar
+   arms and transitionend clears — an always-on transition would rubber-band
+   the splitter drags, which write the same grid vars every pointermove. */
+#workspace.animating {
+  transition: grid-template-columns var(--dur-slow) var(--ease);
+}
 
 /* ─── Sidebar ─────────────────────────────────────────────── */
 #sidebar {
@@ -241,6 +247,7 @@ body {
   color: var(--text-primary);
   background: var(--bg-workspace);
 }
+#sidebar-toggle-inner svg { display: block; }
 
 #file-tree {
   flex: 1;
