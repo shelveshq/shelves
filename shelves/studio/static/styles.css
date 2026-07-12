@@ -818,23 +818,36 @@ body {
 
 /* Scrollbars: global webkit styling ships from tokens-bridge.css. */
 
-/* ─── Terminal Panel ─────────────────────────────────────────── */
+/* ─── Terminal Panel ──────────────────────────────────────────
+   DS: studio.css .sh-term-host / .sh-terminal-* — ink surface, hairline
+   top edge, ochre active accent, mono. Multi-tab kept per the SHE-47
+   decision; tabs are light-on-dark states derived from the tokens. */
 #terminal-panel {
   grid-area: terminal;
   background: var(--term-bg);
+  border-top: 1px solid var(--paper-edge);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
+  height: 0;
+  transition: height var(--dur-slow) var(--ease);
 }
 
 #terminal-panel.collapsed {
-  display: none;
+  height: 0;
+  border-top: 0;
+}
+
+/* Splitter drags write height every pointermove — the open/close
+   transition must not lag them (terminal.js toggles this class). */
+#terminal-panel.no-anim {
+  transition: none;
 }
 
 #terminal-resize-handle {
   height: 4px;
-  background: var(--term-border);
+  background: var(--term-header);
   cursor: row-resize;
   transition: background 0.2s;
   flex-shrink: 0;
@@ -848,10 +861,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
-  height: 32px;
+  padding: 0 8px 0 0;
+  height: 30px;
   background: var(--term-header);
-  border-bottom: 0.5px solid var(--term-border);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  font-family: var(--font-mono);
   flex-shrink: 0;
 }
 
@@ -870,45 +884,75 @@ body {
   gap: 4px;
   padding: 0 10px;
   cursor: pointer;
-  color: var(--term-fg);
-  opacity: 0.5;
+  color: var(--ink-4);
   font-size: 11px;
-  font-weight: 450;
   white-space: nowrap;
   background: transparent;
   border: none;
-  transition: opacity 0.15s, background 0.15s;
+  transition: color var(--dur-base) var(--ease), background var(--dur-base) var(--ease);
 }
-.terminal-tab:hover { opacity: 0.8; background: rgba(255,255,255,0.05); }
-.terminal-tab.active { opacity: 1; background: var(--term-bg); }
+.terminal-tab:hover {
+  color: var(--paper-edge);
+  background: rgba(255,255,255,0.06);
+}
+.terminal-tab.active {
+  color: var(--paper);
+  background: rgba(255,255,255,0.04);
+  box-shadow: inset 0 2px 0 var(--brand-ochre);  /* ochre accent bar */
+}
+.terminal-tab.is-dead { opacity: 0.5; }  /* shell exited / disconnected */
+
+.terminal-tab-close {
+  padding: 0 2px;
+  opacity: 0.6;
+  transition: opacity var(--dur-base) var(--ease);
+}
+.terminal-tab-close:hover { opacity: 1; }
 
 #terminal-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   flex-shrink: 0;
 }
 
+/* .sh-term-btn pattern (studio.css) */
 #terminal-actions button {
-  background: none;
+  background: transparent;
   border: none;
-  color: var(--term-fg);
-  opacity: 0.5;
+  color: var(--ink-4);
   cursor: pointer;
-  font-size: 12px;
-  padding: 4px 6px;
-  border-radius: var(--radius-sm);
-  transition: opacity 0.15s, background 0.15s;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-1);
+  transition: background var(--dur-base) var(--ease), color var(--dur-base) var(--ease);
 }
 #terminal-actions button:hover {
-  opacity: 1;
   background: rgba(255,255,255,0.08);
+  color: var(--paper);
+}
+#terminal-actions button svg {
+  width: 12px;
+  height: 12px;
 }
 
 #terminal-container {
   flex: 1;
   overflow: hidden;
   position: relative;
+}
+
+/* Fallback card when xterm itself failed to load (CDN unreachable):
+   the panel still opens and says why there is no shell. */
+.terminal-lib-error {
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: #E08573;
+  max-width: 64ch;
 }
 
 /* ─── Command Palette (placeholder) ──────────────────────── */

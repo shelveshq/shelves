@@ -60,6 +60,16 @@ class PtyManager:
         """
         master_fd, slave_fd = pty.openpty()
         shell = os.environ.get("SHELL", "/bin/zsh")
+
+        def _become_tty_session_leader() -> None:
+            # Runs in the child between fork and exec. The shell must own its
+            # session AND acquire the PTY as controlling terminal, or job
+            # control breaks (Ctrl+C not delivered, fg/bg dead, zsh's
+            # "can't set tty pgrp" warnings). setsid + TIOCSCTTY on stdin
+            # (already dup2'd to the slave) is the ptyprocess-standard recipe.
+            os.setsid()
+            fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
         try:
             self._proc = subprocess.Popen(
                 [shell],
@@ -69,6 +79,7 @@ class PtyManager:
                 close_fds=True,
                 env=os.environ.copy(),
                 cwd=self._cwd,
+                preexec_fn=_become_tty_session_leader,
             )
         finally:
             os.close(slave_fd)  # Close slave fd in parent — shell owns it now

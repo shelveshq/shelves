@@ -127,9 +127,15 @@ async def ws_terminal(ws: WebSocket) -> None:
                 if data_str:
                     mgr.write(data_str.encode())
             elif msg_type == "resize":
-                rows = int(msg.get("rows", 24))
-                cols = int(msg.get("cols", 80))
-                mgr.resize(rows, cols)
+                # Client input is untrusted: garbage must not raise into the
+                # receive loop (the outer except would silently kill the
+                # session). Clamp to a sane window instead.
+                try:
+                    rows = int(msg.get("rows", 24))
+                    cols = int(msg.get("cols", 80))
+                except (TypeError, ValueError):
+                    continue
+                mgr.resize(max(1, min(rows, 1000)), max(1, min(cols, 1000)))
             # Unknown types are silently ignored
     except Exception:
         pass
