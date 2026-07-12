@@ -64,3 +64,41 @@ def test_compiling_outranks_save_status():
 
 def test_cleared_save_status_yields_to_marker_counts():
     assert run_scenarios()["countsAfterClearMsg"] == "2 errors"
+
+
+# ─── Save-lifecycle races (PR #61 review) ────────────────────────────────────
+
+RACE_RUNNER = Path(__file__).parent / "support" / "run_save_race.mjs"
+
+
+@lru_cache(maxsize=1)
+def run_race_scenarios() -> dict[str, Any]:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    proc = subprocess.run(
+        [node, str(RACE_RUNNER)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, f"save race harness failed: {proc.stderr}"
+    return json.loads(proc.stdout)
+
+
+def test_new_save_attempt_clears_stale_failure_immediately():
+    """Copilot r3566202195: a retry must not render the old failure through
+    the 150ms 'Saving…' gate."""
+    out = run_race_scenarios()
+    assert out["statusRightAfterRetry"] is None
+    assert not out["msgRightAfterRetry"].startswith("Save failed")
+    assert out["statusAfterRetrySettles"] == "saved"
+
+
+def test_late_save_does_not_rewrite_breadcrumb_to_old_file():
+    """Copilot r3566202205: a save landing after a file switch must not
+    repaint the breadcrumb with the previous file's path."""
+    out = run_race_scenarios()
+    assert "b.yaml" in out["crumbAfterLateSave"]
+    assert "a.yaml" not in out["crumbAfterLateSave"]
+    assert out["newFileDirtyAfterLateSave"] is False

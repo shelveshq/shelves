@@ -468,13 +468,20 @@ const SAVED_FLASH_MS = 2000;
 let _saveGateTimer = null;
 let _savedClearTimer = null;
 
-async function saveCurrentFile() {
+export async function saveCurrentFile() {
   if (!state.currentFile) return;
   const content = state.editor.getValue();
   const path = state.currentFile.path;
 
   clearTimeout(_saveGateTimer);
   clearTimeout(_savedClearTimer);
+  // A new attempt clears the previous outcome NOW — a stale "Save failed"
+  // must not keep rendering through the 150ms gate (PR #61 r3566202195).
+  if (state.saveStatus !== null) {
+    state.saveStatus = null;
+    state.saveError = null;
+    updateStatusBar();
+  }
   _saveGateTimer = setTimeout(() => {
     state.saveStatus = 'saving';
     updateStatusBar();
@@ -496,15 +503,19 @@ async function saveCurrentFile() {
 
   if (ok) {
     // Only a CONFIRMED write clears dirty / arms the watcher-echo suppression.
-    // The path check guards the file-switched-mid-save race: don't clear the
-    // NEW file's dirty flag with the old file's save result.
-    if (state.currentFile?.path === path) state.currentFile.dirty = false;
+    // The path check guards the file-switched-mid-save race: the old file's
+    // save result must not clear the NEW file's dirty flag or repaint the
+    // breadcrumb with the old path (PR #61 r3566202205). The status message
+    // stays unconditional — recorded decision: it names no file.
     _lastSavePath = path;
     _lastSaveTs = Date.now();
     state.saveStatus = 'saved';
     state.saveError = null;
-    state.fileDeleted = false;   // a confirmed write recreates a deleted file
-    updateBreadcrumb(path, false);
+    if (state.currentFile?.path === path) {
+      state.currentFile.dirty = false;
+      state.fileDeleted = false;  // a confirmed write recreates a deleted file
+      updateBreadcrumb(path, false);
+    }
     updateStatusBar();
     _savedClearTimer = setTimeout(() => {
       if (state.saveStatus === 'saved') {
