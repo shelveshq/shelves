@@ -87,7 +87,11 @@ function createTerminal() {
   container.style.cssText = 'display:none; position:absolute; inset:8px 0 8px 12px;';
   document.getElementById('terminal-container').appendChild(container);
 
-  const entry = { id, term, fitAddon, ws: null, name, container, ro: null, userClosed: false };
+  const entry = {
+    id, term, fitAddon, ws: null, name, container, ro: null,
+    userClosed: false,  // × clicked — the close needs no message
+    exited: false,      // server sent {type:'exit'} — already displayed
+  };
   terminals.push(entry);
 
   const tabEl = document.createElement('div');
@@ -130,6 +134,7 @@ function createTerminal() {
       }
       term.write(bytes);
     } else if (msg.type === 'exit') {
+      entry.exited = true;
       term.writeln('\r\n\x1b[2m[Process exited]\x1b[0m');
       dimTab(id);
     }
@@ -141,13 +146,16 @@ function createTerminal() {
 
   // The server's auth/origin-reject path closes with 1008 — that fires
   // onclose, not onerror, so without this handler a token failure rendered
-  // nothing at all (the strongest "blank panel" path pre-SHE-47).
+  // nothing at all (the strongest "blank panel" path pre-SHE-47). Silence
+  // is only earned by a user-initiated close or an already-displayed shell
+  // exit — a bare 1000 (e.g. the server tearing down mid-session) still
+  // gets a marker, or the terminal dies with no message (PR #63 review).
   termWs.onclose = (event) => {
-    if (entry.userClosed) return;
+    if (entry.userClosed || entry.exited) return;
     if (event.code === 1008) {
       term.writeln('\r\n\x1b[31m[Terminal connection rejected (auth)]\x1b[0m');
       term.writeln('\x1b[2mThe terminal token is missing or stale. Reload the page to get a fresh one.\x1b[0m');
-    } else if (event.code !== 1000) {
+    } else {
       term.writeln(`\r\n\x1b[2m[Disconnected — code ${event.code}]\x1b[0m`);
     }
     dimTab(id);

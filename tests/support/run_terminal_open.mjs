@@ -170,9 +170,9 @@ ws1.onopen();
 out.firstMsg = ws1.sent[0];
 out.secondMsgType = ws1.sent[1]?.type;
 
-// 3. Shell exit renders a visible marker and dims the tab.
-ws1.onmessage({ data: JSON.stringify({ type: 'exit', code: 0 }) });
-out.exitLine = term1.lines.find((l) => l.includes('Process exited')) ?? null;
+// 3. Abnormal close (1006, no exit) writes a disconnect marker + dims the tab.
+ws1.onclose({ code: 1006 });
+out.disconnectLine = term1.lines.find((l) => l.includes('Disconnected')) ?? null;
 out.tab1Dead = allElements.find(isTab).classList.contains('is-dead');
 
 // 4. A 1008 close on a NEW terminal writes a visible, actionable auth message.
@@ -196,9 +196,29 @@ ws2.onclose({ code: 1006 });
 out.userClosedSuppressed = term2.lines.length === term2LinesBefore;
 out.term2Disposed = term2.disposed;
 
-// 6. Abnormal close (1006) on terminal 1 writes a disconnect marker.
-ws1.onclose({ code: 1006 });
-out.disconnectLine = term1.lines.find((l) => l.includes('Disconnected')) ?? null;
+// 6. Shell exit is displayed; the clean 1000 close that may follow stays
+//    silent — the exit line already told the story.
+getEl('terminal-new').fire('click', {});
+const ws3 = sockets[2];
+const term3 = instances[2];
+ws3.readyState = 1;
+ws3.onopen();
+ws3.onmessage({ data: JSON.stringify({ type: 'exit', code: 0 }) });
+out.exitLine = term3.lines.find((l) => l.includes('Process exited')) ?? null;
+const term3LinesAfterExit = term3.lines.length;
+ws3.onclose({ code: 1000 });
+out.silentCloseAfterExit = term3.lines.length === term3LinesAfterExit;
+
+// 7. A bare 1000 close WITHOUT a preceding exit must still write a marker —
+//    the server tearing down mid-session closes with a default 1000, and
+//    silence there is a dead terminal with no message (PR #63 review).
+getEl('terminal-new').fire('click', {});
+const ws4 = sockets[3];
+const term4 = instances[3];
+ws4.readyState = 1;
+ws4.onopen();
+ws4.onclose({ code: 1000 });
+out.bare1000Line = term4.lines.find((l) => l.includes('Disconnected — code 1000')) ?? null;
 
 console.log(JSON.stringify(out));
 process.exit(0);

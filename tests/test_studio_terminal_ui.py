@@ -72,9 +72,9 @@ def test_auth_precedes_resize_and_carries_meta_token():
 # ─── Failure visibility ──────────────────────────────────────────
 
 
-def test_shell_exit_is_visible_and_dims_tab():
+def test_abnormal_close_writes_disconnect_marker_and_dims_tab():
     out = run_harness("open")
-    assert out["exitLine"] is not None and "Process exited" in out["exitLine"]
+    assert out["disconnectLine"] is not None and "1006" in out["disconnectLine"]
     assert out["tab1Dead"] is True
 
 
@@ -85,15 +85,23 @@ def test_auth_reject_1008_writes_actionable_message():
     assert out["tab2Dead"] is True
 
 
-def test_abnormal_close_writes_disconnect_marker():
-    out = run_harness("open")
-    assert out["disconnectLine"] is not None and "1006" in out["disconnectLine"]
-
-
 def test_user_initiated_close_stays_silent():
     out = run_harness("open")
     assert out["userClosedSuppressed"] is True
     assert out["term2Disposed"] is True
+
+
+def test_shell_exit_is_visible_then_clean_close_is_silent():
+    out = run_harness("open")
+    assert out["exitLine"] is not None and "Process exited" in out["exitLine"]
+    assert out["silentCloseAfterExit"] is True
+
+
+def test_bare_1000_close_without_exit_is_visible():
+    """Server-side teardown closes with a default 1000 — that must not be
+    mistaken for a clean end (PR #63 review: silent dead terminal)."""
+    out = run_harness("open")
+    assert out["bare1000Line"] is not None
 
 
 # ─── xterm CDN import failure ────────────────────────────────────

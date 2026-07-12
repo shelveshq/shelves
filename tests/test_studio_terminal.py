@@ -166,3 +166,25 @@ def test_ws_malformed_resize_does_not_kill_session(client: TestClient) -> None:
         # Session must still be alive and interactive after both.
         ws.send_text(json.dumps({"type": "input", "data": "echo still-alive\r"}))
         _read_output_until(ws, b"still-alive")
+
+
+def test_ws_hostile_frames_do_not_kill_session(client: TestClient) -> None:
+    """Any post-auth frame is untrusted, not just resize (PR #63 review).
+
+    Non-dict JSON raised AttributeError on msg.get(); non-string input data
+    raised on .encode(). Both fell into the outer `except Exception: pass`,
+    tearing down the PTY and closing with a default 1000 — a silently dead
+    terminal, the exact SHE-47 failure mode. All of these must be ignored.
+    """
+    token = client.app.state.terminal_token  # type: ignore[attr-defined]
+    with client.websocket_connect("/ws/terminal", headers=ORIGIN) as ws:
+        _auth(ws, token)
+        ws.send_text("[1, 2]")  # valid JSON, not a dict
+        ws.send_text('"just a string"')
+        ws.send_text("not json {")  # malformed JSON
+        ws.send_text(json.dumps({"type": "input", "data": 123}))
+        ws.send_text(json.dumps({"type": "input", "data": {"a": 1}}))
+        ws.send_text(json.dumps({"type": "input", "data": None}))
+        # Session must still be alive and interactive after all of them.
+        ws.send_text(json.dumps({"type": "input", "data": "echo survived-hostile\r"}))
+        _read_output_until(ws, b"survived-hostile")
