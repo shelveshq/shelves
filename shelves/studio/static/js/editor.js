@@ -12,6 +12,29 @@ let _lastSavePath = null;
 let _lastSaveTs = 0;
 let compileSeq = 0;
 
+// ─── Schema Routing (SHE-48) ──────────────────────────────
+// The ChartSpec schema requires `sheet`/`data`, so applying it to every YAML
+// buffer gives dashboards/models phantom "Missing property" markers. The
+// schema is attached only while the open buffer classifies as chart YAML
+// (shelves:buffer-kind from main.js's compile router).
+let _monacoYamlHandle = null;   // return value of configureMonacoYaml
+let _chartSchema = null;        // the fetched /schema JSON
+let _schemaAttached = false;    // matches the initial configureMonacoYaml call
+
+function setSchemaAttached(on) {
+  if (!_monacoYamlHandle || !_chartSchema || on === _schemaAttached) return;
+  _schemaAttached = on;
+  // monaco-yaml v5's update() is async — fire-and-forget.
+  _monacoYamlHandle.update({
+    enableSchemaRequest: false,
+    schemas: on ? [{
+      uri: window.location.origin + '/schema',
+      fileMatch: ['*'],
+      schema: _chartSchema,
+    }] : [],
+  }).catch(console.warn);
+}
+
 export function setCompileFunction(fn) {
   _compileFn = fn;
 }
@@ -152,20 +175,22 @@ async function initMonacoEditor() {
     },
   });
 
-  let schema = null;
   try {
-    schema = await fetch('/schema').then(r => r.json());
+    _chartSchema = await fetch('/schema').then(r => r.json());
   } catch (e) {
     console.warn('[shelves] Could not load /schema for Monaco YAML:', e);
   }
 
-  configureMonacoYaml(monaco, {
+  // Start with NO schema attached: the boot buffer is empty, and the first
+  // shelves:buffer-kind (from the first compile after openFile) attaches the
+  // ChartSpec schema only if the buffer is chart YAML (SHE-48).
+  _monacoYamlHandle = configureMonacoYaml(monaco, {
     enableSchemaRequest: false,
-    schemas: schema ? [{
-      uri: window.location.origin + '/schema',
-      fileMatch: ['*'],
-      schema,
-    }] : [],
+    schemas: [],
+  });
+
+  document.addEventListener('shelves:buffer-kind', (e) => {
+    setSchemaAttached(e.detail.kind === 'chart');
   });
 
   state.editor = monaco.editor.create(document.getElementById('editor'), {
