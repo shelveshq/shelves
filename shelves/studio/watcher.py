@@ -42,19 +42,30 @@ def should_compile(path: Path) -> bool:
 
 async def watch_project(
     project_dir: Path,
+    scope_dirs: list[Path],
     on_change: Callable[[str, Path], Coroutine[Any, Any, None]],
     stop_event: asyncio.Event | None = None,
 ) -> None:
     """
-    Watch a project directory for file changes and invoke a callback.
+    Watch project_dir, invoking on_change only for files inside scope_dirs.
+
+    The watch is rooted at project_dir — which always exists — and the
+    SHE-39 scoping is an event filter, not a watch-root restriction. awatch
+    raises on nonexistent paths and never adds new roots, so rooting the
+    watch at the scope dirs themselves would silently lose live reload for
+    any dir created after startup (PR #62 review finding).
 
     Args:
-        project_dir: Absolute path to the project directory to watch.
+        project_dir: Absolute path of the project directory to watch.
+        scope_dirs: The configured charts/dashboards/models/assets dirs (or
+                    files); events outside all of them are dropped. Entries
+                    outside project_dir simply never match.
         on_change: Async callback invoked for each relevant file change.
                    Signature: on_change(event: str, path: Path)
                    where event is "created", "modified", or "deleted".
         stop_event: Optional asyncio.Event. When set, the watcher stops.
     """
+    scope = [d.resolve() for d in scope_dirs]
     try:
         async for changes in awatch(project_dir, stop_event=stop_event):
             for change_type, path_str in changes:
@@ -62,6 +73,11 @@ async def watch_project(
                 if path.name.startswith("."):
                     continue
                 if path.suffix not in WATCH_EXTENSIONS:
+                    continue
+                # Compare resolved-to-resolved: watchfiles reports real paths,
+                # which won't prefix-match a symlinked configured dir raw.
+                real = path.resolve()
+                if not any(real.is_relative_to(d) for d in scope):
                     continue
                 event = _CHANGE_NAMES.get(change_type, "modified")
                 try:

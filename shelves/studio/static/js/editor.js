@@ -539,38 +539,66 @@ function loadSettings() {
 }
 
 // ─── Resize Handle ─────────────────────────────────────────
+// Pointer-captured splitter on the sidebar-handle recipe (SHE-53/SHE-38):
+// capture routes every pointer event to the handle, so drags survive fast
+// moves, leaving the window, and the dashboard iframe — no overlay needed.
 function initResizeHandle() {
   const handle = document.getElementById('resize-handle');
   const workspace = document.getElementById('workspace');
+  const editorPane = document.getElementById('editor-pane');
+  const EDITOR_MIN_PX = 200, PREVIEW_MIN_PX = 320, DEFAULT_PCT = 25;
 
   const saved = localStorage.getItem(STORAGE_KEY_PANE_WIDTH);
   if (saved) {
     document.documentElement.style.setProperty('--editor-width', saved + '%');
   }
 
-  let dragging = false;
+  let dragging = false, rafId = null, pendingPct = null;
 
-  handle.addEventListener('mousedown', (e) => {
+  function clampPct(pxWidth) {
+    // pxWidth = desired editor-column width in px (cursor - editor pane left).
+    // Measuring from the editor pane's own left edge (not the workspace's) is
+    // what keeps the divider under the cursor whatever the sidebar state.
+    const wsRect = workspace.getBoundingClientRect();
+    const maxPx = wsRect.width - editorPane.getBoundingClientRect().left
+                + wsRect.left - PREVIEW_MIN_PX - 1; // preview keeps its minimum
+    const px = Math.max(EDITOR_MIN_PX, Math.min(maxPx, pxWidth));
+    return (px / wsRect.width) * 100;   // --editor-width is a % of the workspace grid
+  }
+
+  handle.addEventListener('pointerdown', (e) => {
     dragging = true;
     handle.classList.add('dragging');
-    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);   // survives fast drags + the dashboard iframe
+    e.preventDefault();                       // no text selection while dragging
   });
-
-  document.addEventListener('mousemove', (e) => {
+  handle.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    const rect = workspace.getBoundingClientRect();
-    let pct = ((e.clientX - rect.left) / rect.width) * 100;
-    pct = Math.max(15, Math.min(85, pct));
-    document.documentElement.style.setProperty('--editor-width', pct + '%');
+    pendingPct = clampPct(e.clientX - editorPane.getBoundingClientRect().left);
+    if (rafId == null) rafId = requestAnimationFrame(() => {
+      rafId = null;
+      if (pendingPct != null)
+        document.documentElement.style.setProperty('--editor-width', pendingPct + '%');
+    });
   });
-
-  document.addEventListener('mouseup', () => {
+  // pointerup is not the only way a drag ends: touch scrolling, OS gestures,
+  // or losing capture fire pointercancel/lostpointercapture instead, and the
+  // drag must terminate on those too or the handle sticks in dragging mode.
+  function endDrag(e) {
     if (!dragging) return;
     dragging = false;
     handle.classList.remove('dragging');
+    try { handle.releasePointerCapture(e.pointerId); } catch (_) {}  // capture may already be gone
     const current = parseFloat(
       getComputedStyle(document.documentElement).getPropertyValue('--editor-width')
-    ) || 50;
+    ) || DEFAULT_PCT;
     localStorage.setItem(STORAGE_KEY_PANE_WIDTH, current.toFixed(1));
+  }
+  handle.addEventListener('pointerup', endDrag);
+  handle.addEventListener('pointercancel', endDrag);
+  handle.addEventListener('lostpointercapture', endDrag);
+  handle.addEventListener('dblclick', () => {
+    document.documentElement.style.setProperty('--editor-width', DEFAULT_PCT + '%');
+    localStorage.setItem(STORAGE_KEY_PANE_WIDTH, String(DEFAULT_PCT));
   });
 }

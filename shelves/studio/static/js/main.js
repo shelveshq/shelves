@@ -5,7 +5,7 @@ import { state, COMPILE_DEBOUNCE_MS, updateStatusBar } from './state.js';
 import { connectWebSocket } from './websocket.js';
 import { initEditor, setCompileFunction, compileCurrentContent } from './editor.js';
 import { initPreview } from './preview.js';
-import { initSidebar } from './sidebar.js';
+import { initSidebar, toggleSidebar } from './sidebar.js';
 import {
   initDashboard, isDashboardYaml, compileDashboardContent,
   applyDashboardLayout, restoreChartLayout,
@@ -96,10 +96,22 @@ document.addEventListener('shelves:ws-reconnected', () => {
 });
 
 // ─── Status Bar Terminal Toggle ───────────────────────────
-const termBtn = document.querySelector('#statusbar .sh-status-term');
+// By id, not `.sh-status-term` — other chips may share that class.
+const termBtn = document.getElementById('terminal-toggle-status');
 if (termBtn) {
   termBtn.addEventListener('click', toggleTerminalPanel);
 }
+
+// ─── Sidebar Toggle Shortcut (SHE-41) ─────────────────────
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b' && !e.shiftKey && !e.altKey) {
+    // Never while typing in the embedded terminal — Ctrl+B is readline
+    // backward-char and the tmux prefix there.
+    if (document.getElementById('terminal-panel')?.contains(e.target)) return;
+    e.preventDefault();
+    toggleSidebar();
+  }
+});
 
 // ─── Cmd+K Placeholder ───────────────────────────────────
 document.addEventListener('keydown', (e) => {

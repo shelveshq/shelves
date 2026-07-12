@@ -9,6 +9,7 @@ const STORAGE_KEY_SIDEBAR_W   = 'shelves-studio-sidebar-width';
 
 const SIDEBAR_DEFAULT_W = 220;  // studio.css .sh-main tree column
 const SIDEBAR_MIN_W = 140;
+const SIDEBAR_RAIL_W = 36;      // collapsed rail strip (SHE-41)
 
 let treeData = [];
 let collapsedDirs = new Set(
@@ -30,16 +31,13 @@ const ICONS = {
   file:      `<svg ${ICON_ATTRS}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>`,                                    // file-text
 };
 
-function iconForEntry(entry) {
-  // Route by top-level group first. Until SHE-39 lands the tree is the raw
-  // project walk, so the first path segment is the best signal we have; the
-  // names below are the *default* configured dirs.
-  // TODO(SHE-39): switch to entry group type once /project ships typed groups.
+function iconForEntry(entry, groupRole) {
+  // /project ships typed top-level groups (SHE-39); files inherit their
+  // group's role regardless of what the configured dir is named.
   if (entry.type === 'dir') return ICONS.folder;
-  const top = entry.path.split('/')[0];
-  if (top === 'charts')     return ICONS.chart;
-  if (top === 'dashboards') return ICONS.dashboard;
-  if (top === 'models')     return ICONS.model;
+  if (groupRole === 'charts')     return ICONS.chart;
+  if (groupRole === 'dashboards') return ICONS.dashboard;
+  if (groupRole === 'models')     return ICONS.model;
   if (entry.path.endsWith('.json')) return ICONS.json;
   return ICONS.file;
 }
@@ -70,9 +68,11 @@ function renderTree() {
   highlightActiveFile();
 }
 
-function renderTreeLevel(entries, depth) {
+function renderTreeLevel(entries, depth, groupRole) {
   const container = document.createElement('div');
   for (const entry of entries) {
+    // Top-level entries carry the group role; descendants inherit it.
+    const role = entry.group ?? groupRole;
     const row = document.createElement('div');
     row.style.paddingLeft = (14 + depth * 12) + 'px';
 
@@ -97,7 +97,7 @@ function renderTreeLevel(entries, depth) {
       container.appendChild(row);
 
       if (!collapsedDirs.has(entry.path) && entry.children?.length) {
-        container.appendChild(renderTreeLevel(entry.children, depth + 1));
+        container.appendChild(renderTreeLevel(entry.children, depth + 1, role));
       }
     } else {
       row.className = 'tree-file';
@@ -107,7 +107,7 @@ function renderTreeLevel(entries, depth) {
       // must keep going through textContent, never innerHTML.
       const icon = document.createElement('span');
       icon.className = 'tree-icon';
-      icon.innerHTML = iconForEntry(entry);
+      icon.innerHTML = iconForEntry(entry, role);
 
       const name = document.createElement('span');
       name.className = 'tree-name';
@@ -169,8 +169,9 @@ function applySidebarVisibility() {
     handle.classList.remove('hidden');
   } else {
     sidebar.classList.add('collapsed');
-    // Zero the width + handle track; the stored width survives for reopen.
-    document.documentElement.style.setProperty('--sidebar-width', '0px');
+    // Narrow to the rail strip + zero the handle track; the stored width
+    // survives for reopen (SHE-41).
+    document.documentElement.style.setProperty('--sidebar-width', SIDEBAR_RAIL_W + 'px');
     document.documentElement.style.setProperty('--sidebar-handle-w', '0px');
     handle.classList.add('hidden');
   }
@@ -213,8 +214,26 @@ function initSidebarResize() {
 }
 
 // ─── Sidebar Toggle ────────────────────────────────────────
+// Arm the workspace slide for this toggle only (drag-resize must stay 1:1).
+function animateWorkspaceOnce() {
+  const ws = document.getElementById('workspace');
+  ws.classList.add('animating');
+  function clear(e) {
+    // transitionend BUBBLES: a 140ms hover/active transition ending on any
+    // descendant (buttons, tree rows) would kill the 240ms slide mid-flight.
+    // Only the workspace's own grid transition — or the no-arg fallback
+    // timer — may clear the class.
+    if (e && (e.target !== ws || e.propertyName !== 'grid-template-columns')) return;
+    ws.classList.remove('animating');
+    ws.removeEventListener('transitionend', clear);
+  }
+  ws.addEventListener('transitionend', clear);
+  setTimeout(clear, 400);   // fallback: browsers that can't animate grid tracks never fire the event
+}
+
 export function toggleSidebar() {
   sidebarVisible = !sidebarVisible;
+  animateWorkspaceOnce();
   applySidebarVisibility();
   localStorage.setItem(STORAGE_KEY_SIDEBAR_VIS, String(sidebarVisible));
 }
@@ -225,6 +244,7 @@ export function initSidebar() {
   initSidebarResize();
 
   document.getElementById('sidebar-toggle-inner').addEventListener('click', toggleSidebar);
+  document.getElementById('sidebar-rail')?.addEventListener('click', toggleSidebar);
 
   let treeRefreshTimer = null;
   document.addEventListener('shelves:file-change', () => {

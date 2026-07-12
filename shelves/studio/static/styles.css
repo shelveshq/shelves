@@ -180,6 +180,12 @@ body {
   grid-template-columns: var(--sidebar-width, 220px) var(--sidebar-handle-w, 1px) var(--editor-width, 25%) 1px 1fr;
   overflow: hidden;
 }
+/* Sliding collapse/expand (SHE-41). Gated behind a class that toggleSidebar
+   arms and transitionend clears — an always-on transition would rubber-band
+   the splitter drags, which write the same grid vars every pointermove. */
+#workspace.animating {
+  transition: grid-template-columns var(--dur-slow) var(--ease);
+}
 
 /* ─── Sidebar ─────────────────────────────────────────────── */
 #sidebar {
@@ -189,7 +195,27 @@ body {
   flex-direction: column;
   min-width: 0;
 }
-#sidebar.collapsed { display: none; }
+/* Collapsed = a narrow rail, not display:none (SHE-41): the strip stays as
+   the reopen affordance; the grid column narrows via --sidebar-width. */
+#sidebar.collapsed #sidebar-header,
+#sidebar.collapsed #file-tree { display: none; }
+#sidebar.collapsed { border-right: 1px solid var(--border-default); }
+
+#sidebar-rail {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color var(--dur-base) var(--ease), background var(--dur-base) var(--ease);
+}
+#sidebar.collapsed #sidebar-rail { display: flex; }
+#sidebar-rail:hover {
+  color: var(--text-primary);
+  background: var(--bg-workspace);
+}
 
 #sidebar-header {
   display: flex;
@@ -221,6 +247,7 @@ body {
   color: var(--text-primary);
   background: var(--bg-workspace);
 }
+#sidebar-toggle-inner svg { display: block; }
 
 #file-tree {
   flex: 1;
@@ -490,11 +517,12 @@ body {
 }
 #preview-pane.is-compiling .sh-compiling-pill { opacity: 1; }
 
-/* Outer wrapper — provides the gap between pane edge and the card */
+/* Outer wrapper — provides the gap between pane edge and the card.
+   Top/side gap matches #dashboard-preview so both views breathe the same. */
 #preview {
   width: 100%;
   flex: 1;
-  padding: 4px 20px 20px;
+  padding: 24px 24px 20px;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -547,7 +575,7 @@ body {
   display: none;
   flex: 1;
   min-height: 0;
-  margin: 4px 20px 20px;
+  margin: 24px 24px 20px;
   padding: 16px 18px;
   font-family: var(--font-mono);
   font-size: 12px;

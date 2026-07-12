@@ -1,18 +1,27 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 
+logger = logging.getLogger("shelves.studio.files")
+
 _TREE_EXTENSIONS = {".yaml", ".yml", ".json"}
 
 
 async def get_project(request: Request) -> JSONResponse:
-    """GET /project — return the project directory tree."""
-    project_dir: Path = request.app.state.project_dir
-    tree = build_tree(project_dir, project_dir)
+    """GET /project — return typed top-level groups from the configured dirs."""
+    state = request.app.state
+    groups = [
+        ("charts", state.charts_dir),
+        ("dashboards", state.dashboards_dir),
+        ("models", state.models_dir),
+        ("assets", state.assets_dir),
+    ]
+    tree = build_group_tree(state.project_dir, groups)
     return JSONResponse(tree)
 
 
@@ -65,6 +74,59 @@ def resolve_safe(project_dir: Path, rel: str) -> tuple[Path, str | None]:
         return project_dir, f"Path '{rel}' is outside the project directory"
 
     return resolved, None
+
+
+def build_group_tree(
+    project_dir: Path,
+    groups: list[tuple[str, Path]],
+) -> list[dict[str, Any]]:
+    """
+    Build the /project tree as typed top-level groups.
+
+    groups is [(role, dir), …] with role ∈ charts|dashboards|models|assets;
+    emits one entry per existing, non-empty configured dir:
+    {"name": dir.name, "type": "dir", "path": rel, "group": role, "children": …}.
+    Dirs that resolve outside project_dir are skipped with a warning
+    (resolve_safe stays single-root, so their files would be unreachable).
+    Duplicate dirs are emitted once — first role wins.
+
+    Known edge (accepted, PR #62 review): a configured dir equal to
+    project_dir walks the whole project into that group — deliberate, since
+    a flat project may legitimately set charts_dir=project_dir — and other
+    configured dirs nested inside it then appear twice (once in the walk,
+    once as their own group) sharing collapse-state keys.
+    """
+    root = project_dir.resolve()
+    seen: set[Path] = set()
+    entries: list[dict[str, Any]] = []
+    for role, d in groups:
+        rd = d.resolve()
+        if rd in seen:
+            continue
+        seen.add(rd)
+        if not rd.is_relative_to(root):
+            logger.warning(
+                "Configured %s dir %s is outside the project dir %s — omitted from the tree",
+                role,
+                rd,
+                root,
+            )
+            continue
+        if not rd.is_dir():
+            continue
+        children = build_tree(rd, root)
+        if not children:
+            continue
+        entries.append(
+            {
+                "name": rd.name,
+                "type": "dir",
+                "path": str(rd.relative_to(root)),
+                "group": role,
+                "children": children,
+            }
+        )
+    return entries
 
 
 def build_tree(path: Path, root: Path) -> list[dict[str, Any]]:
