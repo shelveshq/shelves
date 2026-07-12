@@ -168,37 +168,47 @@ export function toggleTerminalPanel() {
 }
 
 // ─── Terminal Resize Handle ─────────────────────────────
+// Pointer-captured on the sidebar-handle recipe (SHE-53/SHE-38) so drags
+// survive fast moves, leaving the window, and the dashboard iframe.
 function initTerminalResizeHandle() {
   const handle = document.getElementById('terminal-resize-handle');
   let dragging = false;
   let startY = 0;
   let startH = 0;
 
-  handle.addEventListener('mousedown', (e) => {
+  handle.addEventListener('pointerdown', (e) => {
     dragging = true;
     startY = e.clientY;
     startH = terminalPanelHeight;
     handle.classList.add('dragging');
-    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);   // survives fast drags + the dashboard iframe
+    e.preventDefault();                       // no text selection while dragging
   });
 
-  document.addEventListener('mousemove', (e) => {
+  handle.addEventListener('pointermove', (e) => {
     if (!dragging) return;
     const delta = startY - e.clientY;
     terminalPanelHeight = Math.max(80, Math.min(800, startH + delta));
     document.getElementById('terminal-panel').style.height = terminalPanelHeight + 'px';
   });
 
-  document.addEventListener('mouseup', () => {
+  // pointerup is not the only way a drag ends: touch scrolling, OS gestures,
+  // or losing capture fire pointercancel/lostpointercapture instead, and the
+  // drag must terminate on those too or the handle sticks in dragging mode.
+  function endDrag(e) {
     if (!dragging) return;
     dragging = false;
     handle.classList.remove('dragging');
+    try { handle.releasePointerCapture(e.pointerId); } catch (_) {}  // capture may already be gone
     localStorage.setItem(STORAGE_KEY_TERM_HEIGHT, String(terminalPanelHeight));
     if (activeTerminalId !== null) {
       const entry = terminals.find(t => t.id === activeTerminalId);
       if (entry) entry.fitAddon.fit();
     }
-  });
+  }
+  handle.addEventListener('pointerup', endDrag);
+  handle.addEventListener('pointercancel', endDrag);
+  handle.addEventListener('lostpointercapture', endDrag);
 }
 
 // ─── Init ──────────────────────────────────────────────────

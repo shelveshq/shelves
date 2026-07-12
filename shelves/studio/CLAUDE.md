@@ -62,7 +62,8 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     and `openFile` awaits its `editorReady` promise.
   - `state.js` — shared `state` object, constants, status-bar + breadcrumb render.
   - `editor.js` — Monaco setup, debounced compile (`POST /compile`), Cmd+S save,
-    compile-marker application, and the **editor/preview pane resize handle**;
+    compile-marker application, and the **pointer-captured editor/preview pane
+    resize handle**;
     ChartSpec schema is attached to monaco-yaml only while the open buffer
     classifies as chart YAML (`shelves:buffer-kind` event from main.js's router).
     Saves are confirmed: dirty clears only on a 2xx PUT; failures surface as a
@@ -123,8 +124,6 @@ See `docs/design-system/studio/README.md` for the full adherence analysis.
 
 ## Known gaps (as of 2026-07 studio UX epic)
 
-- **Pane resize is crude** — global `mousemove` listeners, no pointer capture, no
-  iframe-overlay during drag (dashboard iframe swallows mouse events mid-drag).
 - **No editor/preview history** — no back/forward between opened files.
 - **No file creation** from the UI (create/rename/delete); `PUT /file` can create,
   but nothing drives it.
