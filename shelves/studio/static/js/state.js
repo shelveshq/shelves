@@ -19,6 +19,13 @@ export const state = {
   // While not connected, live reload and watcher broadcasts are dead even
   // though local editing still works (SHE-66).
   wsStatus: 'connected',
+  // Save lifecycle (SHE-65): 'failed' persists until the next save attempt
+  // or until the user resumes typing; 'saved' is a transient flash.
+  saveStatus: null,     // null | 'saving' | 'saved' | 'failed'
+  saveError: null,      // string when failed
+  // The open file was deleted on disk (SHE-51). The buffer is never
+  // auto-closed — it may be the only surviving copy; saving recreates it.
+  fileDeleted: false,
 };
 
 // True when a compile/dashboard result belongs to the open buffer. Local
@@ -60,6 +67,30 @@ export function updateStatusBar() {
   if (state.compiling) {
     dot.className = 'sh-status-dot compiling';
     msg.textContent = 'Compiling…';
+    return;
+  }
+
+  // Save lifecycle (SHE-65) sits between compiling and the marker counts.
+  if (state.saveStatus === 'saving') {
+    dot.className = 'sh-status-dot compiling';
+    msg.textContent = 'Saving…';
+    return;
+  }
+  if (state.saveStatus === 'failed') {
+    dot.className = 'sh-status-dot error';
+    msg.textContent = `Save failed: ${state.saveError ?? 'unknown error'}`;
+    return;
+  }
+  if (state.saveStatus === 'saved') {
+    dot.className = 'sh-status-dot';
+    msg.textContent = 'Saved';
+    return;
+  }
+
+  // Deletion outranks compile chatter but not an in-flight compile (SHE-51).
+  if (state.fileDeleted && state.currentFile) {
+    dot.className = 'sh-status-dot warn';
+    msg.textContent = `${state.currentFile.path} deleted on disk — saving will recreate it`;
     return;
   }
 
@@ -106,6 +137,9 @@ export function updateBreadcrumb(path, dirty) {
   html += `<span class="sh-crumb-file">${fileName}</span>`;
   if (dirty) {
     html += '<span class="sh-dirty">•</span>';
+  }
+  if (state.fileDeleted) {
+    html += '<span class="sh-crumb-deleted">deleted</span>';
   }
   crumb.innerHTML = html;
 }

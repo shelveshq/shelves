@@ -122,6 +122,18 @@ body {
   line-height: 1;
   margin-left: 3px;
 }
+.sh-crumb-deleted {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-radius: var(--r-1);
+  padding: 1px 5px;
+  margin-left: 6px;
+}
 
 .sh-header-right {
   display: flex;

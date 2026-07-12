@@ -234,6 +234,19 @@ class TestFriendlyErrors:
         assert err["line"] == 2
         assert "friendly_msg" in err
 
+    def test_schema_requires_sheet_and_data(self, tmp_path: Path):
+        """Pin the premise behind Studio's schema routing (SHE-48).
+
+        editor.js attaches the ChartSpec schema only to chart buffers because
+        its required set would flag every dashboard/model YAML. If the
+        required set changes, that routing rationale changed — revisit it.
+        """
+        client = _make_client(tmp_path)
+        resp = client.get("/schema")
+        assert resp.status_code == 200
+        schema = resp.json()
+        assert set(schema["required"]) == {"sheet", "data"}
+
     def test_runtime_error_structured(self, tmp_path: Path):
         models = tmp_path / "models"
         models.mkdir(exist_ok=True)

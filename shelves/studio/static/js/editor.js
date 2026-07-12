@@ -12,6 +12,29 @@ let _lastSavePath = null;
 let _lastSaveTs = 0;
 let compileSeq = 0;
 
+// ─── Schema Routing (SHE-48) ──────────────────────────────
+// The ChartSpec schema requires `sheet`/`data`, so applying it to every YAML
+// buffer gives dashboards/models phantom "Missing property" markers. The
+// schema is attached only while the open buffer classifies as chart YAML
+// (shelves:buffer-kind from main.js's compile router).
+let _monacoYamlHandle = null;   // return value of configureMonacoYaml
+let _chartSchema = null;        // the fetched /schema JSON
+let _schemaAttached = false;    // matches the initial configureMonacoYaml call
+
+function setSchemaAttached(on) {
+  if (!_monacoYamlHandle || !_chartSchema || on === _schemaAttached) return;
+  _schemaAttached = on;
+  // monaco-yaml v5's update() is async — fire-and-forget.
+  _monacoYamlHandle.update({
+    enableSchemaRequest: false,
+    schemas: on ? [{
+      uri: window.location.origin + '/schema',
+      fileMatch: ['*'],
+      schema: _chartSchema,
+    }] : [],
+  }).catch(console.warn);
+}
+
 export function setCompileFunction(fn) {
   _compileFn = fn;
 }
@@ -83,22 +106,16 @@ async function initMonacoEditor() {
   window.MonacoEnvironment = {
     getWorker(_, label) {
       if (label === 'yaml') {
-        // monaco-yaml v5 ships its worker at the package ROOT as an ES module.
-        // The old `lib/esm/yaml.worker.js` path is a v4-era layout and 404s on
-        // every 5.x, which blanked the whole editor (SHE-64).
-        //
-        // A Worker's top-level script must be SAME-ORIGIN — a cross-origin CDN
-        // URL is rejected ("cannot be accessed from origin ..."), even with
-        // { type: 'module' }. So we point the worker at a same-origin blob whose
-        // module body `import`s the cross-origin CDN build: module imports (not
-        // the worker script itself) ARE allowed cross-origin under CORS, which
-        // jsdelivr serves. We use jsdelivr's `/+esm` build so the worker's bare
-        // imports are rewritten to absolute URLs the module graph can resolve.
-        // Version pinned (not the floating `@5` tag) to avoid the silent CDN
-        // drift that caused this (see SHE-6 / SHE-76).
-        const workerUrl = 'https://cdn.jsdelivr.net/npm/monaco-yaml@5.5.1/yaml.worker.js/+esm';
-        const blob = new Blob([`import ${JSON.stringify(workerUrl)};`], { type: 'text/javascript' });
-        return new Worker(URL.createObjectURL(blob), { type: 'module' });
+        // Vendored same-origin bundle (static/vendor/), built from
+        // monaco-yaml@5.5.1's root yaml.worker.js WITH monaco-editor@0.52.2 —
+        // the same version the main editor pins below. The previous jsdelivr
+        // `/+esm` worker silently bundled monaco-editor@0.33.0 (below
+        // monaco-yaml's own >=0.36 peer range): the 0.33 worker protocol
+        // choked on 0.52's handshake ("e is not iterable"), Monaco fell back
+        // to a main-thread worker that crashed the same way, and every
+        // monaco-yaml diagnostic was dead. Same-origin also drops the blob
+        // indirection the cross-origin CDN worker needed (SHE-48/SHE-77).
+        return new Worker('/static/vendor/monaco-yaml-worker-5.5.1.min.js');
       }
       // monaco-editor's own worker is a classic (UMD) script. A cross-origin
       // *classic* worker isn't allowed, so wrap it in a same-origin blob that
@@ -152,20 +169,22 @@ async function initMonacoEditor() {
     },
   });
 
-  let schema = null;
   try {
-    schema = await fetch('/schema').then(r => r.json());
+    _chartSchema = await fetch('/schema').then(r => r.json());
   } catch (e) {
     console.warn('[shelves] Could not load /schema for Monaco YAML:', e);
   }
 
-  configureMonacoYaml(monaco, {
+  // Start with NO schema attached: the boot buffer is empty, and the first
+  // shelves:buffer-kind (from the first compile after openFile) attaches the
+  // ChartSpec schema only if the buffer is chart YAML (SHE-48).
+  _monacoYamlHandle = configureMonacoYaml(monaco, {
     enableSchemaRequest: false,
-    schemas: schema ? [{
-      uri: window.location.origin + '/schema',
-      fileMatch: ['*'],
-      schema,
-    }] : [],
+    schemas: [],
+  });
+
+  document.addEventListener('shelves:buffer-kind', (e) => {
+    setSchemaAttached(e.detail.kind === 'chart');
   });
 
   state.editor = monaco.editor.create(document.getElementById('editor'), {
@@ -187,6 +206,13 @@ async function initMonacoEditor() {
     if (state.currentFile && !_suppressDirty) {
       state.currentFile.dirty = true;
     }
+    // Typing means the save outcome was seen and the user moved on — the
+    // failed/saved line yields to normal compile status; the dirty dot still
+    // communicates unsaved state (SHE-65).
+    if (state.saveStatus === 'failed' || state.saveStatus === 'saved') {
+      state.saveStatus = null;
+      state.saveError = null;
+    }
     updateBreadcrumb(state.currentFile?.path ?? null, state.currentFile?.dirty ?? false);
     clearTimeout(state.compileTimer);
     if (_compileFn) {
@@ -199,8 +225,32 @@ async function initMonacoEditor() {
     () => saveCurrentFile(),
   );
 
+  // Closing/reloading the tab with unsaved changes must prompt (SHE-51).
+  // preventDefault shows the browser's generic dialog; custom text is ignored.
+  window.addEventListener('beforeunload', (e) => {
+    if (state.currentFile?.dirty) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
   document.addEventListener('shelves:file-change', (e) => {
     const msg = e.detail;
+    // Deleted-on-disk tracking (SHE-51). The buffer stays open and editable;
+    // Cmd+S recreates the file (and clears the notice).
+    if (state.currentFile && msg.path === state.currentFile.path) {
+      if (msg.event === 'deleted') {
+        state.fileDeleted = true;
+        updateBreadcrumb(state.currentFile.path, state.currentFile.dirty);
+        updateStatusBar();
+        return;                    // do NOT fall through to the reload fetch
+      }
+      if (state.fileDeleted && (msg.event === 'created' || msg.event === 'modified')) {
+        state.fileDeleted = false; // resurrected externally
+        updateBreadcrumb(state.currentFile.path, state.currentFile.dirty);
+        updateStatusBar();
+      }
+    }
     if (state.currentFile && state.currentFile.path === msg.path && !state.currentFile.dirty) {
       if (msg.path === _lastSavePath && (Date.now() - _lastSaveTs) < 2000) return;
       fetch(`/file?path=${encodeURIComponent(msg.path)}`)
@@ -354,6 +404,13 @@ export async function compileCurrentContent() {
 
 // ─── Open File ────────────────────────────────────────────
 export async function openFile(path) {
+  // Dirty-buffer guard (SHE-51): runs synchronously BEFORE anything arms a
+  // veil or compile state, so a cancel leaves the session exactly as it was.
+  if (state.currentFile?.path === path) return;               // same file: no-op
+  if (state.currentFile?.dirty) {
+    const ok = window.confirm(`Discard unsaved changes to ${state.currentFile.path}?`);
+    if (!ok) return;
+  }
   // No editor, no open: wait for Monaco (a click during boot), and if the
   // editor failed to load, the boot error card already explains the state —
   // don't arm a veil that nothing will ever terminate.
@@ -380,6 +437,7 @@ export async function openFile(path) {
     }
     const { content } = await resp.json();
     state.currentFile = { path, dirty: false };
+    state.fileDeleted = false;
     _suppressDirty = true;
     state.editor.setValue(content);
     _suppressDirty = false;
@@ -400,21 +458,76 @@ function notifyActiveFileChanged() {
   document.dispatchEvent(new CustomEvent('shelves:active-file-changed'));
 }
 
-// ─── Save ──────────────────────────────────────────────────
-async function saveCurrentFile() {
+// ─── Save (SHE-65) ────────────────────────────────────────
+// The dirty flag clears ONLY on a confirmed 2xx — a rejected PUT used to
+// resolve the fetch and clear dirty as if it saved. Feedback runs through
+// state.saveStatus: 150ms-gated "Saving…" (fast saves stay silent), a 2s
+// "Saved" flash, and a persistent "Save failed: <reason>".
+const SAVE_PENDING_GATE_MS = 150;   // same patience gate as the compile veil
+const SAVED_FLASH_MS = 2000;
+let _saveGateTimer = null;
+let _savedClearTimer = null;
+
+export async function saveCurrentFile() {
   if (!state.currentFile) return;
   const content = state.editor.getValue();
+  const path = state.currentFile.path;
+
+  clearTimeout(_saveGateTimer);
+  clearTimeout(_savedClearTimer);
+  // A new attempt clears the previous outcome NOW — a stale "Save failed"
+  // must not keep rendering through the 150ms gate (PR #61 r3566202195).
+  if (state.saveStatus !== null) {
+    state.saveStatus = null;
+    state.saveError = null;
+    updateStatusBar();
+  }
+  _saveGateTimer = setTimeout(() => {
+    state.saveStatus = 'saving';
+    updateStatusBar();
+  }, SAVE_PENDING_GATE_MS);
+
+  let ok = false;
+  let reason = null;
   try {
-    await fetch(`/file?path=${encodeURIComponent(state.currentFile.path)}`, {
+    const resp = await fetch(`/file?path=${encodeURIComponent(path)}`, {
       method: 'PUT',
       body: content,
     });
-    state.currentFile.dirty = false;
-    _lastSavePath = state.currentFile.path;
-    _lastSaveTs = Date.now();
-    updateBreadcrumb(state.currentFile.path, false);
+    ok = resp.ok;
+    if (!ok) reason = (await resp.text().catch(() => '')) || `HTTP ${resp.status}`;
   } catch (e) {
-    console.error('[shelves] save error:', e);
+    reason = String(e);
+  }
+  clearTimeout(_saveGateTimer);
+
+  if (ok) {
+    // Only a CONFIRMED write clears dirty / arms the watcher-echo suppression.
+    // The path check guards the file-switched-mid-save race: the old file's
+    // save result must not clear the NEW file's dirty flag or repaint the
+    // breadcrumb with the old path (PR #61 r3566202205). The status message
+    // stays unconditional — recorded decision: it names no file.
+    _lastSavePath = path;
+    _lastSaveTs = Date.now();
+    state.saveStatus = 'saved';
+    state.saveError = null;
+    if (state.currentFile?.path === path) {
+      state.currentFile.dirty = false;
+      state.fileDeleted = false;  // a confirmed write recreates a deleted file
+      updateBreadcrumb(path, false);
+    }
+    updateStatusBar();
+    _savedClearTimer = setTimeout(() => {
+      if (state.saveStatus === 'saved') {
+        state.saveStatus = null;
+        updateStatusBar();
+      }
+    }, SAVED_FLASH_MS);
+  } else {
+    state.saveStatus = 'failed';
+    state.saveError = reason;
+    console.error('[shelves] save failed:', reason);
+    updateStatusBar();   // dirty flag untouched; breadcrumb keeps the dot
   }
 }
 

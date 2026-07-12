@@ -37,9 +37,16 @@ function classifyContent(content) {
   return 'other';
 }
 
+// Tell listeners (editor.js schema routing, SHE-48) what kind of buffer the
+// router just classified. Every compile pass announces; listeners dedupe.
+function announceBufferKind(kind) {   // 'chart' | 'dashboard' | 'other' | 'empty'
+  document.dispatchEvent(new CustomEvent('shelves:buffer-kind', { detail: { kind } }));
+}
+
 function compileDashboardOrChart() {
   const content = state.editor.getValue();
   if (!content.trim()) {
+    announceBufferKind('empty');
     state.compiling = false;
     if (state.dashboardMode) restoreChartLayout();
     document.dispatchEvent(new CustomEvent('shelves:compile-result', {
@@ -53,6 +60,7 @@ function compileDashboardOrChart() {
   }
 
   const kind = classifyContent(content);
+  announceBufferKind(kind);
   if (kind === 'other') {
     // Skip the POST entirely — the backend would just return {spec:null,errors:[]}
     state.compiling = false;
