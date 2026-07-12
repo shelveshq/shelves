@@ -205,6 +205,39 @@ dispatch('shelves:dashboard-result', {
 });
 out.dashVeilAfterError = previewPane.classList.contains('is-compiling');
 
+// ── PR#60 r3565908553: a stale rendered signal must not end another file's veil ──
+// dashboards/x.yaml's result is accepted but its iframe is still rendering
+// when the user switches to dashboards/y.yaml — x's late postMessage must not
+// end the veil y's compile just armed. The rendered event must carry the path
+// captured at accept time so preview.js's guard can reject it.
+state.currentFile = { path: 'dashboards/x.yaml', dirty: false };
+state.dashboardMode = true;
+state.currentView = 'chart';
+dispatch('shelves:compile-start');
+await sleep(200);
+dispatch('shelves:dashboard-result', {
+  html: '<html>slow</html>', errors: [], warnings: [], component_tree: [],
+});
+// switch to y.yaml before x's iframe reports rendered
+state.currentFile = { path: 'dashboards/y.yaml', dirty: false };
+dispatch('shelves:compile-start');
+await sleep(200);
+out.staleVeilArmed = previewPane.classList.contains('is-compiling');
+fireWindowEvent('message', { data: { type: 'shelves:rendered' }, source: undefined });
+out.veilAfterStaleRendered = previewPane.classList.contains('is-compiling');
+
+// ── PR#60 r3565908559: leaving dashboard mode disarms the rendered signal ──
+// y's result arms the signal; restoreChartLayout must clear it so a late
+// message/timer can't dispatch a rendered event into chart mode at all.
+dispatch('shelves:dashboard-result', {
+  html: '<html>y</html>', errors: [], warnings: [], component_tree: [],
+});
+let renderedAfterRestore = 0;
+document.addEventListener('shelves:dashboard-rendered', () => { renderedAfterRestore += 1; });
+restoreChartLayout();
+fireWindowEvent('message', { data: { type: 'shelves:rendered' }, source: undefined });
+out.renderedDispatchedAfterRestore = renderedAfterRestore;
+
 // ── SHE-77: chart render with the vegaEmbed global missing ──
 // The window stub never defines vegaEmbed, so this exercises the real failure
 // mode (render-lib script blocked/failed): the guard must paint a named error

@@ -54,10 +54,13 @@ function showEditorBootError(e) {
 
 export async function initEditor() {
   initResizeHandle();  // the pane splitter needs no Monaco — never gate it
-  const timeout = new Promise((_, rej) => setTimeout(
-    () => rej(new Error(`Timed out after ${EDITOR_LOAD_TIMEOUT_MS / 1000}s`)),
-    EDITOR_LOAD_TIMEOUT_MS,
-  ));
+  let timeoutId = null;
+  const timeout = new Promise((_, rej) => {
+    timeoutId = setTimeout(
+      () => rej(new Error(`Timed out after ${EDITOR_LOAD_TIMEOUT_MS / 1000}s`)),
+      EDITOR_LOAD_TIMEOUT_MS,
+    );
+  });
   try {
     await Promise.race([initMonacoEditor(), timeout]);
     hideEditorBoot();
@@ -68,6 +71,8 @@ export async function initEditor() {
     console.error('[shelves] editor failed to load:', e);
     showEditorBootError(e);
     _editorReadyReject(e);
+  } finally {
+    clearTimeout(timeoutId);  // don't leave a 20s timer pending after settle
   }
 }
 

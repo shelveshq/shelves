@@ -28,3 +28,17 @@ def test_veil_ends_on_rendered_signal():
 
 def test_veil_ends_immediately_on_error_result():
     assert run_scenarios()["dashVeilAfterError"] is False
+
+
+class TestStaleRenderedSignal:
+    """PR#60 review (r3565908553, r3565908559): a rendered signal armed for
+    one file must not leak into another file's compile — the event carries
+    the path captured at accept time, and leaving dashboard mode disarms it."""
+
+    def test_stale_signal_does_not_end_new_files_veil(self):
+        out = run_scenarios()
+        assert out["staleVeilArmed"] is True
+        assert out["veilAfterStaleRendered"] is True
+
+    def test_restore_chart_layout_disarms_the_signal(self):
+        assert run_scenarios()["renderedDispatchedAfterRestore"] == 0

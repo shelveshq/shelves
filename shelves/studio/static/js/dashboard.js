@@ -32,6 +32,7 @@ const RENDERED_FALLBACK_MS = 15000;  // absolute cap from srcdoc assignment
 const RENDERED_AFTER_LOAD_MS = 3000; // iframe loaded but no signal arrived
 
 let awaitingRendered = false;
+let awaitingRenderedPath = null;  // file the armed signal belongs to
 let renderedTimer = null;
 
 function armRenderedFallback(ms) {
@@ -44,7 +45,19 @@ function signalDashboardRendered() {
   renderedTimer = null;
   if (!awaitingRendered) return;
   awaitingRendered = false;
-  document.dispatchEvent(new CustomEvent('shelves:dashboard-rendered'));
+  // Stamp the path captured when the result was accepted: a slow iframe's
+  // late signal must not pass preview.js's resultIsForCurrentFile guard and
+  // end a veil armed for a DIFFERENT file opened meanwhile (PR#60 review).
+  document.dispatchEvent(new CustomEvent('shelves:dashboard-rendered', {
+    detail: { path: awaitingRenderedPath },
+  }));
+}
+
+function disarmRenderedSignal() {
+  clearTimeout(renderedTimer);
+  renderedTimer = null;
+  awaitingRendered = false;
+  awaitingRenderedPath = null;
 }
 
 // ─── Dashboard Detection ──────────────────────────────────
@@ -152,6 +165,9 @@ export function restoreChartLayout() {
   state.dashboardMode = false;
   state.dashboardErrors = 0;
   state.dashboardWarnings = 0;
+  // A signal armed for the departed dashboard must not fire into chart mode
+  // via a late postMessage or fallback timer (PR#60 review).
+  disarmRenderedSignal();
   state.currentView = 'chart';
   document.getElementById('preview-pane').classList.remove('is-dashboard');
   elDashboardPreview.style.display = 'none';
@@ -200,7 +216,10 @@ export function initDashboard() {
     // Every result arms exactly one rendered signal (SHE-37 invariant):
     // error/JSON paths fire it synchronously inside renderDashboardView; the
     // iframe path fires it on the page's postMessage or a fallback timer.
+    // Broadcasts carry the file's path; local compiles are stamped with the
+    // open file so a late signal can be attributed (see signalDashboardRendered).
     awaitingRendered = true;
+    awaitingRenderedPath = e.detail.path ?? state.currentFile?.path ?? null;
     renderDashboardView(lastDashboardResult);
   });
 

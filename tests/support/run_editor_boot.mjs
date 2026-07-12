@@ -60,6 +60,22 @@ globalThis.fetch = (...args) => {
   return Promise.reject(new Error('no network in harness'));
 };
 
+// Record timer lifecycles so the load-timeout timer can be asserted cleared
+// once initEditor settles (PR#60 r3565908567).
+const timersCreated = new Map();  // id -> delay ms
+const timersCleared = new Set();
+const realSetTimeout = globalThis.setTimeout;
+const realClearTimeout = globalThis.clearTimeout;
+globalThis.setTimeout = (fn, ms, ...args) => {
+  const id = realSetTimeout(fn, ms, ...args);
+  timersCreated.set(id, ms);
+  return id;
+};
+globalThis.clearTimeout = (id) => {
+  timersCleared.add(id);
+  realClearTimeout(id);
+};
+
 const { initEditor, openFile } = await import('../../shelves/studio/static/js/editor.js');
 
 const out = {};
@@ -75,6 +91,12 @@ try {
 out.initEditorPropagatedError = initThrew;
 out.bootIsError = boot.classList.contains('is-error');
 out.bootHtml = boot.innerHTML;
+
+// The 20s load-timeout timer must be cleared once the race settles — a
+// pending timer holds the event loop / clutters debuggers for no reason.
+const timeoutTimers = [...timersCreated].filter(([, ms]) => ms === 20000);
+out.bootTimeoutTimerCount = timeoutTimers.length;
+out.bootTimeoutTimerCleared = timeoutTimers.every(([id]) => timersCleared.has(id));
 
 // A file click after editor failure: no throw, no fetch, no veil armed.
 let openThrew = false;

@@ -63,6 +63,13 @@ class TestEditorLoadFailure:
         assert out["openFileFetchCount"] == 0
         assert "shelves:compile-start" not in out["openFileDispatched"]
 
+    def test_load_timeout_timer_cleared_after_settle(self):
+        """PR#60 review (r3565908567): the 20s timeout timer must not stay
+        pending after the boot race settles."""
+        out = run_boot_failure()
+        assert out["bootTimeoutTimerCount"] == 1
+        assert out["bootTimeoutTimerCleared"] is True
+
 
 class TestParallelBoot:
     def test_main_no_longer_awaits_editor_or_terminal(self):
