@@ -212,6 +212,13 @@ async function initMonacoEditor() {
     if (state.currentFile && !_suppressDirty) {
       state.currentFile.dirty = true;
     }
+    // Typing means the save outcome was seen and the user moved on — the
+    // failed/saved line yields to normal compile status; the dirty dot still
+    // communicates unsaved state (SHE-65).
+    if (state.saveStatus === 'failed' || state.saveStatus === 'saved') {
+      state.saveStatus = null;
+      state.saveError = null;
+    }
     updateBreadcrumb(state.currentFile?.path ?? null, state.currentFile?.dirty ?? false);
     clearTimeout(state.compileTimer);
     if (_compileFn) {
@@ -425,21 +432,64 @@ function notifyActiveFileChanged() {
   document.dispatchEvent(new CustomEvent('shelves:active-file-changed'));
 }
 
-// ─── Save ──────────────────────────────────────────────────
+// ─── Save (SHE-65) ────────────────────────────────────────
+// The dirty flag clears ONLY on a confirmed 2xx — a rejected PUT used to
+// resolve the fetch and clear dirty as if it saved. Feedback runs through
+// state.saveStatus: 150ms-gated "Saving…" (fast saves stay silent), a 2s
+// "Saved" flash, and a persistent "Save failed: <reason>".
+const SAVE_PENDING_GATE_MS = 150;   // same patience gate as the compile veil
+const SAVED_FLASH_MS = 2000;
+let _saveGateTimer = null;
+let _savedClearTimer = null;
+
 async function saveCurrentFile() {
   if (!state.currentFile) return;
   const content = state.editor.getValue();
+  const path = state.currentFile.path;
+
+  clearTimeout(_saveGateTimer);
+  clearTimeout(_savedClearTimer);
+  _saveGateTimer = setTimeout(() => {
+    state.saveStatus = 'saving';
+    updateStatusBar();
+  }, SAVE_PENDING_GATE_MS);
+
+  let ok = false;
+  let reason = null;
   try {
-    await fetch(`/file?path=${encodeURIComponent(state.currentFile.path)}`, {
+    const resp = await fetch(`/file?path=${encodeURIComponent(path)}`, {
       method: 'PUT',
       body: content,
     });
-    state.currentFile.dirty = false;
-    _lastSavePath = state.currentFile.path;
-    _lastSaveTs = Date.now();
-    updateBreadcrumb(state.currentFile.path, false);
+    ok = resp.ok;
+    if (!ok) reason = (await resp.text().catch(() => '')) || `HTTP ${resp.status}`;
   } catch (e) {
-    console.error('[shelves] save error:', e);
+    reason = String(e);
+  }
+  clearTimeout(_saveGateTimer);
+
+  if (ok) {
+    // Only a CONFIRMED write clears dirty / arms the watcher-echo suppression.
+    // The path check guards the file-switched-mid-save race: don't clear the
+    // NEW file's dirty flag with the old file's save result.
+    if (state.currentFile?.path === path) state.currentFile.dirty = false;
+    _lastSavePath = path;
+    _lastSaveTs = Date.now();
+    state.saveStatus = 'saved';
+    state.saveError = null;
+    updateBreadcrumb(path, false);
+    updateStatusBar();
+    _savedClearTimer = setTimeout(() => {
+      if (state.saveStatus === 'saved') {
+        state.saveStatus = null;
+        updateStatusBar();
+      }
+    }, SAVED_FLASH_MS);
+  } else {
+    state.saveStatus = 'failed';
+    state.saveError = reason;
+    console.error('[shelves] save failed:', reason);
+    updateStatusBar();   // dirty flag untouched; breadcrumb keeps the dot
   }
 }
 

@@ -61,6 +61,8 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     compile-marker application, and the **editor/preview pane resize handle**;
     ChartSpec schema is attached to monaco-yaml only while the open buffer
     classifies as chart YAML (`shelves:buffer-kind` event from main.js's router).
+    Saves are confirmed: dirty clears only on a 2xx PUT; failures surface as a
+    persistent status-bar error (150ms-gated "Saving…" / 2s "Saved" otherwise).
   - `preview.js` — chart render via `vegaEmbed` (with the shared label patch),
     JSON view, error overlay, `ResizeObserver` re-fit.
   - `dashboard.js` — dashboard compile + iframe preview, canvas scaling / zoom.
