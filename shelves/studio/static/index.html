@@ -60,6 +60,14 @@
         <span>Project</span>
         <button id="sidebar-toggle-inner" title="Collapse sidebar">&#9664;</button>
       </div>
+      <!-- Collapsed rail (SHE-41): a narrow strip that stands in for the
+           sidebar when collapsed; clicking it restores the full width. -->
+      <div id="sidebar-rail" title="Open file explorer (Cmd/Ctrl+B)" role="button" aria-label="Open file explorer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+          <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>
+        </svg>
+      </div>
       <!-- Pending state from FIRST PAINT (SHE-64): fetchTree swaps it for the
            real tree (or the error/empty placeholder) — never a blank strip. -->
       <div id="file-tree"><div class="tree-placeholder">Loading project&hellip;</div></div>
@@ -123,14 +131,6 @@
       <span class="sh-status-msg">No file open</span>
     </div>
     <div class="sh-status-right">
-      <button class="sh-status-term" id="sidebar-toggle-status" title="Toggle file explorer (Cmd/Ctrl+B)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-             stroke-linecap="round" stroke-linejoin="round">
-          <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>
-        </svg>
-        Files
-      </button>
-      <span class="sh-status-sep">|</span>
       <button class="sh-status-term" id="terminal-toggle-status" title="Toggle terminal (Ctrl+`)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>

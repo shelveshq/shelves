@@ -139,14 +139,14 @@ class TestLabelPatchAsset:
 
 
 class TestIndexSidebarToggle:
-    """The status bar must carry a persistent sidebar toggle so a collapsed
-    sidebar can be reopened (SHE-41)."""
+    """A collapsed sidebar must keep a reopen affordance: the narrow rail
+    strip that stands in for it and restores the full width (SHE-41)."""
 
-    def test_index_has_sidebar_toggle(self, tmp_path: Path):
+    def test_index_has_sidebar_rail(self, tmp_path: Path):
         client = _make_client(tmp_path)
         resp = client.get("/")
         assert resp.status_code == 200
-        assert 'id="sidebar-toggle-status"' in resp.text
+        assert 'id="sidebar-rail"' in resp.text
 
 
 class TestFriendlyErrors:

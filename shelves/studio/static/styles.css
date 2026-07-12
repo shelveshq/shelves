@@ -189,7 +189,27 @@ body {
   flex-direction: column;
   min-width: 0;
 }
-#sidebar.collapsed { display: none; }
+/* Collapsed = a narrow rail, not display:none (SHE-41): the strip stays as
+   the reopen affordance; the grid column narrows via --sidebar-width. */
+#sidebar.collapsed #sidebar-header,
+#sidebar.collapsed #file-tree { display: none; }
+#sidebar.collapsed { border-right: 1px solid var(--border-default); }
+
+#sidebar-rail {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: color var(--dur-base) var(--ease), background var(--dur-base) var(--ease);
+}
+#sidebar.collapsed #sidebar-rail { display: flex; }
+#sidebar-rail:hover {
+  color: var(--text-primary);
+  background: var(--bg-workspace);
+}
 
 #sidebar-header {
   display: flex;

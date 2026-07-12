@@ -96,7 +96,7 @@ document.addEventListener('shelves:ws-reconnected', () => {
 });
 
 // ─── Status Bar Terminal Toggle ───────────────────────────
-// By id, not `.sh-status-term` — the Files chip shares that class (SHE-41).
+// By id, not `.sh-status-term` — other chips may share that class.
 const termBtn = document.getElementById('terminal-toggle-status');
 if (termBtn) {
   termBtn.addEventListener('click', toggleTerminalPanel);

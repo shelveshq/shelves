@@ -9,6 +9,7 @@ const STORAGE_KEY_SIDEBAR_W   = 'shelves-studio-sidebar-width';
 
 const SIDEBAR_DEFAULT_W = 220;  // studio.css .sh-main tree column
 const SIDEBAR_MIN_W = 140;
+const SIDEBAR_RAIL_W = 36;      // collapsed rail strip (SHE-41)
 
 let treeData = [];
 let collapsedDirs = new Set(
@@ -168,15 +169,12 @@ function applySidebarVisibility() {
     handle.classList.remove('hidden');
   } else {
     sidebar.classList.add('collapsed');
-    // Zero the width + handle track; the stored width survives for reopen.
-    document.documentElement.style.setProperty('--sidebar-width', '0px');
+    // Narrow to the rail strip + zero the handle track; the stored width
+    // survives for reopen (SHE-41).
+    document.documentElement.style.setProperty('--sidebar-width', SIDEBAR_RAIL_W + 'px');
     document.documentElement.style.setProperty('--sidebar-handle-w', '0px');
     handle.classList.add('hidden');
   }
-  // Single sync point for the status-bar chip — both toggles and boot
-  // flow through here (SHE-41).
-  document.getElementById('sidebar-toggle-status')
-    ?.classList.toggle('is-active', sidebarVisible);
 }
 
 function initSidebarResize() {
@@ -228,7 +226,7 @@ export function initSidebar() {
   initSidebarResize();
 
   document.getElementById('sidebar-toggle-inner').addEventListener('click', toggleSidebar);
-  document.getElementById('sidebar-toggle-status')?.addEventListener('click', toggleSidebar);
+  document.getElementById('sidebar-rail')?.addEventListener('click', toggleSidebar);
 
   let treeRefreshTimer = null;
   document.addEventListener('shelves:file-change', () => {
