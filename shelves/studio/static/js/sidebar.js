@@ -30,16 +30,13 @@ const ICONS = {
   file:      `<svg ${ICON_ATTRS}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>`,                                    // file-text
 };
 
-function iconForEntry(entry) {
-  // Route by top-level group first. Until SHE-39 lands the tree is the raw
-  // project walk, so the first path segment is the best signal we have; the
-  // names below are the *default* configured dirs.
-  // TODO(SHE-39): switch to entry group type once /project ships typed groups.
+function iconForEntry(entry, groupRole) {
+  // /project ships typed top-level groups (SHE-39); files inherit their
+  // group's role regardless of what the configured dir is named.
   if (entry.type === 'dir') return ICONS.folder;
-  const top = entry.path.split('/')[0];
-  if (top === 'charts')     return ICONS.chart;
-  if (top === 'dashboards') return ICONS.dashboard;
-  if (top === 'models')     return ICONS.model;
+  if (groupRole === 'charts')     return ICONS.chart;
+  if (groupRole === 'dashboards') return ICONS.dashboard;
+  if (groupRole === 'models')     return ICONS.model;
   if (entry.path.endsWith('.json')) return ICONS.json;
   return ICONS.file;
 }
@@ -70,9 +67,11 @@ function renderTree() {
   highlightActiveFile();
 }
 
-function renderTreeLevel(entries, depth) {
+function renderTreeLevel(entries, depth, groupRole) {
   const container = document.createElement('div');
   for (const entry of entries) {
+    // Top-level entries carry the group role; descendants inherit it.
+    const role = entry.group ?? groupRole;
     const row = document.createElement('div');
     row.style.paddingLeft = (14 + depth * 12) + 'px';
 
@@ -97,7 +96,7 @@ function renderTreeLevel(entries, depth) {
       container.appendChild(row);
 
       if (!collapsedDirs.has(entry.path) && entry.children?.length) {
-        container.appendChild(renderTreeLevel(entry.children, depth + 1));
+        container.appendChild(renderTreeLevel(entry.children, depth + 1, role));
       }
     } else {
       row.className = 'tree-file';
@@ -107,7 +106,7 @@ function renderTreeLevel(entries, depth) {
       // must keep going through textContent, never innerHTML.
       const icon = document.createElement('span');
       icon.className = 'tree-icon';
-      icon.innerHTML = iconForEntry(entry);
+      icon.innerHTML = iconForEntry(entry, role);
 
       const name = document.createElement('span');
       name.className = 'tree-name';

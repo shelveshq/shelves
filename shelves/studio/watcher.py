@@ -41,22 +41,30 @@ def should_compile(path: Path) -> bool:
 
 
 async def watch_project(
-    project_dir: Path,
+    watch_dirs: list[Path],
     on_change: Callable[[str, Path], Coroutine[Any, Any, None]],
     stop_event: asyncio.Event | None = None,
 ) -> None:
     """
-    Watch a project directory for file changes and invoke a callback.
+    Watch the configured project dirs for file changes and invoke a callback.
 
     Args:
-        project_dir: Absolute path to the project directory to watch.
+        watch_dirs: Absolute paths of the directories to watch (SHE-39: the
+                    configured charts/dashboards/models dirs, not the whole
+                    project). Missing dirs are filtered out — awatch raises
+                    on nonexistent paths — so dirs created after startup are
+                    not picked up until a restart.
         on_change: Async callback invoked for each relevant file change.
                    Signature: on_change(event: str, path: Path)
                    where event is "created", "modified", or "deleted".
         stop_event: Optional asyncio.Event. When set, the watcher stops.
     """
+    dirs = [d for d in watch_dirs if d.is_dir()]
+    if not dirs:
+        logger.info("No watch dirs exist; file watcher idle.")
+        return
     try:
-        async for changes in awatch(project_dir, stop_event=stop_event):
+        async for changes in awatch(*dirs, stop_event=stop_event):
             for change_type, path_str in changes:
                 path = Path(path_str)
                 if path.name.startswith("."):

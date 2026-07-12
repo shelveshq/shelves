@@ -15,6 +15,7 @@ def make_lifespan(
     theme_path: Path | None,
     models_dir: Path,
     charts_dir: Path,
+    dashboards_dir: Path,
 ):
     """
     Create a FastAPI lifespan context manager that starts/stops the file watcher.
@@ -45,7 +46,9 @@ def make_lifespan(
                     charts_dir=charts_dir,
                 )
 
-        task = asyncio.create_task(watch_project(project_dir, on_change, stop_event))
+        # Watch only the configured dirs (SHE-39) — theme watching is SHE-44.
+        watch_dirs = [charts_dir, dashboards_dir, models_dir]
+        task = asyncio.create_task(watch_project(watch_dirs, on_change, stop_event))
         try:
             yield
         finally:

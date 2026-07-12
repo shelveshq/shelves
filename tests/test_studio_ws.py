@@ -45,9 +45,14 @@ _SERVER_PORT = 15175  # unique port for WS integration tests
 
 
 def _setup_project(tmp_path: Path) -> Path:
-    """Create a project dir with the orders model fixture."""
+    """Create a project dir with the orders model fixture and a charts dir.
+
+    charts/ must exist at server start: the watcher is scoped to the
+    configured dirs (SHE-39) and only watches those that exist.
+    """
     (tmp_path / "models").mkdir()
     shutil.copy(MODELS_DIR / "orders.yaml", tmp_path / "models" / "orders.yaml")
+    (tmp_path / "charts").mkdir()
     return tmp_path
 
 
@@ -450,6 +455,54 @@ root:
         asyncio.run(_test())
 
 
+# ─── Watcher scoped to configured dirs (SHE-39) ──────────────────
+
+
+class TestWatcherScope:
+    """watch_project takes a list of dirs (charts/dashboards/models) instead
+    of the whole project dir; missing dirs are filtered out (watchfiles
+    raises on nonexistent paths) and an all-missing list idles cleanly."""
+
+    def test_watcher_watches_only_existing_dirs(self, tmp_path):
+        """Only charts/ exists → watcher starts without error and keeps running."""
+        from shelves.studio.watcher import watch_project
+
+        async def _test():
+            charts = tmp_path / "charts"
+            charts.mkdir()
+            missing = tmp_path / "models"  # never created
+
+            async def on_change(event: str, path: Path) -> None:
+                pass
+
+            stop = asyncio.Event()
+            task = asyncio.create_task(watch_project([charts, missing], on_change, stop))
+            await asyncio.sleep(0.3)
+            assert not task.done(), (
+                f"Watcher exited early: {task.exception() if task.done() else None}"
+            )
+            stop.set()
+            await asyncio.wait_for(task, timeout=5)
+
+        asyncio.run(_test())
+
+    def test_watcher_idles_when_no_dirs_exist(self, tmp_path):
+        """No watch dir exists → watcher returns instead of raising."""
+        from shelves.studio.watcher import watch_project
+
+        async def _test():
+            async def on_change(event: str, path: Path) -> None:
+                pass
+
+            stop = asyncio.Event()
+            await asyncio.wait_for(
+                watch_project([tmp_path / "a", tmp_path / "b"], on_change, stop),
+                timeout=5,
+            )
+
+        asyncio.run(_test())
+
+
 # ─── Full integration — real server via subprocess ───────────────
 
 
@@ -514,7 +567,7 @@ class TestWatchIntegration:
                 # Write a valid YAML file via HTTP PUT
                 httpx.put(
                     f"http://127.0.0.1:{port}/file",
-                    params={"path": "chart.yaml"},
+                    params={"path": "charts/chart.yaml"},
                     content=VALID_YAML,
                 )
                 # Collect messages (expect file_change + compile_result)
@@ -532,7 +585,7 @@ class TestWatchIntegration:
 
                 compile_msgs = [m for m in messages if m["type"] == "compile_result"]
                 assert len(compile_msgs) == 1
-                assert compile_msgs[0]["path"] == "chart.yaml"
+                assert compile_msgs[0]["path"] == "charts/chart.yaml"
                 assert compile_msgs[0]["errors"] == []
                 spec = compile_msgs[0]["vega_lite_spec"]
                 assert spec is not None
@@ -554,7 +607,7 @@ class TestWatchIntegration:
             with websockets.sync.client.connect(f"ws://127.0.0.1:{port}/ws") as ws:
                 httpx.put(
                     f"http://127.0.0.1:{port}/file",
-                    params={"path": "bad.yaml"},
+                    params={"path": "charts/bad.yaml"},
                     content=INVALID_YAML,
                 )
                 messages = []
@@ -587,7 +640,7 @@ class TestWatchIntegration:
             ):
                 httpx.put(
                     f"http://127.0.0.1:{port}/file",
-                    params={"path": "chart.yaml"},
+                    params={"path": "charts/chart.yaml"},
                     content=VALID_YAML,
                 )
                 # Both clients should receive compile_result
@@ -618,7 +671,7 @@ class TestWatchIntegration:
             with websockets.sync.client.connect(f"ws://127.0.0.1:{port}/ws") as ws:
                 httpx.put(
                     f"http://127.0.0.1:{port}/file",
-                    params={"path": "data.json"},
+                    params={"path": "charts/data.json"},
                     content='[{"country": "US", "revenue": 100}]',
                 )
                 messages = []
@@ -633,5 +686,47 @@ class TestWatchIntegration:
                 assert "compile_result" not in types, (
                     f"compile_result should NOT be sent for .json: {messages}"
                 )
+        finally:
+            self._stop_server(proc, drainer)
+
+    def test_watcher_ignores_files_outside_configured_dirs(self, tmp_path):
+        """YAML edits outside charts/dashboards/models produce no broadcast;
+        edits inside charts/ still do (SHE-39)."""
+        import httpx
+        import websockets.sync.client
+
+        project_dir = _setup_project(tmp_path)
+        port = _SERVER_PORT + 4
+        proc, drainer = self._start_server(project_dir, port)
+        try:
+            with websockets.sync.client.connect(f"ws://127.0.0.1:{port}/ws") as ws:
+                # Outside every configured dir → the watcher must not see it
+                httpx.put(
+                    f"http://127.0.0.1:{port}/file",
+                    params={"path": "tests_fixture.yaml"},
+                    content=VALID_YAML,
+                )
+                # Inside charts/ → broadcasts as today
+                httpx.put(
+                    f"http://127.0.0.1:{port}/file",
+                    params={"path": "charts/a.yaml"},
+                    content=VALID_YAML,
+                )
+                messages = []
+                for _ in range(4):
+                    try:
+                        raw = ws.recv(timeout=5)
+                        messages.append(json.loads(raw))
+                    except TimeoutError:
+                        break
+
+                paths = {m.get("path") for m in messages}
+                assert "tests_fixture.yaml" not in paths, (
+                    f"Outside-dir file leaked into broadcasts: {messages}"
+                )
+                types = {m["type"] for m in messages}
+                assert "file_change" in types, f"No file_change for charts/a.yaml: {messages}"
+                assert "compile_result" in types, f"No compile_result for charts/a.yaml: {messages}"
+                assert all(m.get("path") == "charts/a.yaml" for m in messages), messages
         finally:
             self._stop_server(proc, drainer)

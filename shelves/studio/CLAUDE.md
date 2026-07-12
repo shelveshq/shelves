@@ -25,9 +25,9 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     component_tree, errors, warnings}`).
   - `files.py` — `GET /project` (directory tree), `GET/PUT /file`. `resolve_safe`
     rejects path traversal; `build_tree` walks the tree filtering to
-    `.yaml/.yml/.json` + dirs. **NB: `build_tree` walks `project_dir` recursively**
-    — it does not scope to charts/dashboards/models, which is why the tree shows
-    every folder in the project (see Known gaps).
+    `.yaml/.yml/.json` + dirs. `GET /project` returns typed top-level groups
+    (charts/dashboards/models/assets) built from the configured dirs; paths stay
+    relative to `project_dir`.
   - `terminal.py` — PTY-backed terminal over `WS /ws/terminal`, token-gated.
 - `lifespan.py` — startup/shutdown; wires the file watcher and pushes results
   over the broadcast WebSocket.
@@ -123,8 +123,6 @@ See `docs/design-system/studio/README.md` for the full adherence analysis.
 
 ## Known gaps (as of 2026-07 studio UX epic)
 
-- **File tree is unscoped** — `build_tree` walks the whole project dir; should be
-  limited to the configured charts/dashboards/models (+assets) dirs.
 - **Pane resize is crude** — global `mousemove` listeners, no pointer capture, no
   iframe-overlay during drag (dashboard iframe swallows mouse events mid-drag).
 - **No editor/preview history** — no back/forward between opened files.
