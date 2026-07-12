@@ -459,45 +459,71 @@ root:
 
 
 class TestWatcherScope:
-    """watch_project takes a list of dirs (charts/dashboards/models) instead
-    of the whole project dir; missing dirs are filtered out (watchfiles
-    raises on nonexistent paths) and an all-missing list idles cleanly."""
+    """The watch is rooted at project_dir (which always exists) and events
+    are filtered to the configured scope dirs (SHE-39 + PR #62 review):
+    files outside the scope never reach on_change, while scope dirs created
+    after startup are picked up live — no restart required."""
 
-    def test_watcher_watches_only_existing_dirs(self, tmp_path):
-        """Only charts/ exists → watcher starts without error and keeps running."""
+    def test_watcher_picks_up_late_created_dirs(self, tmp_path):
+        """A scope dir created after the watcher starts still triggers events."""
+        from shelves.studio.watcher import watch_project
+
+        async def _test():
+            charts = tmp_path / "charts"  # does NOT exist at watcher start
+
+            events: list[tuple[str, Path]] = []
+
+            async def on_change(event: str, path: Path) -> None:
+                events.append((event, path))
+
+            stop = asyncio.Event()
+            task = asyncio.create_task(watch_project(tmp_path, [charts], on_change, stop))
+            await asyncio.sleep(0.5)  # let awatch arm before mutating the tree
+            charts.mkdir()
+            (charts / "a.yaml").write_text("sheet: x\n")
+            for _ in range(80):
+                if events:
+                    break
+                await asyncio.sleep(0.1)
+            stop.set()
+            await asyncio.wait_for(task, timeout=5)
+            assert events, "No event for a file in a dir created after watcher start"
+            assert events[0][1].name == "a.yaml"
+
+        asyncio.run(_test())
+
+    def test_watcher_filters_events_outside_scope_dirs(self, tmp_path):
+        """Files outside the scope dirs never reach on_change."""
         from shelves.studio.watcher import watch_project
 
         async def _test():
             charts = tmp_path / "charts"
             charts.mkdir()
-            missing = tmp_path / "models"  # never created
+            docs = tmp_path / "docs"
+            docs.mkdir()
+
+            events: list[tuple[str, Path]] = []
 
             async def on_change(event: str, path: Path) -> None:
-                pass
+                events.append((event, path))
 
             stop = asyncio.Event()
-            task = asyncio.create_task(watch_project([charts, missing], on_change, stop))
-            await asyncio.sleep(0.3)
-            assert not task.done(), (
-                f"Watcher exited early: {task.exception() if task.done() else None}"
-            )
+            task = asyncio.create_task(watch_project(tmp_path, [charts], on_change, stop))
+            await asyncio.sleep(0.5)
+            (docs / "notes.yaml").write_text("x: 1\n")
+            (tmp_path / "root.yaml").write_text("x: 1\n")
+            (charts / "a.yaml").write_text("sheet: x\n")
+            for _ in range(80):
+                if events:
+                    break
+                await asyncio.sleep(0.1)
+            # Give any stray out-of-scope events a beat to arrive before asserting
+            await asyncio.sleep(0.5)
             stop.set()
             await asyncio.wait_for(task, timeout=5)
-
-        asyncio.run(_test())
-
-    def test_watcher_idles_when_no_dirs_exist(self, tmp_path):
-        """No watch dir exists → watcher returns instead of raising."""
-        from shelves.studio.watcher import watch_project
-
-        async def _test():
-            async def on_change(event: str, path: Path) -> None:
-                pass
-
-            stop = asyncio.Event()
-            await asyncio.wait_for(
-                watch_project([tmp_path / "a", tmp_path / "b"], on_change, stop),
-                timeout=5,
+            assert events, "No event for charts/a.yaml"
+            assert all(p.name == "a.yaml" for _, p in events), (
+                f"Out-of-scope files leaked through the filter: {events}"
             )
 
         asyncio.run(_test())
@@ -685,6 +711,38 @@ class TestWatchIntegration:
                 types = {m["type"] for m in messages}
                 assert "compile_result" not in types, (
                     f"compile_result should NOT be sent for .json: {messages}"
+                )
+        finally:
+            self._stop_server(proc, drainer)
+
+    def test_assets_file_change_broadcasts(self, tmp_path):
+        """assets/ is in the watch scope: adding a file there refreshes the
+        tree via file_change (PR #62 review — tree scope must equal watch
+        scope). The dir doesn't exist at startup, so this also covers the
+        late-created-dir path end-to-end."""
+        import httpx
+        import websockets.sync.client
+
+        project_dir = _setup_project(tmp_path)
+        port = _SERVER_PORT + 5
+        proc, drainer = self._start_server(project_dir, port)
+        try:
+            with websockets.sync.client.connect(f"ws://127.0.0.1:{port}/ws") as ws:
+                httpx.put(
+                    f"http://127.0.0.1:{port}/file",
+                    params={"path": "assets/logo.json"},
+                    content="{}",
+                )
+                messages = []
+                for _ in range(2):
+                    try:
+                        raw = ws.recv(timeout=5)
+                        messages.append(json.loads(raw))
+                    except TimeoutError:
+                        break
+                file_changes = [m for m in messages if m["type"] == "file_change"]
+                assert any(m["path"] == "assets/logo.json" for m in file_changes), (
+                    f"No file_change for assets/logo.json: {messages}"
                 )
         finally:
             self._stop_server(proc, drainer)

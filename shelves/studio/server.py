@@ -79,7 +79,12 @@ def create_app(
     resolved_assets = assets_dir or (project_dir / "assets")
 
     lifespan = make_lifespan(
-        project_dir, theme_path, resolved_models, resolved_charts, resolved_dashboards
+        project_dir,
+        theme_path,
+        resolved_models,
+        resolved_charts,
+        resolved_dashboards,
+        resolved_assets,
     )
 
     app = FastAPI(title="Shelves Studio", lifespan=lifespan)

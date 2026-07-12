@@ -41,35 +41,43 @@ def should_compile(path: Path) -> bool:
 
 
 async def watch_project(
-    watch_dirs: list[Path],
+    project_dir: Path,
+    scope_dirs: list[Path],
     on_change: Callable[[str, Path], Coroutine[Any, Any, None]],
     stop_event: asyncio.Event | None = None,
 ) -> None:
     """
-    Watch the configured project dirs for file changes and invoke a callback.
+    Watch project_dir, invoking on_change only for files inside scope_dirs.
+
+    The watch is rooted at project_dir — which always exists — and the
+    SHE-39 scoping is an event filter, not a watch-root restriction. awatch
+    raises on nonexistent paths and never adds new roots, so rooting the
+    watch at the scope dirs themselves would silently lose live reload for
+    any dir created after startup (PR #62 review finding).
 
     Args:
-        watch_dirs: Absolute paths of the directories to watch (SHE-39: the
-                    configured charts/dashboards/models dirs, not the whole
-                    project). Missing dirs are filtered out — awatch raises
-                    on nonexistent paths — so dirs created after startup are
-                    not picked up until a restart.
+        project_dir: Absolute path of the project directory to watch.
+        scope_dirs: The configured charts/dashboards/models/assets dirs (or
+                    files); events outside all of them are dropped. Entries
+                    outside project_dir simply never match.
         on_change: Async callback invoked for each relevant file change.
                    Signature: on_change(event: str, path: Path)
                    where event is "created", "modified", or "deleted".
         stop_event: Optional asyncio.Event. When set, the watcher stops.
     """
-    dirs = [d for d in watch_dirs if d.is_dir()]
-    if not dirs:
-        logger.info("No watch dirs exist; file watcher idle.")
-        return
+    scope = [d.resolve() for d in scope_dirs]
     try:
-        async for changes in awatch(*dirs, stop_event=stop_event):
+        async for changes in awatch(project_dir, stop_event=stop_event):
             for change_type, path_str in changes:
                 path = Path(path_str)
                 if path.name.startswith("."):
                     continue
                 if path.suffix not in WATCH_EXTENSIONS:
+                    continue
+                # Compare resolved-to-resolved: watchfiles reports real paths,
+                # which won't prefix-match a symlinked configured dir raw.
+                real = path.resolve()
+                if not any(real.is_relative_to(d) for d in scope):
                     continue
                 event = _CHANGE_NAMES.get(change_type, "modified")
                 try:

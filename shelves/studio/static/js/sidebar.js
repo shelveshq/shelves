@@ -218,9 +218,17 @@ function initSidebarResize() {
 function animateWorkspaceOnce() {
   const ws = document.getElementById('workspace');
   ws.classList.add('animating');
-  const clear = () => ws.classList.remove('animating');
-  ws.addEventListener('transitionend', clear, { once: true });
-  setTimeout(clear, 400);   // fallback: browsers that can't animate grid tracks never fire transitionend
+  function clear(e) {
+    // transitionend BUBBLES: a 140ms hover/active transition ending on any
+    // descendant (buttons, tree rows) would kill the 240ms slide mid-flight.
+    // Only the workspace's own grid transition — or the no-arg fallback
+    // timer — may clear the class.
+    if (e && (e.target !== ws || e.propertyName !== 'grid-template-columns')) return;
+    ws.classList.remove('animating');
+    ws.removeEventListener('transitionend', clear);
+  }
+  ws.addEventListener('transitionend', clear);
+  setTimeout(clear, 400);   // fallback: browsers that can't animate grid tracks never fire the event
 }
 
 export function toggleSidebar() {

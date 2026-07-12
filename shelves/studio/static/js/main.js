@@ -105,6 +105,9 @@ if (termBtn) {
 // ─── Sidebar Toggle Shortcut (SHE-41) ─────────────────────
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b' && !e.shiftKey && !e.altKey) {
+    // Never while typing in the embedded terminal — Ctrl+B is readline
+    // backward-char and the tmux prefix there.
+    if (document.getElementById('terminal-panel')?.contains(e.target)) return;
     e.preventDefault();
     toggleSidebar();
   }

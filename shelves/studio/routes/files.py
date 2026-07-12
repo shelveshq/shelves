@@ -89,6 +89,12 @@ def build_group_tree(
     Dirs that resolve outside project_dir are skipped with a warning
     (resolve_safe stays single-root, so their files would be unreachable).
     Duplicate dirs are emitted once — first role wins.
+
+    Known edge (accepted, PR #62 review): a configured dir equal to
+    project_dir walks the whole project into that group — deliberate, since
+    a flat project may legitimately set charts_dir=project_dir — and other
+    configured dirs nested inside it then appear twice (once in the walk,
+    once as their own group) sharing collapse-state keys.
     """
     root = project_dir.resolve()
     seen: set[Path] = set()
