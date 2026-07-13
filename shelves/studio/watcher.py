@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
@@ -66,20 +67,56 @@ async def watch_project(
         stop_event: Optional asyncio.Event. When set, the watcher stops.
     """
     scope = [d.resolve() for d in scope_dirs]
+
+    def in_scope(real: Path) -> bool:
+        return any(real.is_relative_to(d) for d in scope)
+
+    def scan_new_dir(root: Path) -> list[Path]:
+        """Watchable files inside a just-created dir, filtered like live events."""
+        if not (in_scope(root) or any(d.is_relative_to(root) for d in scope)):
+            return []
+        found: list[Path] = []
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            for name in filenames:
+                if name.startswith(".") or Path(name).suffix not in WATCH_EXTENSIONS:
+                    continue
+                f = (Path(dirpath) / name).resolve()
+                if in_scope(f):
+                    found.append(f)
+        return sorted(found)
+
     try:
         async for changes in awatch(project_dir, stop_event=stop_event):
+            batch: list[tuple[str, Path]] = []
+            seen: set[Path] = set()
+            new_dirs: list[Path] = []
             for change_type, path_str in changes:
                 path = Path(path_str)
                 if path.name.startswith("."):
                     continue
-                if path.suffix not in WATCH_EXTENSIONS:
-                    continue
                 # Compare resolved-to-resolved: watchfiles reports real paths,
                 # which won't prefix-match a symlinked configured dir raw.
                 real = path.resolve()
-                if not any(real.is_relative_to(d) for d in scope):
+                if change_type == Change.added and real.is_dir():
+                    new_dirs.append(real)
                     continue
-                event = _CHANGE_NAMES.get(change_type, "modified")
+                if path.suffix not in WATCH_EXTENSIONS:
+                    continue
+                if not in_scope(real):
+                    continue
+                batch.append((_CHANGE_NAMES.get(change_type, "modified"), path))
+                seen.add(real)
+            # Linux inotify only registers a watch on a new directory after
+            # its creation event reaches us — files written into it in that
+            # window emit no events of their own. Rescan each new dir and
+            # synthesize "created" for anything the live stream missed.
+            for d in new_dirs:
+                for f in scan_new_dir(d):
+                    if f not in seen:
+                        seen.add(f)
+                        batch.append(("created", f))
+            for event, path in batch:
                 try:
                     await on_change(event, path)
                 except Exception:
