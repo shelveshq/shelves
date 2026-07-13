@@ -116,20 +116,32 @@ async def ws_terminal(ws: WebSocket) -> None:
                 raw = await ws.receive_text()
             except WebSocketDisconnect:
                 break
+            # Every post-auth frame is untrusted. A malformed or wrongly
+            # typed frame must be dropped, never raised — an exception here
+            # lands in the outer `except Exception: pass`, which tears down
+            # the PTY and closes with a default 1000: a silently dead
+            # terminal, the exact SHE-47 failure mode.
             try:
                 msg = _json.loads(raw)
             except Exception:
-                # Malformed JSON — close gracefully
-                break
+                continue
+            if not isinstance(msg, dict):
+                continue
             msg_type = msg.get("type")
             if msg_type == "input":
                 data_str = msg.get("data", "")
-                if data_str:
+                if isinstance(data_str, str) and data_str:
                     mgr.write(data_str.encode())
             elif msg_type == "resize":
-                rows = int(msg.get("rows", 24))
-                cols = int(msg.get("cols", 80))
-                mgr.resize(rows, cols)
+                # Client input is untrusted: garbage must not raise into the
+                # receive loop (the outer except would silently kill the
+                # session). Clamp to a sane window instead.
+                try:
+                    rows = int(msg.get("rows", 24))
+                    cols = int(msg.get("cols", 80))
+                except (TypeError, ValueError):
+                    continue
+                mgr.resize(max(1, min(rows, 1000)), max(1, min(cols, 1000)))
             # Unknown types are silently ignored
     except Exception:
         pass
