@@ -457,14 +457,20 @@ class TestProjectEndpoint:
         assert len(tree) > 0
 
     def test_get_project_empty_dir(self, tmp_path):
-        """GET /project for an empty directory returns an empty list."""
+        """GET /project for an empty directory returns the empty primary groups.
+
+        The charts/dashboards/models groups are listed even when missing so
+        the UI can offer "create the first file" there (SHE-42).
+        """
         from starlette.testclient import TestClient
 
         app = create_app(project_dir=tmp_path)
         client = TestClient(app)
         response = client.get("/project")
         assert response.status_code == 200
-        assert response.json() == []
+        tree = response.json()
+        assert [e["group"] for e in tree] == ["charts", "dashboards", "models"]
+        assert all(e["children"] == [] for e in tree)
 
     def test_project_tree_structure(self):
         """Each tree entry has name and type fields."""

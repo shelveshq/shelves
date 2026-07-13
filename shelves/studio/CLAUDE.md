@@ -23,11 +23,16 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     and `GET /schema` (ChartSpec JSON Schema for Monaco).
   - `dashboard.py` — `POST /compile-dashboard` (dashboard YAML → `{html, canvas,
     component_tree, errors, warnings}`).
-  - `files.py` — `GET /project` (directory tree), `GET/PUT /file`. `resolve_safe`
-    rejects path traversal; `build_tree` walks the tree filtering to
-    `.yaml/.yml/.json` + dirs. `GET /project` returns typed top-level groups
-    (charts/dashboards/models/assets) built from the configured dirs; paths stay
-    relative to `project_dir`.
+  - `files.py` — `GET /project` (directory tree), `GET/PUT/POST/DELETE /file`,
+    `POST /file/rename`. `resolve_safe` rejects path traversal on every
+    endpoint; create/rename/delete are restricted to `.yaml/.yml/.json` and
+    broadcast `file_change` directly (the watcher's own event may duplicate
+    it; the sidebar debounces). New files get a starter template chosen by
+    the configured dir they land in (`template_for`). `GET /project` returns
+    typed top-level groups (charts/dashboards/models/assets) built from the
+    configured dirs; the three primary groups are listed even when empty or
+    missing so the UI can offer "create first file" (assets stays
+    omit-when-empty); paths stay relative to `project_dir`.
   - `terminal.py` — PTY-backed terminal over `WS /ws/terminal`, token-gated.
 - `lifespan.py` — startup/shutdown; wires the file watcher and pushes results
   over the broadcast WebSocket.
@@ -74,7 +79,12 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
   - `preview.js` — chart render via `vegaEmbed` (with the shared label patch),
     JSON view, error overlay, `ResizeObserver` re-fit.
   - `dashboard.js` — dashboard compile + iframe preview, canvas scaling / zoom.
-  - `sidebar.js` — file tree fetch/render, collapse state, sidebar show/hide.
+  - `sidebar.js` — file tree fetch/render, collapse state, sidebar show/hide,
+    and file management (SHE-42): group-header `+`, right-click context menu
+    (New / Rename / Duplicate / two-step Delete), inline create/rename inputs.
+    The menu reuses the `.sh-menu` DS atoms (SHE-36). Renaming the open file
+    updates `state.currentFile.path` in place — the buffer (dirty or not) is
+    never dropped.
   - `terminal.js` — xterm.js terminal tabs over the terminal WS.
   - `websocket.js` — single broadcast WS (`/ws`) → typed DOM events.
 
@@ -125,7 +135,5 @@ See `docs/design-system/studio/README.md` for the full adherence analysis.
 ## Known gaps (as of 2026-07 studio UX epic)
 
 - **No editor/preview history** — no back/forward between opened files.
-- **No file creation** from the UI (create/rename/delete); `PUT /file` can create,
-  but nothing drives it.
 - **Multi-tab editor** from the design (`editor.html`) is not implemented — Studio
   is single-file.

@@ -1,7 +1,8 @@
 // ─── Sidebar Module ────────────────────────────────────────
-// File explorer tree, sidebar toggle, active file highlighting.
+// File explorer tree, sidebar toggle, active file highlighting, and file
+// management (SHE-42): create / rename / duplicate / delete.
 
-import { state } from './state.js';
+import { state, updateBreadcrumb, updateStatusBar } from './state.js';
 
 const STORAGE_KEY_COLLAPSED   = 'shelves-studio-collapsed-dirs';
 const STORAGE_KEY_SIDEBAR_VIS = 'shelves-studio-sidebar-visible';
@@ -29,6 +30,7 @@ const ICONS = {
   model:     `<svg ${ICON_ATTRS}><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>`, // database
   json:      `<svg ${ICON_ATTRS}><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>`,                                   // braces
   file:      `<svg ${ICON_ATTRS}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>`,                                    // file-text
+  plus:      `<svg ${ICON_ATTRS}><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
 };
 
 function iconForEntry(entry, groupRole) {
@@ -54,6 +56,236 @@ async function fetchTree() {
     ft.innerHTML = '<div class="tree-placeholder">Error loading project</div>';
     console.error('[shelves] fetchTree error:', e);
   }
+}
+
+// ─── File Ops (SHE-42) ─────────────────────────────────────
+
+function defaultExt(name) {
+  // 'weekly' → 'weekly.yaml'; anything already containing a dot is untouched
+  return name.includes('.') ? name : name + '.yaml';
+}
+
+async function createFile(dirPath, name, content = null) {
+  const path = `${dirPath}/${defaultExt(name.trim())}`;
+  const opts = { method: 'POST' };
+  if (content != null) opts.body = content;
+  const resp = await fetch(`/file?path=${encodeURIComponent(path)}`, opts);
+  const text = resp.ok ? '' : await resp.text().catch(() => '');
+  return { ok: resp.ok, status: resp.status, path, text };
+}
+
+async function renameFile(oldPath, newName) {
+  const dir = oldPath.split('/').slice(0, -1).join('/');
+  const to = `${dir}/${defaultExt(newName.trim())}`;
+  if (to === oldPath) return { ok: true, path: to };
+  const resp = await fetch(
+    `/file/rename?path=${encodeURIComponent(oldPath)}&to=${encodeURIComponent(to)}`,
+    { method: 'POST' },
+  );
+  if (resp.ok && state.currentFile?.path === oldPath) {
+    // Renaming the open file must never drop the buffer (dirty or not):
+    // update the path in place. The rename's own deleted(old) broadcast may
+    // have raced in and flagged the file as deleted — clear that now.
+    state.currentFile.path = to;
+    state.fileDeleted = false;
+    updateBreadcrumb(to, state.currentFile.dirty);
+    updateStatusBar();
+  }
+  const text = resp.ok ? '' : await resp.text().catch(() => '');
+  return { ok: resp.ok, status: resp.status, path: to, text };
+}
+
+async function deleteFileOp(path) {
+  const resp = await fetch(`/file?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
+  if (!resp.ok) {
+    const text = (await resp.text().catch(() => '')) || `HTTP ${resp.status}`;
+    alert(`Could not delete file: ${text}`);
+  }
+  // Deleting the OPEN file needs no special casing here: the server's
+  // file_change broadcast drives editor.js's SHE-51 deleted-on-disk notice,
+  // and the buffer is deliberately kept (it may be the only surviving copy).
+  fetchTree();
+}
+
+function siblingNames(path) {
+  // Names in the same tree-data children list as `path`.
+  function walk(entries) {
+    for (const entry of entries) {
+      if (entry.path === path) return entries.map(e => e.name);
+      if (entry.children) {
+        const found = walk(entry.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  return walk(treeData) ?? [];
+}
+
+async function duplicateFile(path) {
+  const resp = await fetch(`/file?path=${encodeURIComponent(path)}`);
+  if (!resp.ok) {
+    alert(`Could not read file to duplicate: HTTP ${resp.status}`);
+    return;
+  }
+  const { content } = await resp.json();
+  const dir = path.split('/').slice(0, -1).join('/');
+  const name = path.split('/').pop();
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  const siblings = new Set(siblingNames(path));
+  let copy = `${stem}-copy${ext}`;
+  for (let n = 2; siblings.has(copy); n++) copy = `${stem}-copy-${n}${ext}`;
+  const r = await createFile(dir, copy, content);
+  if (!r.ok) alert(`Could not duplicate file: ${r.text || `HTTP ${r.status}`}`);
+  fetchTree();   // no auto-open — matches VS Code duplicate behavior
+}
+
+// ─── Context Menu (SHE-42) ─────────────────────────────────
+// Singleton on document.body, styled per docs/design-system/components-nav.html.
+let menuEl = null;
+let menuCleanup = null;
+
+function closeTreeMenu() {
+  if (!menuEl) return;
+  menuEl.remove();
+  menuEl = null;
+  if (menuCleanup) { menuCleanup(); menuCleanup = null; }
+}
+
+// items: array of {label, danger?, confirm?, onClick} or 'sep'. A confirm
+// item is two-step: the first click re-labels it 'Confirm delete?' in place
+// (in-place affordance, no modal); only the second click executes.
+function showTreeMenu(x, y, items) {
+  closeTreeMenu();
+  const menu = document.createElement('div');
+  // .sh-menu carries the DS look (SHE-36 atoms); .tree-menu adds positioning.
+  menu.className = 'sh-menu tree-menu';
+  for (const it of items) {
+    if (it === 'sep') {
+      const sep = document.createElement('div');
+      sep.className = 'sh-menu-sep';
+      menu.appendChild(sep);
+      continue;
+    }
+    const item = document.createElement('div');
+    item.className = 'sh-menu-item' + (it.danger ? ' is-danger' : '');
+    item.textContent = it.label;   // our own constants, but keep the textContent rule
+    item.addEventListener('click', (e) => {
+      if (it.confirm && item.dataset.armed !== '1') {
+        item.dataset.armed = '1';
+        item.textContent = 'Confirm delete?';
+        e.stopPropagation();       // keep the menu open for the second click
+        return;
+      }
+      it.onClick();
+      closeTreeMenu();
+    });
+    menu.appendChild(item);
+  }
+  document.body.appendChild(menu);
+  // Clamp into the viewport after measuring.
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = Math.max(0, Math.min(x, window.innerWidth - rect.width - 4)) + 'px';
+  menu.style.top = Math.max(0, Math.min(y, window.innerHeight - rect.height - 4)) + 'px';
+
+  const dismiss = () => closeTreeMenu();
+  const onKey = (e) => { if (e.key === 'Escape') closeTreeMenu(); };
+  document.addEventListener('click', dismiss);
+  document.addEventListener('contextmenu', dismiss);
+  document.addEventListener('keydown', onKey);
+  document.addEventListener('scroll', dismiss, true);
+  window.addEventListener('resize', dismiss);
+  menuCleanup = () => {
+    document.removeEventListener('click', dismiss);
+    document.removeEventListener('contextmenu', dismiss);
+    document.removeEventListener('keydown', onKey);
+    document.removeEventListener('scroll', dismiss, true);
+    window.removeEventListener('resize', dismiss);
+  };
+  menuEl = menu;
+}
+
+// ─── Inline Inputs (SHE-42) ────────────────────────────────
+let activeInputRow = null;
+
+function removeActiveInput() {
+  if (!activeInputRow) return;
+  activeInputRow.remove();
+  activeInputRow = null;
+}
+
+function startCreateInput(dirPath, depth, afterRow) {
+  removeActiveInput();
+  const row = document.createElement('div');
+  row.className = 'tree-file tree-input';
+  row.style.paddingLeft = (14 + (depth + 1) * 12) + 'px';
+
+  const input = document.createElement('input');
+  input.placeholder = 'name.yaml';
+  input.addEventListener('click', (e) => e.stopPropagation());
+  input.addEventListener('input', () => input.classList.remove('is-error'));
+  let done = false;
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Escape') { done = true; removeActiveInput(); return; }
+    if (e.key !== 'Enter' || done) return;
+    const name = input.value.trim();
+    if (!name) { done = true; removeActiveInput(); return; }
+    const r = await createFile(dirPath, name);
+    if (r.status === 409) {
+      input.classList.add('is-error');
+      input.title = 'File already exists';
+      return;                       // stay in the input; typing clears the error
+    }
+    if (!r.ok) {
+      alert(`Could not create file: ${r.text || `HTTP ${r.status}`}`);
+      done = true;
+      removeActiveInput();
+      return;
+    }
+    done = true;
+    removeActiveInput();
+    await fetchTree();
+    window.shelvesStudio?.openFile(r.path);
+  });
+  input.addEventListener('blur', () => { if (!done) removeActiveInput(); });
+
+  row.appendChild(input);
+  afterRow.parentNode.insertBefore(row, afterRow.nextSibling);
+  activeInputRow = row;
+  input.focus();
+}
+
+function startRenameInput(row, entry) {
+  const nameSpan = row.querySelector('.tree-name');
+  if (!nameSpan || row.querySelector('input')) return;
+  const input = document.createElement('input');
+  input.value = entry.name;
+  input.addEventListener('click', (e) => e.stopPropagation());
+  input.addEventListener('input', () => input.classList.remove('is-error'));
+  let done = false;
+  const restore = () => { input.remove(); nameSpan.style.display = ''; };
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Escape') { done = true; restore(); return; }
+    if (e.key !== 'Enter' || done) return;
+    const newName = input.value.trim();
+    if (!newName || newName === entry.name) { done = true; restore(); return; }
+    const r = await renameFile(entry.path, newName);
+    if (!r.ok) {
+      input.classList.add('is-error');
+      input.title = r.text || `HTTP ${r.status}`;
+      return;
+    }
+    done = true;
+    fetchTree();   // the re-render restores the row; highlight follows currentFile
+  });
+  input.addEventListener('blur', () => { if (!done) restore(); });
+  row.classList.add('tree-input');
+  nameSpan.style.display = 'none';
+  row.appendChild(input);
+  input.focus();
+  input.select();
 }
 
 // ─── Render Tree ───────────────────────────────────────────
@@ -93,7 +325,29 @@ function renderTreeLevel(entries, depth, groupRole) {
 
       row.appendChild(chevron);
       row.appendChild(name);
+
+      // Group headers get the "new file" affordance (SHE-42); assets keeps
+      // no create affordance, mirroring the backend's omit-when-empty rule.
+      if (depth === 0 && entry.group && entry.group !== 'assets') {
+        const add = document.createElement('button');
+        add.className = 'tree-add';
+        add.title = 'New file';
+        add.innerHTML = ICONS.plus;
+        add.addEventListener('click', (e) => {
+          e.stopPropagation();     // don't toggle the dir
+          startCreateInput(entry.path, depth, row);
+        });
+        row.appendChild(add);
+      }
+
       row.addEventListener('click', () => toggleDir(entry.path));
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();       // the document-level dismiss listener must not eat this menu
+        showTreeMenu(e.clientX, e.clientY, [
+          { label: 'New file', onClick: () => startCreateInput(entry.path, depth, row) },
+        ]);
+      });
       container.appendChild(row);
 
       if (!collapsedDirs.has(entry.path) && entry.children?.length) {
@@ -117,6 +371,19 @@ function renderTreeLevel(entries, depth, groupRole) {
       row.appendChild(icon);
       row.appendChild(name);
       row.addEventListener('click', () => window.shelvesStudio.openFile(entry.path));
+      row.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const dirPath = entry.path.split('/').slice(0, -1).join('/');
+        showTreeMenu(e.clientX, e.clientY, [
+          // depth-1: the input lands at the file's own indent, inside its dir
+          { label: 'New file', onClick: () => startCreateInput(dirPath, depth - 1, row) },
+          { label: 'Rename', onClick: () => startRenameInput(row, entry) },
+          { label: 'Duplicate', onClick: () => duplicateFile(entry.path) },
+          'sep',
+          { label: 'Delete', danger: true, confirm: true, onClick: () => deleteFileOp(entry.path) },
+        ]);
+      });
       container.appendChild(row);
     }
   }

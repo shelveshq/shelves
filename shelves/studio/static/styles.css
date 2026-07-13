@@ -1023,3 +1023,24 @@ body {
 .sh-menu-item.is-danger { color: var(--danger); }
 .sh-menu-kbd { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
 .sh-menu-sep { height: 1px; background: var(--border-default); margin: 4px 0; }
+
+/* ─── Tree file ops (SHE-42) ─────────────────────────────── */
+/* The context menu look comes from the .sh-menu atoms above; .tree-menu
+   only adds float positioning (clamped to the viewport by sidebar.js). */
+.tree-menu { position: fixed; z-index: 1000; width: 180px; min-width: 180px; }
+
+.tree-add {                 /* hidden until the group row is hovered */
+  display: none; margin-left: auto; padding: 0 2px;
+  background: none; border: none; cursor: pointer;
+  color: var(--ink-4); line-height: 0;
+}
+.tree-dir:hover .tree-add { display: inline-flex; }
+.tree-add:hover { color: var(--ink-10); }
+
+.tree-input input {
+  width: 100%; font-family: var(--font-ui); font-size: 12.5px;
+  background: var(--paper-raised); color: var(--ink-12);
+  border: 1px solid var(--brand-ochre); border-radius: 2px;
+  padding: 1px 4px; outline: none;
+}
+.tree-input input.is-error { border-color: var(--danger); }

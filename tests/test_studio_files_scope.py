@@ -92,29 +92,43 @@ class TestProjectTreeScope:
         )
         client = TestClient(app)
         tree = client.get("/project").json()
+        # The default dashboards dir is missing but primary → listed empty (SHE-42).
         assert [(e["name"], e["group"]) for e in tree] == [
             ("viz", "charts"),
+            ("dashboards", "dashboards"),
             ("semantics", "models"),
         ]
         assert tree[0]["path"] == "viz"
         assert tree[0]["children"] == [{"name": "a.yaml", "type": "file", "path": "viz/a.yaml"}]
 
-    def test_missing_configured_dir_is_omitted(self, tmp_path):
-        """models/ doesn't exist → group omitted, no error."""
+    def test_missing_primary_dir_still_listed(self, tmp_path):
+        """dashboards/ and models/ don't exist → still listed, empty (SHE-42).
+
+        The primary groups must render even when empty/missing so the UI can
+        offer "create the first file" there.
+        """
         (tmp_path / "charts").mkdir()
         (tmp_path / "charts" / "a.yaml").write_text(_CHART_YAML)
         client = TestClient(create_app(project_dir=tmp_path))
         tree = client.get("/project").json()
-        assert [e["group"] for e in tree] == ["charts"]
+        assert [e["group"] for e in tree] == ["charts", "dashboards", "models"]
+        assert tree[1] == {
+            "name": "dashboards",
+            "type": "dir",
+            "path": "dashboards",
+            "group": "dashboards",
+            "children": [],
+        }
+        assert tree[2]["children"] == []
 
-    def test_empty_configured_dir_is_omitted(self, tmp_path):
-        """assets/ exists but has no matching files → group omitted."""
+    def test_empty_assets_dir_is_omitted(self, tmp_path):
+        """assets/ has no create affordance → keeps the omit-when-empty rule."""
         (tmp_path / "charts").mkdir()
         (tmp_path / "charts" / "a.yaml").write_text(_CHART_YAML)
         (tmp_path / "assets").mkdir()
         client = TestClient(create_app(project_dir=tmp_path))
         tree = client.get("/project").json()
-        assert [e["group"] for e in tree] == ["charts"]
+        assert [e["group"] for e in tree] == ["charts", "dashboards", "models"]
 
     def test_dir_outside_project_is_omitted_with_warning(self, tmp_path, caplog):
         """A configured dir outside project_dir is skipped with a warning."""
@@ -131,7 +145,9 @@ class TestProjectTreeScope:
         client = TestClient(app)
         with caplog.at_level(logging.WARNING, logger="shelves.studio.files"):
             tree = client.get("/project").json()
-        assert [e["group"] for e in tree] == ["charts"]
+        # dashboards/models are missing but primary → listed empty (SHE-42);
+        # the outside-project assets dir must still be omitted entirely.
+        assert [e["group"] for e in tree] == ["charts", "dashboards", "models"]
         assert any("elsewhere" in r.message for r in caplog.records), (
             f"Expected a warning naming the outside dir; got {[r.message for r in caplog.records]}"
         )
@@ -148,7 +164,12 @@ class TestProjectTreeScope:
         )
         client = TestClient(app)
         tree = client.get("/project").json()
-        assert [(e["name"], e["group"]) for e in tree] == [("everything", "charts")]
+        # 'everything' dedupes to the first role; the untouched default
+        # models dir is missing but primary → listed empty (SHE-42).
+        assert [(e["name"], e["group"]) for e in tree] == [
+            ("everything", "charts"),
+            ("models", "models"),
+        ]
 
     def test_assets_group_included_when_it_has_matching_files(self, tmp_path):
         (tmp_path / "charts").mkdir()
@@ -157,8 +178,8 @@ class TestProjectTreeScope:
         (tmp_path / "assets" / "logo.json").write_text("{}")
         client = TestClient(create_app(project_dir=tmp_path))
         tree = client.get("/project").json()
-        assert [e["group"] for e in tree] == ["charts", "assets"]
-        assert tree[1]["children"] == [
+        assert [e["group"] for e in tree] == ["charts", "dashboards", "models", "assets"]
+        assert tree[3]["children"] == [
             {"name": "logo.json", "type": "file", "path": "assets/logo.json"}
         ]
 

@@ -10,6 +10,9 @@ Endpoints:
   GET  /project   → returns the project directory tree as JSON
   GET  /file      → reads file content (query param: path)
   PUT  /file      → writes file content (query param: path, body: content)
+  POST /file      → creates a new file (409 if exists; templated by dir)
+  POST /file/rename → renames/moves a file (query: path, to)
+  DELETE /file    → deletes a file
   WS   /ws        → WebSocket endpoint for live-reload push (server → client)
 """
 
@@ -153,6 +156,18 @@ def create_app(
     @app.put("/file", response_model=None)
     async def put_file(request: Request) -> JSONResponse | Response:
         return await files.put_file(request)
+
+    @app.post("/file", response_model=None)
+    async def post_file(request: Request) -> JSONResponse | Response:
+        return await files.post_file(request)
+
+    @app.post("/file/rename", response_model=None)
+    async def rename_file(request: Request) -> JSONResponse | Response:
+        return await files.rename_file(request)
+
+    @app.delete("/file", response_model=None)
+    async def delete_file(request: Request) -> JSONResponse | Response:
+        return await files.delete_file(request)
 
     @app.post("/compile-dashboard")
     async def compile_dashboard(request: Request) -> JSONResponse:
