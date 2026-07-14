@@ -135,6 +135,39 @@ body {
   margin-left: 6px;
 }
 
+/* ─── Back/Forward Navigation (SHE-40) ───────────────────── */
+.sh-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.sh-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--dur-base) var(--ease),
+              color var(--dur-base) var(--ease);
+}
+.sh-nav-btn:hover:not(:disabled) {
+  background: rgba(11, 11, 10, 0.04);
+  color: var(--ink-12);
+}
+.sh-nav-btn:active:not(:disabled) { background: rgba(11, 11, 10, 0.08); }
+.sh-nav-btn:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+.sh-nav-btn svg { display: block; }
+
 .sh-header-right {
   display: flex;
   align-items: center;

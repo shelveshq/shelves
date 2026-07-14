@@ -5,6 +5,7 @@ import {
   state, COMPILE_DEBOUNCE_MS, STORAGE_KEY_SETTINGS, STORAGE_KEY_PANE_WIDTH,
   updateStatusBar, updateBreadcrumb, resultIsForCurrentFile,
 } from './state.js';
+import { recordNavigation, navigateBack, navigateForward } from './nav.js';
 
 let _compileFn = null;
 let _suppressDirty = false;
@@ -47,6 +48,7 @@ export function setCompileFunction(fn) {
 const EDITOR_LOAD_TIMEOUT_MS = 20000;
 
 let _editorReadyResolve, _editorReadyReject;
+let _editorFailed = false;    // lets openFile bail before its probe fetch
 const editorReady = new Promise((res, rej) => {
   _editorReadyResolve = res;
   _editorReadyReject = rej;
@@ -93,6 +95,7 @@ export async function initEditor() {
     // top-level await and blank the ENTIRE UI with no in-page error (SHE-64).
     console.error('[shelves] editor failed to load:', e);
     showEditorBootError(e);
+    _editorFailed = true;
     _editorReadyReject(e);
   } finally {
     clearTimeout(timeoutId);  // don't leave a 20s timer pending after settle
@@ -223,6 +226,18 @@ async function initMonacoEditor() {
   state.editor.addCommand(
     monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
     () => saveCurrentFile(),
+  );
+
+  // Back/forward while focus is in the editor (SHE-40). This deliberately
+  // shadows Monaco's outdent/indent defaults — recorded decision: navigation
+  // wins; Tab/Shift+Tab still indent/outdent YAML.
+  state.editor.addCommand(
+    monaco.KeyMod.CtrlCmd | monaco.KeyCode.BracketLeft,
+    () => navigateBack(),
+  );
+  state.editor.addCommand(
+    monaco.KeyMod.CtrlCmd | monaco.KeyCode.BracketRight,
+    () => navigateForward(),
   );
 
   // Closing/reloading the tab with unsaved changes must prompt (SHE-51).
@@ -403,13 +418,54 @@ export async function compileCurrentContent() {
 }
 
 // ─── Open File ────────────────────────────────────────────
-export async function openFile(path) {
-  // Dirty-buffer guard (SHE-51): runs synchronously BEFORE anything arms a
-  // veil or compile state, so a cancel leaves the session exactly as it was.
-  if (state.currentFile?.path === path) return;               // same file: no-op
+/**
+ * Open a file into the editor.
+ * @param {string} path
+ * @param {{fromHistory?: boolean}} [opts]  fromHistory: don't re-record (SHE-40)
+ * @returns {Promise<'opened'|'cancelled'|'not-found'|'no-editor'|'error'>}
+ */
+export async function openFile(path, opts = {}) {
+  if (state.currentFile?.path === path) return 'opened';      // same file: no-op
+  if (_editorFailed) return 'no-editor';  // known-dead editor: nothing below can help
+
+  // Probe the file BEFORE the dirty-buffer confirm (SHE-51). GET /file is
+  // side-effect-free, and confirming first meant a since-deleted target
+  // consumed a "discard" answer without acting on it — nav.js's prune loop
+  // then re-entered here and asked again, once per pruned entry. Probing
+  // first, a walk over dead entries prompts exactly once, for the file that
+  // actually opens. No veil is armed yet, so failures here need no paired
+  // compile-result to terminate one.
+  let resp;
+  try {
+    resp = await fetch(`/file?path=${encodeURIComponent(path)}`);
+  } catch (e) {
+    console.error('[shelves] openFile error:', e);
+    document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+      detail: { vega_lite_spec: null, errors: [String(e)], warnings: [], path: null },
+    }));
+    return 'error';
+  }
+  if (resp.status === 404) {
+    // Only a definite 404 reports 'not-found' — nav.js permanently prunes
+    // history entries on it, so a transient failure (5xx on a mid-write
+    // read, permissions) must map to 'error' instead, which keeps the entry.
+    console.warn('[shelves] file not found:', path);
+    return 'not-found';
+  }
+  if (!resp.ok) {
+    const reason = (await resp.text().catch(() => '')) || `HTTP ${resp.status}`;
+    console.error('[shelves] openFile failed:', path, reason);
+    document.dispatchEvent(new CustomEvent('shelves:compile-result', {
+      detail: { vega_lite_spec: null, errors: [`Could not open ${path}: ${reason}`], warnings: [], path: null },
+    }));
+    return 'error';
+  }
+
+  // Dirty-buffer guard (SHE-51): still before anything arms a veil or
+  // compile state, so a cancel leaves the session exactly as it was.
   if (state.currentFile?.dirty) {
     const ok = window.confirm(`Discard unsaved changes to ${state.currentFile.path}?`);
-    if (!ok) return;
+    if (!ok) return 'cancelled';
   }
   // No editor, no open: wait for Monaco (a click during boot), and if the
   // editor failed to load, the boot error card already explains the state —
@@ -417,27 +473,16 @@ export async function openFile(path) {
   try {
     await editorReady;
   } catch {
-    return;
+    return 'no-editor';
   }
   try {
     state.compiling = true;
     updateStatusBar();
     document.dispatchEvent(new CustomEvent('shelves:compile-start'));
-    const resp = await fetch(`/file?path=${encodeURIComponent(path)}`);
-    if (!resp.ok) {
-      console.warn('[shelves] file not found:', path);
-      state.compiling = false;
-      updateStatusBar();
-      // Terminate the compile-start dispatched above, or the loading veil
-      // sticks. Every start must pair with exactly one end event.
-      document.dispatchEvent(new CustomEvent('shelves:compile-result', {
-        detail: { vega_lite_spec: null, errors: [], warnings: [], path: null },
-      }));
-      return;
-    }
     const { content } = await resp.json();
     state.currentFile = { path, dirty: false };
     state.fileDeleted = false;
+    if (!opts.fromHistory) recordNavigation(path);
     _suppressDirty = true;
     state.editor.setValue(content);
     _suppressDirty = false;
@@ -445,12 +490,14 @@ export async function openFile(path) {
     notifyActiveFileChanged();
     clearTimeout(state.compileTimer);
     if (_compileFn) _compileFn();
+    return 'opened';
   } catch (e) {
     state.compiling = false;
     console.error('[shelves] openFile error:', e);
     document.dispatchEvent(new CustomEvent('shelves:compile-result', {
       detail: { vega_lite_spec: null, errors: [String(e)], warnings: [], path: null },
     }));
+    return 'error';
   }
 }
 

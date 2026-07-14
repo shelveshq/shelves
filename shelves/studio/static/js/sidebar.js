@@ -3,6 +3,7 @@
 // management (SHE-42): create / rename / duplicate / delete.
 
 import { state, updateBreadcrumb, updateStatusBar } from './state.js';
+import { renameNavEntries } from './nav.js';
 
 const STORAGE_KEY_COLLAPSED   = 'shelves-studio-collapsed-dirs';
 const STORAGE_KEY_SIDEBAR_VIS = 'shelves-studio-sidebar-visible';
@@ -84,6 +85,9 @@ async function renameFile(oldPath, newName) {
     `/file/rename?path=${encodeURIComponent(oldPath)}&to=${encodeURIComponent(to)}`,
     { method: 'POST' },
   );
+  // Any successful rename remaps history (SHE-40) — a non-open file can be
+  // in the nav stack too, and a stale entry would be pruned as not-found.
+  if (resp.ok) renameNavEntries(oldPath, to);
   if (resp.ok && state.currentFile?.path === oldPath) {
     // Renaming the open file must never drop the buffer (dirty or not):
     // update the path in place. The rename's own deleted(old) broadcast may

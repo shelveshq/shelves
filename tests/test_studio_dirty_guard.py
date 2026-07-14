@@ -48,12 +48,38 @@ def test_dirty_switch_prompts_and_cancel_keeps_buffer():
     assert out["cancelPrompt"] == "Discard unsaved changes to charts/a.yaml?"
     assert out["cancelPromptCount"] == 1
     assert out["cancelKeptFile"] is True
-    assert out["cancelFetches"] == 0
+    # Exactly the side-effect-free probe GET ran before the prompt; nothing
+    # downstream of the cancelled confirm may have.
+    assert out["cancelFetches"] == 1
     assert out["cancelCompileStarts"] == 0
 
 
 def test_clean_switch_does_not_prompt():
     assert run_scenarios()["cleanPromptCount"] == 1  # still only the cancel prompt
+
+
+def test_missing_file_never_consumes_the_confirm():
+    out = run_scenarios()
+    assert out["notFoundStatus"] == "not-found"
+    assert out["notFoundPrompts"] == 0
+    assert out["notFoundKeptFile"] is True
+
+
+def test_server_error_is_error_not_not_found():
+    # nav.js permanently prunes history on 'not-found'; a transient 5xx must
+    # report 'error' (entry kept) and must not prompt either.
+    out = run_scenarios()
+    assert out["serverErrorStatus"] == "error"
+    assert out["serverErrorPrompts"] == 0
+
+
+def test_nav_prune_walk_prompts_exactly_once():
+    # SHE-40 review regression: dirty buffer + deleted entry in the back-path
+    # used to prompt once per prune-loop re-entry into openFile.
+    out = run_scenarios()
+    assert out["navPrunePrompts"] == 1
+    assert out["navPrunePromptedFor"] == "Discard unsaved changes to charts/z.yaml?"
+    assert out["navPruneStack"] == ["charts/a.yaml", "charts/z.yaml"]
 
 
 def test_deleted_file_shows_warn_notice_over_counts():

@@ -169,7 +169,15 @@ async def get_file(request: Request) -> JSONResponse | Response:
     if not resolved.exists():
         return Response(status_code=404, content="File not found")
 
-    return JSONResponse({"content": resolved.read_text(), "path": rel})
+    # A failed read is 500, never 404: the client prunes navigation history on
+    # 404 (deleted file), and a transient failure — permissions, a mid-write
+    # partial UTF-8 sequence — must not look like a deletion.
+    try:
+        content = resolved.read_text()
+    except (OSError, UnicodeDecodeError) as e:
+        return Response(status_code=500, content=f"Could not read file: {e}")
+
+    return JSONResponse({"content": content, "path": rel})
 
 
 async def put_file(request: Request) -> JSONResponse | Response:
