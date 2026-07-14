@@ -18,19 +18,39 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
   mounts `/static` and `/assets` (the latter via `_LenientStaticFiles`, which
   tolerates a missing dir so users can add `assets/` later without a restart),
   and injects a per-app `terminal_token` `<meta>` into the served HTML.
+  Every HTTP endpoint and mount validates the Host header against loopback
+  hosts (TrustedHostMiddleware, SHE-52) to block DNS rebinding; `PUT /file`
+  enforces the `.yaml/.yml/.json` write allow-list (theme file exempt).
+  Tests must use `tests/conftest.py::LoopbackTestClient` — a stock
+  TestClient sends `Host: testserver` and gets 400.
 - `routes/`
   - `compile.py` — `POST /compile` (YAML → `{vega_lite_spec, errors, warnings}`)
     and `GET /schema` (ChartSpec JSON Schema for Monaco).
   - `dashboard.py` — `POST /compile-dashboard` (dashboard YAML → `{html, canvas,
     component_tree, errors, warnings}`).
-  - `files.py` — `GET /project` (directory tree), `GET/PUT /file`. `resolve_safe`
-    rejects path traversal; `build_tree` walks the tree filtering to
-    `.yaml/.yml/.json` + dirs. `GET /project` returns typed top-level groups
-    (charts/dashboards/models/assets) built from the configured dirs; paths stay
-    relative to `project_dir`.
+  - `files.py` — `GET /project` (directory tree), `GET/PUT/POST/DELETE /file`,
+    `POST /file/rename`. `resolve_safe` rejects path traversal on every
+    endpoint; create/rename/delete are restricted to `.yaml/.yml/.json` and
+    broadcast `file_change` directly (the watcher's own event may duplicate
+    it; the sidebar debounces). New files get a starter template chosen by
+    the configured dir they land in (`template_for`). `GET /project` returns
+    typed top-level groups (charts/dashboards/models/assets) built from the
+    configured dirs; the three primary groups are listed even when empty or
+    missing so the UI can offer "create first file" (assets stays
+    omit-when-empty); paths stay relative to `project_dir`.
+    When `--theme` is set, the tree gains a top-level theme entry — real
+    relative path when the theme is inside the project, else the exact-match
+    alias `@theme/<name>` that only GET/PUT `/file` resolve (never
+    create/rename/delete). Theme writes broadcast `theme_changed` so clients
+    recompile.
   - `terminal.py` — PTY-backed terminal over `WS /ws/terminal`, token-gated.
 - `lifespan.py` — startup/shutdown; wires the file watcher and pushes results
-  over the broadcast WebSocket.
+  over the broadcast WebSocket. The watcher callback is the module-level
+  `handle_fs_event` (testable); theme-file events broadcast `theme_changed`
+  instead of attempting a compile. The theme path is in the watch scope, but
+  a theme OUTSIDE project_dir is not watched (the watch roots at
+  project_dir) — Studio saves to it still recompile via PUT /file's direct
+  broadcast; external edits to it don't live-reload (known limitation).
 - `watcher.py` — filesystem watch → recompile → broadcast `file_change` /
   `compile_result` to connected clients.
 - `connection.py` — `ConnectionManager` (broadcast WS fan-out for live reload).
@@ -74,9 +94,16 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
   - `preview.js` — chart render via `vegaEmbed` (with the shared label patch),
     JSON view, error overlay, `ResizeObserver` re-fit.
   - `dashboard.js` — dashboard compile + iframe preview, canvas scaling / zoom.
-  - `sidebar.js` — file tree fetch/render, collapse state, sidebar show/hide.
+  - `sidebar.js` — file tree fetch/render, collapse state, sidebar show/hide,
+    and file management (SHE-42): group-header `+`, right-click context menu
+    (New / Rename / Duplicate / two-step Delete), inline create/rename inputs.
+    The menu reuses the `.sh-menu` DS atoms (SHE-36). Renaming the open file
+    updates `state.currentFile.path` in place — the buffer (dirty or not) is
+    never dropped.
   - `terminal.js` — xterm.js terminal tabs over the terminal WS.
-  - `websocket.js` — single broadcast WS (`/ws`) → typed DOM events.
+  - `websocket.js` — single broadcast WS (`/ws`) → typed DOM events
+    (`compile_result`, `file_change`, `dashboard_compile_result`,
+    `theme_changed`).
 
 ## Event flow
 
@@ -97,6 +124,10 @@ same events for external file edits over `/ws`.
 - Compile requests are sequence-guarded (`compileSeq`) so a slow response can't
   overwrite a newer one — preserve this when touching compile paths.
 - Path safety: every file read/write goes through `resolve_safe`. Never bypass it.
+- Security posture (SHE-52): HTTP = loopback Host allow-list + write
+  extension allow-list; terminal WS = loopback Origin + per-app token. New
+  endpoints must not weaken either; new write paths go through
+  `_ALLOWED_WRITE_EXTENSIONS`.
 
 ## Design system
 
@@ -125,7 +156,5 @@ See `docs/design-system/studio/README.md` for the full adherence analysis.
 ## Known gaps (as of 2026-07 studio UX epic)
 
 - **No editor/preview history** — no back/forward between opened files.
-- **No file creation** from the UI (create/rename/delete); `PUT /file` can create,
-  but nothing drives it.
 - **Multi-tab editor** from the design (`editor.html`) is not implemented — Studio
   is single-file.

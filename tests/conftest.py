@@ -8,6 +8,9 @@ import contextlib
 import subprocess
 import threading
 from pathlib import Path
+from typing import Any
+
+from starlette.testclient import TestClient
 
 from shelves.schema.chart_schema import parse_chart
 from shelves.translator.translate import translate_chart
@@ -32,6 +35,29 @@ def load_layout_yaml(name: str) -> str:
 def load_data(name: str) -> str:
     """Load a JSON data fixture by name."""
     return (DATA_DIR / name).read_text()
+
+
+class LoopbackTestClient(TestClient):
+    """TestClient pinned to a loopback base_url.
+
+    Studio validates the Host header (SHE-52); Starlette's default
+    base_url sends Host: testserver, which the middleware rightly rejects.
+    Using this client keeps every studio test running THROUGH the Host
+    check instead of bypassing it.
+    """
+
+    def __init__(self, app: Any, **kwargs: Any) -> None:
+        kwargs.setdefault("base_url", "http://127.0.0.1")
+        super().__init__(app, **kwargs)
+
+    def websocket_connect(self, url: str, *args: Any, **kwargs: Any) -> Any:
+        # Starlette ignores base_url for websockets and hardcodes
+        # ws://testserver — inject a loopback Host so WS handshakes pass the
+        # SHE-52 middleware the same way page-context browsers do.
+        headers = dict(kwargs.get("headers") or {})
+        headers.setdefault("host", "127.0.0.1")
+        kwargs["headers"] = headers
+        return super().websocket_connect(url, *args, **kwargs)
 
 
 class SubprocessOutputDrainer:

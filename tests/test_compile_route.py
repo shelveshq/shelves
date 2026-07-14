@@ -5,10 +5,9 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from starlette.testclient import TestClient
-
 from shelves.studio.server import create_app
 from tests.conftest import MODELS_DIR
+from tests.conftest import LoopbackTestClient as TestClient
 
 
 def _make_client(tmp_path: Path) -> TestClient:

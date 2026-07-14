@@ -10,6 +10,68 @@ from fastapi import FastAPI
 from shelves.studio.connection import ConnectionManager
 
 
+def _build_scope_dirs(
+    charts_dir: Path,
+    dashboards_dir: Path,
+    models_dir: Path,
+    assets_dir: Path,
+    theme_path: Path | None,
+) -> list[Path]:
+    """Watcher event-filter scope: the configured dirs + the theme file.
+
+    watch_project's filter accepts files as well as dirs (is_relative_to
+    matches the file itself). An outside-project theme never matches —
+    the watch is rooted at project_dir — which is the documented limitation:
+    external edits to an outside theme don't live-reload; Studio saves to it
+    still do (PUT /file broadcasts theme_changed directly).
+    """
+    scope = [charts_dir, dashboards_dir, models_dir, assets_dir]
+    if theme_path is not None:
+        scope.append(theme_path)
+    return scope
+
+
+async def handle_fs_event(
+    event: str,
+    abs_path: Path,
+    *,
+    manager: ConnectionManager,
+    project_dir: Path,
+    theme_path: Path | None,
+    models_dir: Path,
+    charts_dir: Path,
+) -> None:
+    """Watcher callback body — module-level so the routing is testable.
+
+    file_change always broadcasts; a theme event additionally broadcasts
+    theme_changed and never attempts a compile (theme YAML has no
+    sheet/dashboard key); everything else keeps the existing compile routing.
+    """
+    from shelves.studio.watcher import should_compile
+
+    try:
+        rel = str(abs_path.relative_to(project_dir))
+    except ValueError:
+        rel = abs_path.name
+
+    await manager.broadcast({"type": "file_change", "event": event, "path": rel})
+
+    if theme_path is not None and abs_path.resolve() == theme_path.resolve():
+        await manager.broadcast({"type": "theme_changed", "path": rel})
+        return
+
+    if should_compile(abs_path) and event != "deleted":
+        await compile_file_and_broadcast(
+            abs_path,
+            rel,
+            manager,
+            models_dir,
+            theme_path,
+            project_dir=project_dir,
+            charts_dir=charts_dir,
+        )
+
+
 def make_lifespan(
     project_dir: Path,
     theme_path: Path | None,
@@ -21,7 +83,7 @@ def make_lifespan(
     """
     Create a FastAPI lifespan context manager that starts/stops the file watcher.
     """
-    from shelves.studio.watcher import should_compile, watch_project
+    from shelves.studio.watcher import watch_project
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -29,28 +91,22 @@ def make_lifespan(
         stop_event = asyncio.Event()
 
         async def on_change(event: str, abs_path: Path) -> None:
-            try:
-                rel = str(abs_path.relative_to(project_dir))
-            except ValueError:
-                rel = abs_path.name
+            await handle_fs_event(
+                event,
+                abs_path,
+                manager=manager,
+                project_dir=project_dir,
+                theme_path=theme_path,
+                models_dir=models_dir,
+                charts_dir=charts_dir,
+            )
 
-            await manager.broadcast({"type": "file_change", "event": event, "path": rel})
-
-            if should_compile(abs_path) and event != "deleted":
-                await compile_file_and_broadcast(
-                    abs_path,
-                    rel,
-                    manager,
-                    models_dir,
-                    theme_path,
-                    project_dir=project_dir,
-                    charts_dir=charts_dir,
-                )
-
-        # Broadcasts are scoped to the configured dirs (SHE-39); the watch
-        # itself is rooted at project_dir so dirs created after startup stay
-        # live. Theme watching is SHE-44 (add theme_path to scope_dirs).
-        scope_dirs = [charts_dir, dashboards_dir, models_dir, assets_dir]
+        # Broadcasts are scoped to the configured dirs + the theme file
+        # (SHE-39/SHE-44); the watch itself is rooted at project_dir so dirs
+        # created after startup stay live.
+        scope_dirs = _build_scope_dirs(
+            charts_dir, dashboards_dir, models_dir, assets_dir, theme_path
+        )
         task = asyncio.create_task(watch_project(project_dir, scope_dirs, on_change, stop_event))
         try:
             yield

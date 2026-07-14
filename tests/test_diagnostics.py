@@ -13,11 +13,11 @@ import warnings
 from pathlib import Path
 
 import pytest
-from starlette.testclient import TestClient
 
 from shelves.diagnostics import capture_warnings
 from shelves.studio.server import create_app
 from tests.conftest import MODELS_DIR
+from tests.conftest import LoopbackTestClient as TestClient
 
 
 class TestCaptureWarnings:

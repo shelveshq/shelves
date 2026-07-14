@@ -10,6 +10,139 @@ from fastapi.responses import JSONResponse
 logger = logging.getLogger("shelves.studio.files")
 
 _TREE_EXTENSIONS = {".yaml", ".yml", ".json"}
+# Create/rename/delete are restricted to tree-visible file types; SHE-52's
+# write allow-list builds on the same set.
+_ALLOWED_WRITE_EXTENSIONS = _TREE_EXTENSIONS
+_EXTENSION_ERROR = "Only .yaml, .yml, and .json files are allowed"
+
+# The primary groups are listed in /project even when empty or missing so the
+# UI can offer "create the first file" there (SHE-42); assets keeps the
+# SHE-39 omit-when-empty rule (no create affordance).
+_ALWAYS_LISTED_ROLES = {"charts", "dashboards", "models"}
+
+# ─── New-file starter templates (SHE-42) ─────────────────────────
+# Verified against the real pipeline (2026-07-13):
+#  - chart: parse_chart-valid; compiling in a fresh project reports the
+#    friendly "Data model 'my_model' not found" marker — intentional guidance.
+#  - dashboard: composes to HTML with zero errors ('vertical', NOT 'column').
+#  - model: load_model-valid once `model:` == filename stem (interpolated).
+CHART_TEMPLATE = """\
+sheet: "New Chart"
+
+# Point `data` at a model: models/<name>.yaml -> data: <name>
+data: my_model
+
+cols: my_dimension
+rows: my_measure
+marks: bar
+"""
+
+DASHBOARD_TEMPLATE = """\
+dashboard: "New Dashboard"
+
+canvas:
+  width: 1200
+  height: 800
+
+# components:
+#   my_chart:
+#     sheet: charts/my_chart.yaml
+
+root:
+  orientation: vertical
+  contains: []
+"""
+
+MODEL_TEMPLATE = """\
+model: {stem}
+label: "New Model"
+
+# source:
+#   type: file
+#   path: data/my_data.csv
+
+measures:
+  my_measure:
+    label: "My Measure"
+
+dimensions:
+  my_dimension:
+    label: "My Dimension"
+"""
+
+
+def template_for(state: Any, resolved: Path) -> str:
+    """Starter content for a new file, chosen by the configured dir it lands in.
+
+    Only .yaml/.yml files get a template; .json and files outside every
+    primary dir get "". Uses is_relative_to against the RESOLVED configured
+    dirs (same symlink discipline as the watcher).
+    """
+    if resolved.suffix not in {".yaml", ".yml"}:
+        return ""
+    for configured, template in (
+        (state.charts_dir, CHART_TEMPLATE),
+        (state.dashboards_dir, DASHBOARD_TEMPLATE),
+        (state.models_dir, MODEL_TEMPLATE),
+    ):
+        if resolved.is_relative_to(configured.resolve()):
+            return template.format(stem=resolved.stem) if template is MODEL_TEMPLATE else template
+    return ""
+
+
+def theme_alias(theme_path: Path | None) -> str | None:
+    """The exact tree path that aliases the configured theme file.
+
+    "@theme/<filename>" — a sentinel, not a directory namespace. Returns
+    None when no theme is configured. Exact-string matching (no user path
+    math) is what keeps the alias traversal-safe by construction.
+    """
+    return None if theme_path is None else f"@theme/{theme_path.name}"
+
+
+def _resolve_readwrite_path(state: Any, rel: str) -> tuple[Path | None, str | None]:
+    """Resolve a GET/PUT /file path: the theme alias, or resolve_safe.
+
+    Returns (resolved, None) on success, (None, error) on failure. Only
+    GET/PUT go through this — create/rename/delete stay resolve_safe-only,
+    so the alias can never be deleted, renamed, or shadowed.
+    """
+    theme = getattr(state, "theme_path", None)
+    if theme is not None and rel == theme_alias(theme):
+        return theme.resolve(), None
+    resolved, error = resolve_safe(state.project_dir, rel)
+    return (None, error) if error else (resolved, None)
+
+
+def _ensure_parent_dir(resolved: Path) -> str | None:
+    """Create parent dirs for a write; error string instead of an unhandled 500.
+
+    resolve_safe keeps the path inside the project but says nothing about
+    what's on disk: a component may be an existing FILE (charts/a.yaml/x.yaml),
+    where mkdir raises FileExistsError (the parent itself) or
+    NotADirectoryError (a deeper component). Reachable from the UI create
+    input via a slash-bearing name.
+    """
+    try:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+    except (FileExistsError, NotADirectoryError):
+        return "A parent of the path is an existing file"
+    return None
+
+
+async def _broadcast(request: Request, payload: dict[str, Any]) -> None:
+    """Broadcast a payload via app.state.manager.
+
+    Direct broadcast: the watcher also fires for these fs events, but relying
+    on it makes UI refresh timing nondeterministic (and dead under TestClient
+    without lifespan). Duplicates are harmless — sidebar.js debounces
+    fetchTree by 500ms and editor.js's handlers are idempotent.
+    """
+    await request.app.state.manager.broadcast(payload)
+
+
+async def _broadcast_file_change(request: Request, event: str, rel: str) -> None:
+    await _broadcast(request, {"type": "file_change", "event": event, "path": rel})
 
 
 async def get_project(request: Request) -> JSONResponse:
@@ -21,17 +154,16 @@ async def get_project(request: Request) -> JSONResponse:
         ("models", state.models_dir),
         ("assets", state.assets_dir),
     ]
-    tree = build_group_tree(state.project_dir, groups)
+    tree = build_group_tree(state.project_dir, groups, theme_path=state.theme_path)
     return JSONResponse(tree)
 
 
 async def get_file(request: Request) -> JSONResponse | Response:
-    """GET /file?path=<relative> — read file content."""
-    project_dir: Path = request.app.state.project_dir
+    """GET /file?path=<relative> — read file content (accepts the theme alias)."""
     rel = request.query_params.get("path", "")
 
-    resolved, error = resolve_safe(project_dir, rel)
-    if error:
+    resolved, error = _resolve_readwrite_path(request.app.state, rel)
+    if error or resolved is None:
         return Response(status_code=400, content=error)
 
     if not resolved.exists():
@@ -41,19 +173,121 @@ async def get_file(request: Request) -> JSONResponse | Response:
 
 
 async def put_file(request: Request) -> JSONResponse | Response:
-    """PUT /file?path=<relative> — write file content."""
+    """PUT /file?path=<relative> — write file content (accepts the theme alias)."""
+    rel = request.query_params.get("path", "")
+
+    resolved, error = _resolve_readwrite_path(request.app.state, rel)
+    if error or resolved is None:
+        return Response(status_code=400, content=error)
+
+    theme = getattr(request.app.state, "theme_path", None)
+    is_theme_write = theme is not None and resolved == theme.resolve()
+
+    # Write allow-list (SHE-52): the tree only shows .yaml/.yml/.json, and a
+    # DNS-rebinding page must not be able to plant e.g. a .py in the project.
+    # The operator-configured theme file is exempt — its path is fixed
+    # server-side, not attacker-chosen (SHE-44 saves must work for any
+    # --theme filename).
+    if not is_theme_write and resolved.suffix not in _ALLOWED_WRITE_EXTENSIONS:
+        return Response(status_code=400, content=_EXTENSION_ERROR)
+
+    if error := _ensure_parent_dir(resolved):
+        return Response(status_code=400, content=error)
+    content = (await request.body()).decode("utf-8")
+    resolved.write_text(content)
+
+    # Theme write → tell clients to recompile with the new theme. Direct and
+    # unconditional (same rationale as the create/rename/delete broadcasts):
+    # the watcher can't see an outside-project theme at all, and even
+    # in-project the direct event is deterministic. No file_change for the
+    # alias — the tree entry is static.
+    if is_theme_write:
+        await _broadcast(request, {"type": "theme_changed", "path": rel})
+
+    return JSONResponse({"ok": True, "path": rel})
+
+
+async def post_file(request: Request) -> JSONResponse | Response:
+    """POST /file?path=<relative> — create a new file; 409 if it exists.
+
+    Body (optional, utf-8) = initial content (used by Duplicate); empty body
+    → template_for(...). Creates parent dirs.
+    """
     project_dir: Path = request.app.state.project_dir
     rel = request.query_params.get("path", "")
 
     resolved, error = resolve_safe(project_dir, rel)
     if error:
         return Response(status_code=400, content=error)
+    if resolved.suffix not in _ALLOWED_WRITE_EXTENSIONS:
+        return Response(status_code=400, content=_EXTENSION_ERROR)
+    if resolved.exists():
+        return Response(status_code=409, content="File already exists")
 
-    resolved.parent.mkdir(parents=True, exist_ok=True)
-    content = (await request.body()).decode("utf-8")
+    body = await request.body()
+    content = body.decode("utf-8") if body else template_for(request.app.state, resolved)
+    if error := _ensure_parent_dir(resolved):
+        return Response(status_code=400, content=error)
     resolved.write_text(content)
 
-    return JSONResponse({"ok": True, "path": rel})
+    await _broadcast_file_change(request, "created", rel)
+    return JSONResponse({"ok": True, "path": rel}, status_code=201)
+
+
+async def rename_file(request: Request) -> JSONResponse | Response:
+    """POST /file/rename?path=<old>&to=<new> — move/rename a file."""
+    project_dir: Path = request.app.state.project_dir
+    rel = request.query_params.get("path", "")
+    to_rel = request.query_params.get("to", "")
+
+    source, error = resolve_safe(project_dir, rel)
+    if error:
+        return Response(status_code=400, content=error)
+    if not to_rel:
+        return Response(status_code=400, content="Missing to parameter")
+    target, error = resolve_safe(project_dir, to_rel)
+    if error:
+        return Response(status_code=400, content=error)
+
+    if target.suffix not in _ALLOWED_WRITE_EXTENSIONS:
+        return Response(status_code=400, content=_EXTENSION_ERROR)
+    if not source.exists():
+        return Response(status_code=404, content="File not found")
+    if not source.is_file():
+        return Response(status_code=400, content="Not a file")
+    if target.exists():
+        return Response(status_code=409, content="File already exists")
+
+    if error := _ensure_parent_dir(target):
+        return Response(status_code=400, content=error)
+    source.rename(target)
+
+    await _broadcast_file_change(request, "deleted", rel)
+    await _broadcast_file_change(request, "created", to_rel)
+    return JSONResponse({"ok": True, "path": to_rel})
+
+
+async def delete_file(request: Request) -> JSONResponse | Response:
+    """DELETE /file?path=<relative> — delete a file (never a directory)."""
+    project_dir: Path = request.app.state.project_dir
+    rel = request.query_params.get("path", "")
+
+    resolved, error = resolve_safe(project_dir, rel)
+    if error:
+        return Response(status_code=400, content=error)
+    if not resolved.exists():
+        return Response(status_code=404, content="File not found")
+    # is_file before the extension check: a directory (usually suffix-less)
+    # must report "Not a file", not a misleading extension error.
+    if not resolved.is_file():
+        return Response(status_code=400, content="Not a file")
+    if resolved.suffix not in _ALLOWED_WRITE_EXTENSIONS:
+        return Response(status_code=400, content=_EXTENSION_ERROR)
+
+    resolved.unlink()
+
+    await _broadcast_file_change(request, "deleted", rel)
+    return JSONResponse({"ok": True})
 
 
 def resolve_safe(project_dir: Path, rel: str) -> tuple[Path, str | None]:
@@ -79,16 +313,23 @@ def resolve_safe(project_dir: Path, rel: str) -> tuple[Path, str | None]:
 def build_group_tree(
     project_dir: Path,
     groups: list[tuple[str, Path]],
+    theme_path: Path | None = None,
 ) -> list[dict[str, Any]]:
     """
     Build the /project tree as typed top-level groups.
 
     groups is [(role, dir), …] with role ∈ charts|dashboards|models|assets;
-    emits one entry per existing, non-empty configured dir:
+    emits one entry per configured dir:
     {"name": dir.name, "type": "dir", "path": rel, "group": role, "children": …}.
+    Primary roles (charts/dashboards/models) are listed even when the dir is
+    empty or missing — children: [] — so the UI can offer "create the first
+    file" (SHE-42); assets keeps the omit-when-empty rule.
     Dirs that resolve outside project_dir are skipped with a warning
     (resolve_safe stays single-root, so their files would be unreachable).
     Duplicate dirs are emitted once — first role wins.
+    When theme_path names an existing file, a top-level theme entry is
+    appended last: real relative path when inside the project, else the
+    exact-match "@theme/<name>" alias (SHE-44).
 
     Known edge (accepted, PR #62 review): a configured dir equal to
     project_dir walks the whole project into that group — deliberate, since
@@ -112,10 +353,8 @@ def build_group_tree(
                 root,
             )
             continue
-        if not rd.is_dir():
-            continue
-        children = build_tree(rd, root)
-        if not children:
+        children = build_tree(rd, root) if rd.is_dir() else []
+        if not children and role not in _ALWAYS_LISTED_ROLES:
             continue
         entries.append(
             {
@@ -126,6 +365,11 @@ def build_group_tree(
                 "children": children,
             }
         )
+    if theme_path is not None:
+        tp = theme_path.resolve()
+        if tp.is_file():  # missing theme → no entry (nothing to open)
+            rel = str(tp.relative_to(root)) if tp.is_relative_to(root) else theme_alias(theme_path)
+            entries.append({"name": tp.name, "type": "file", "path": rel, "group": "theme"})
     return entries
 
 

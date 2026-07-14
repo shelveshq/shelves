@@ -167,7 +167,7 @@ class TestConnectionManager:
 class TestWebSocketEndpoint:
     def test_ws_connect_disconnect(self, tmp_path):
         """WebSocket connects and disconnects without errors."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=tmp_path)
         with TestClient(app) as client, client.websocket_connect("/ws") as ws:
@@ -177,7 +177,7 @@ class TestWebSocketEndpoint:
 
     def test_ws_connect_multiple_clients(self, tmp_path):
         """Multiple WebSocket clients can connect simultaneously."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=tmp_path)
         with (
@@ -200,7 +200,7 @@ class TestDefaultThemeInCompile:
 
     def test_compile_endpoint_applies_default_theme(self, tmp_path):
         """POST /compile with no theme_path returns a spec with config.title tokens."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=tmp_path, theme_path=None, models_dir=MODELS_DIR)
         with TestClient(app) as client:

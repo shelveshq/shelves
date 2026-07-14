@@ -30,7 +30,7 @@ PROJECT_DIR = FIXTURES_DIR  # tests/fixtures/ — has models/, yaml/, data/ subd
 
 def _client():
     """Create a TestClient for the studio FastAPI app."""
-    from starlette.testclient import TestClient
+    from tests.conftest import LoopbackTestClient as TestClient
 
     app = create_app(project_dir=PROJECT_DIR)
     return TestClient(app)
@@ -102,7 +102,7 @@ class TestAssetsRoute:
 
     def test_assets_route_serves_file(self, tmp_path):
         """A file under <project_dir>/assets is served at /assets/... with matching bytes."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         (tmp_path / "assets" / "png").mkdir(parents=True)
         (tmp_path / "assets" / "png" / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\nFAKE")
@@ -114,7 +114,7 @@ class TestAssetsRoute:
 
     def test_assets_dir_override(self, tmp_path):
         """Explicit assets_dir overrides the <project_dir>/assets default."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         (tmp_path / "custom_assets").mkdir()
         (tmp_path / "custom_assets" / "logo.png").write_bytes(b"PNGDATA")
@@ -132,7 +132,7 @@ class TestAssetsRoute:
 
     def test_assets_missing_dir_returns_404(self, tmp_path):
         """No assets dir at startup → app still builds and /assets 404s (not 500)."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=tmp_path)
         client = TestClient(app)
@@ -141,7 +141,7 @@ class TestAssetsRoute:
 
     def test_assets_dir_created_after_startup_is_served(self, tmp_path):
         """A dir/file created after startup is served without a restart (check_dir=False)."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=tmp_path)  # no assets/ dir yet
         client = TestClient(app)
@@ -155,7 +155,7 @@ class TestAssetsRoute:
 
     def test_assets_path_is_file_returns_404(self, tmp_path):
         """assets_dir pointing at a file (not a dir) doesn't crash; requests 404."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         not_a_dir = tmp_path / "assets.txt"
         not_a_dir.write_text("not a directory")
@@ -338,7 +338,7 @@ marks: bar
         """POST /compile calls resolve_data to bind data from Cube-source models."""
         from unittest.mock import patch
 
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=PROJECT_DIR)
         client = TestClient(app)
@@ -367,7 +367,7 @@ marks: bar
         """When resolve_data raises, compile still returns the spec with a warning."""
         from unittest.mock import patch
 
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=PROJECT_DIR)
         client = TestClient(app)
@@ -407,7 +407,7 @@ marks: bar
         # Point project_dir at a temp dir so data/orders.json won't be found
         import tempfile
 
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -457,14 +457,20 @@ class TestProjectEndpoint:
         assert len(tree) > 0
 
     def test_get_project_empty_dir(self, tmp_path):
-        """GET /project for an empty directory returns an empty list."""
-        from starlette.testclient import TestClient
+        """GET /project for an empty directory returns the empty primary groups.
+
+        The charts/dashboards/models groups are listed even when missing so
+        the UI can offer "create the first file" there (SHE-42).
+        """
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=tmp_path)
         client = TestClient(app)
         response = client.get("/project")
         assert response.status_code == 200
-        assert response.json() == []
+        tree = response.json()
+        assert [e["group"] for e in tree] == ["charts", "dashboards", "models"]
+        assert all(e["children"] == [] for e in tree)
 
     def test_project_tree_structure(self):
         """Each tree entry has name and type fields."""
@@ -496,7 +502,7 @@ class TestProjectEndpoint:
 
     def test_project_tree_nested_path(self, tmp_path):
         """Nested directory paths are correctly constructed relative to project root."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         # Create nested structure: charts/sales/revenue.yaml
         (tmp_path / "charts" / "sales").mkdir(parents=True)
@@ -550,7 +556,7 @@ class TestFileEndpoints:
 
     def test_put_file_writes_content(self, tmp_path):
         """PUT /file writes content to disk."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=tmp_path)
         client = TestClient(app)
@@ -566,7 +572,7 @@ class TestFileEndpoints:
 
     def test_put_file_path_traversal_rejected(self, tmp_path):
         """PUT /file with path traversal attempt returns 400."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=tmp_path)
         client = TestClient(app)
@@ -660,7 +666,7 @@ root:
 
     def test_compile_dashboard_returns_html(self, tmp_path):
         """POST /compile-dashboard with valid YAML returns HTML and empty errors."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         self._make_project(tmp_path)
         app = create_app(project_dir=tmp_path)
@@ -679,7 +685,7 @@ root:
 
     def test_compile_dashboard_component_tree_structure(self, tmp_path):
         """POST /compile-dashboard returns flat component_tree with correct structure."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         self._make_project(tmp_path)
         app = create_app(project_dir=tmp_path)
@@ -710,7 +716,7 @@ root:
 
     def test_compile_dashboard_invalid_yaml(self, tmp_path):
         """POST /compile-dashboard with invalid dashboard YAML returns errors."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=tmp_path)
         client = TestClient(app)
@@ -727,7 +733,7 @@ root:
         """POST /compile-dashboard with a missing chart reference warns and
         still renders — the sheet is an empty box, consistent with how a chart
         that fails to compile behaves (shared loop, fail_fast=False)."""
-        from starlette.testclient import TestClient
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=tmp_path)
         client = TestClient(app)
@@ -761,7 +767,7 @@ _LOCAL_ORIGIN_HEADERS = {"origin": "http://localhost"}
 
 def _terminal_app_client():
     """Return (app, TestClient) so tests can read the terminal token."""
-    from starlette.testclient import TestClient
+    from tests.conftest import LoopbackTestClient as TestClient
 
     app = create_app(project_dir=PROJECT_DIR)
     return app, TestClient(app)
@@ -776,8 +782,9 @@ def _open_terminal_ws(app, client):
 class TestTerminalEndpoint:
     def test_terminal_ws_rejects_cross_origin(self):
         """Non-loopback Origin handshakes are refused before any shell spawns."""
-        from starlette.testclient import TestClient
         from starlette.websockets import WebSocketDisconnect
+
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=PROJECT_DIR)
         client = TestClient(app)
@@ -791,8 +798,9 @@ class TestTerminalEndpoint:
 
     def test_terminal_ws_rejects_null_origin(self):
         """Sandboxed-iframe style 'Origin: null' is rejected."""
-        from starlette.testclient import TestClient
         from starlette.websockets import WebSocketDisconnect
+
+        from tests.conftest import LoopbackTestClient as TestClient
 
         app = create_app(project_dir=PROJECT_DIR)
         client = TestClient(app)
