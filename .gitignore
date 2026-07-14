@@ -24,3 +24,6 @@ assets/Shelves Design System.zip
 
 # Design system mirror (local working copy from Claude Design; not published)
 docs/design-system/
+
+# Local-only docs: strategy/design reference material, not published
+docs/foundational/
