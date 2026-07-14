@@ -6,7 +6,7 @@
   - `dsl-reference.md` — Complete DSL field/property reference with examples and type tables
   - `getting-started.md` — Introductory workflow and basic examples
   - `dashboards.md` — Dashboard / Layout DSL guide
-- `foundational/` — Architecture and design documents (Vision, Architecture, DSL Specifications, Measure Design)
+- `foundational/` — Architecture, design, and strategy documents (Vision, DSL/MCP/Template/Parameter/LLM-Writability specifications, Market Landscape, Positioning, Pitch). **Local-only: gitignored, never committed** — like `plans/`, these live on the founder's machine and are not published.
 - `plans/` — Implementation plans for specific tickets (KAN-xxx.md)
 
 ## Rules
