@@ -26,6 +26,10 @@ export const state = {
   // The open file was deleted on disk (SHE-51). The buffer is never
   // auto-closed — it may be the only surviving copy; saving recreates it.
   fileDeleted: false,
+  // File navigation history (SHE-40). stack holds opened paths oldest→newest;
+  // index points at the entry for the file currently open. Navigation moves
+  // index without pushing; a fresh open truncates everything after index.
+  nav: { stack: [], index: -1 },
 };
 
 // True when a compile/dashboard result belongs to the open buffer. Local
@@ -44,6 +48,7 @@ export const WS_DOWN_GATE_MS = 1000;    // don't flash "Reconnecting…" on a bl
 export const WS_UNREACHABLE_AFTER = 5;  // failed retries before escalating
 export const STORAGE_KEY_SETTINGS = 'shelves-studio-settings';
 export const STORAGE_KEY_PANE_WIDTH = 'shelves-studio-pane-width';
+export const NAV_STACK_MAX = 100;   // history entries kept (oldest dropped)
 
 // ─── Status Bar ───────────────────────────────────────────
 export function updateStatusBar() {

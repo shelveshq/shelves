@@ -100,6 +100,12 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     The menu reuses the `.sh-menu` DS atoms (SHE-36). Renaming the open file
     updates `state.currentFile.path` in place — the buffer (dirty or not) is
     never dropped.
+  - `nav.js` — back/forward file-navigation history (SHE-40): stack in
+    `state.nav`, topbar chevrons, `Cmd/Ctrl+[`/`]` (shadowing Monaco's
+    outdent/indent — Tab/Shift+Tab still indent) + mouse buttons 3/4. All
+    navigation funnels through `openFile` (injected via `initNav`), so the
+    dirty-buffer confirm applies; files deleted since being opened are
+    pruned and navigation falls through to the next entry.
   - `terminal.js` — xterm.js terminal tabs over the terminal WS.
   - `websocket.js` — single broadcast WS (`/ws`) → typed DOM events
     (`compile_result`, `file_change`, `dashboard_compile_result`,
@@ -155,6 +161,5 @@ See `docs/design-system/studio/README.md` for the full adherence analysis.
 
 ## Known gaps (as of 2026-07 studio UX epic)
 
-- **No editor/preview history** — no back/forward between opened files.
 - **Multi-tab editor** from the design (`editor.html`) is not implemented — Studio
   is single-file.

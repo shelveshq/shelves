@@ -3,7 +3,8 @@
 
 import { state, COMPILE_DEBOUNCE_MS, updateStatusBar } from './state.js';
 import { connectWebSocket } from './websocket.js';
-import { initEditor, setCompileFunction, compileCurrentContent } from './editor.js';
+import { initEditor, setCompileFunction, compileCurrentContent, openFile } from './editor.js';
+import { initNav } from './nav.js';
 import { initPreview } from './preview.js';
 import { initSidebar, toggleSidebar } from './sidebar.js';
 import {
@@ -23,6 +24,7 @@ initSidebar();
 initDashboard();
 connectWebSocket();
 initEditor();
+initNav({ openFile });
 initTerminal().catch((e) => console.error('[shelves] terminal init failed:', e));
 
 // ─── Compile Router ────────────────────────────────────────

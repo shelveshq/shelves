@@ -5,6 +5,7 @@ import {
   state, COMPILE_DEBOUNCE_MS, STORAGE_KEY_SETTINGS, STORAGE_KEY_PANE_WIDTH,
   updateStatusBar, updateBreadcrumb, resultIsForCurrentFile,
 } from './state.js';
+import { recordNavigation, navigateBack, navigateForward } from './nav.js';
 
 let _compileFn = null;
 let _suppressDirty = false;
@@ -225,6 +226,18 @@ async function initMonacoEditor() {
     () => saveCurrentFile(),
   );
 
+  // Back/forward while focus is in the editor (SHE-40). This deliberately
+  // shadows Monaco's outdent/indent defaults — recorded decision: navigation
+  // wins; Tab/Shift+Tab still indent/outdent YAML.
+  state.editor.addCommand(
+    monaco.KeyMod.CtrlCmd | monaco.KeyCode.BracketLeft,
+    () => navigateBack(),
+  );
+  state.editor.addCommand(
+    monaco.KeyMod.CtrlCmd | monaco.KeyCode.BracketRight,
+    () => navigateForward(),
+  );
+
   // Closing/reloading the tab with unsaved changes must prompt (SHE-51).
   // preventDefault shows the browser's generic dialog; custom text is ignored.
   window.addEventListener('beforeunload', (e) => {
@@ -403,13 +416,19 @@ export async function compileCurrentContent() {
 }
 
 // ─── Open File ────────────────────────────────────────────
-export async function openFile(path) {
+/**
+ * Open a file into the editor.
+ * @param {string} path
+ * @param {{fromHistory?: boolean}} [opts]  fromHistory: don't re-record (SHE-40)
+ * @returns {Promise<'opened'|'cancelled'|'not-found'|'no-editor'|'error'>}
+ */
+export async function openFile(path, opts = {}) {
   // Dirty-buffer guard (SHE-51): runs synchronously BEFORE anything arms a
   // veil or compile state, so a cancel leaves the session exactly as it was.
-  if (state.currentFile?.path === path) return;               // same file: no-op
+  if (state.currentFile?.path === path) return 'opened';      // same file: no-op
   if (state.currentFile?.dirty) {
     const ok = window.confirm(`Discard unsaved changes to ${state.currentFile.path}?`);
-    if (!ok) return;
+    if (!ok) return 'cancelled';
   }
   // No editor, no open: wait for Monaco (a click during boot), and if the
   // editor failed to load, the boot error card already explains the state —
@@ -417,7 +436,7 @@ export async function openFile(path) {
   try {
     await editorReady;
   } catch {
-    return;
+    return 'no-editor';
   }
   try {
     state.compiling = true;
@@ -433,11 +452,12 @@ export async function openFile(path) {
       document.dispatchEvent(new CustomEvent('shelves:compile-result', {
         detail: { vega_lite_spec: null, errors: [], warnings: [], path: null },
       }));
-      return;
+      return 'not-found';
     }
     const { content } = await resp.json();
     state.currentFile = { path, dirty: false };
     state.fileDeleted = false;
+    if (!opts.fromHistory) recordNavigation(path);
     _suppressDirty = true;
     state.editor.setValue(content);
     _suppressDirty = false;
@@ -445,12 +465,14 @@ export async function openFile(path) {
     notifyActiveFileChanged();
     clearTimeout(state.compileTimer);
     if (_compileFn) _compileFn();
+    return 'opened';
   } catch (e) {
     state.compiling = false;
     console.error('[shelves] openFile error:', e);
     document.dispatchEvent(new CustomEvent('shelves:compile-result', {
       detail: { vega_lite_spec: null, errors: [String(e)], warnings: [], path: null },
     }));
+    return 'error';
   }
 }
 
