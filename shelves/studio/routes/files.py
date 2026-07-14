@@ -114,6 +114,22 @@ def _resolve_readwrite_path(state: Any, rel: str) -> tuple[Path | None, str | No
     return (None, error) if error else (resolved, None)
 
 
+def _ensure_parent_dir(resolved: Path) -> str | None:
+    """Create parent dirs for a write; error string instead of an unhandled 500.
+
+    resolve_safe keeps the path inside the project but says nothing about
+    what's on disk: a component may be an existing FILE (charts/a.yaml/x.yaml),
+    where mkdir raises FileExistsError (the parent itself) or
+    NotADirectoryError (a deeper component). Reachable from the UI create
+    input via a slash-bearing name.
+    """
+    try:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+    except (FileExistsError, NotADirectoryError):
+        return "A parent of the path is an existing file"
+    return None
+
+
 async def _broadcast(request: Request, payload: dict[str, Any]) -> None:
     """Broadcast a payload via app.state.manager.
 
@@ -175,7 +191,8 @@ async def put_file(request: Request) -> JSONResponse | Response:
     if not is_theme_write and resolved.suffix not in _ALLOWED_WRITE_EXTENSIONS:
         return Response(status_code=400, content=_EXTENSION_ERROR)
 
-    resolved.parent.mkdir(parents=True, exist_ok=True)
+    if error := _ensure_parent_dir(resolved):
+        return Response(status_code=400, content=error)
     content = (await request.body()).decode("utf-8")
     resolved.write_text(content)
 
@@ -209,7 +226,8 @@ async def post_file(request: Request) -> JSONResponse | Response:
 
     body = await request.body()
     content = body.decode("utf-8") if body else template_for(request.app.state, resolved)
-    resolved.parent.mkdir(parents=True, exist_ok=True)
+    if error := _ensure_parent_dir(resolved):
+        return Response(status_code=400, content=error)
     resolved.write_text(content)
 
     await _broadcast_file_change(request, "created", rel)
@@ -240,7 +258,8 @@ async def rename_file(request: Request) -> JSONResponse | Response:
     if target.exists():
         return Response(status_code=409, content="File already exists")
 
-    target.parent.mkdir(parents=True, exist_ok=True)
+    if error := _ensure_parent_dir(target):
+        return Response(status_code=400, content=error)
     source.rename(target)
 
     await _broadcast_file_change(request, "deleted", rel)

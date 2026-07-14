@@ -198,3 +198,15 @@ class TestFileIOUnchanged:
 
         resp = client.get("/file", params={"path": "../outside.yaml"})
         assert resp.status_code == 400
+
+    def test_put_under_existing_file_rejected(self, tmp_path):
+        # charts/revenue.yaml is a FILE — using it as a directory component
+        # must be a clean 400, not an unhandled 500 (PR review).
+        project = _make_default_project(tmp_path)
+        client = TestClient(create_app(project_dir=project))
+        resp = client.put(
+            "/file", params={"path": "charts/revenue.yaml/child.yaml"}, content="sheet: x\n"
+        )
+        assert resp.status_code == 400
+        assert resp.text == "A parent of the path is an existing file"
+        assert (project / "charts" / "revenue.yaml").read_text() == _CHART_YAML

@@ -119,6 +119,16 @@ class TestCreate:
         client = TestClient(create_app(project_dir=project))
         assert client.post("/file").status_code == 400
 
+    def test_create_under_existing_file_rejected(self, tmp_path):
+        # charts/revenue.yaml exists as a FILE — using it as a directory
+        # component must be a clean 400, not an unhandled 500 (PR review).
+        project = _make_project(tmp_path)
+        client = TestClient(create_app(project_dir=project))
+        resp = client.post("/file", params={"path": "charts/revenue.yaml/child.yaml"})
+        assert resp.status_code == 400
+        assert resp.text == "A parent of the path is an existing file"
+        assert (project / "charts" / "revenue.yaml").read_text() == _CHART_YAML
+
 
 # ─── Rename ──────────────────────────────────────────────────────
 
@@ -195,6 +205,18 @@ class TestRename:
         )
         assert resp.status_code == 400
         assert resp.text == "Only .yaml, .yml, and .json files are allowed"
+
+    def test_rename_target_under_existing_file_rejected(self, tmp_path):
+        project = _make_project(tmp_path)
+        (project / "charts" / "other.yaml").write_text("sheet: other\n")
+        client = TestClient(create_app(project_dir=project))
+        resp = client.post(
+            "/file/rename",
+            params={"path": "charts/revenue.yaml", "to": "charts/other.yaml/x.yaml"},
+        )
+        assert resp.status_code == 400
+        assert resp.text == "A parent of the path is an existing file"
+        assert (project / "charts" / "revenue.yaml").read_text() == _CHART_YAML
 
     def test_rename_directory_rejected(self, tmp_path):
         project = _make_project(tmp_path)
