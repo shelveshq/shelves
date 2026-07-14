@@ -17,12 +17,12 @@ import time
 from pathlib import Path
 
 import pytest
-from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from shelves.studio.routes.terminal import is_allowed_ws_origin
 from shelves.studio.server import create_app
 from shelves.studio.terminal import PtyManager
+from tests.conftest import LoopbackTestClient as TestClient
 
 # ─── is_allowed_ws_origin ────────────────────────────────────────
 

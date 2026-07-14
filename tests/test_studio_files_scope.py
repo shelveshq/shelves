@@ -11,9 +11,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from starlette.testclient import TestClient
-
 from shelves.studio.server import create_app
+from tests.conftest import LoopbackTestClient as TestClient
 
 _CHART_YAML = "sheet: test\n"
 

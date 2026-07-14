@@ -14,11 +14,10 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, call
 
-from starlette.testclient import TestClient
-
 from shelves.studio.lifespan import _build_scope_dirs, handle_fs_event
 from shelves.studio.routes.files import theme_alias
 from shelves.studio.server import create_app
+from tests.conftest import LoopbackTestClient as TestClient
 
 _CHART_YAML = "sheet: test\n"
 _THEME_YAML = "font: Inter\n"

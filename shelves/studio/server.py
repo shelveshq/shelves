@@ -15,6 +15,13 @@ Endpoints:
   POST /file/rename → renames/moves a file (query: path, to)
   DELETE /file    → deletes a file
   WS   /ws        → WebSocket endpoint for live-reload push (server → client)
+
+Security:
+  All HTTP endpoints (and mounts) validate the Host header against loopback
+  hosts (TrustedHostMiddleware) to block DNS rebinding; PUT /file enforces
+  the same .yaml/.yml/.json write allow-list as create/rename/delete (the
+  configured theme file is exempt). The terminal WS additionally requires a
+  loopback Origin and a per-app token.
 """
 
 from __future__ import annotations
@@ -26,6 +33,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -37,6 +45,15 @@ from shelves.studio.routes import compile, dashboard, files, terminal
 logger = logging.getLogger("shelves.studio.server")
 
 _STATIC_DIR = Path(__file__).parent / "static"
+
+# Loopback-only Host allow-list (SHE-52). Binding to 127.0.0.1 does not stop
+# DNS rebinding — the victim's browser is the vector, and it sends the
+# attacker hostname in Host. TrustedHostMiddleware strips the port before
+# matching, so explicit ports pass. "::1" is omitted deliberately: the server
+# binds the IPv4 loopback only (cli.BIND_HOST), so an IPv6 Host can never
+# belong to a legitimate request — and Starlette's host parsing predates
+# bracketed IPv6 literals anyway.
+_ALLOWED_HTTP_HOSTS = ["localhost", "127.0.0.1"]
 
 
 class _LenientStaticFiles(StaticFiles):
@@ -107,6 +124,11 @@ def create_app(
     # the served HTML as a <meta> tag, so same-origin scripts can read it
     # but cross-origin pages (blocked by CORS) cannot.
     app.state.terminal_token = secrets.token_urlsafe(32)
+
+    # Host validation (SHE-52): reject DNS-rebinding requests on every HTTP
+    # endpoint and mount. The terminal WS keeps its own stricter Origin +
+    # token defense (routes/terminal.py).
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_ALLOWED_HTTP_HOSTS)
 
     # CORS — allow localhost origins for browser access during development
     app.add_middleware(

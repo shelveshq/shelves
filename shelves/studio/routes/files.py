@@ -164,6 +164,17 @@ async def put_file(request: Request) -> JSONResponse | Response:
     if error or resolved is None:
         return Response(status_code=400, content=error)
 
+    theme = getattr(request.app.state, "theme_path", None)
+    is_theme_write = theme is not None and resolved == theme.resolve()
+
+    # Write allow-list (SHE-52): the tree only shows .yaml/.yml/.json, and a
+    # DNS-rebinding page must not be able to plant e.g. a .py in the project.
+    # The operator-configured theme file is exempt — its path is fixed
+    # server-side, not attacker-chosen (SHE-44 saves must work for any
+    # --theme filename).
+    if not is_theme_write and resolved.suffix not in _ALLOWED_WRITE_EXTENSIONS:
+        return Response(status_code=400, content=_EXTENSION_ERROR)
+
     resolved.parent.mkdir(parents=True, exist_ok=True)
     content = (await request.body()).decode("utf-8")
     resolved.write_text(content)
@@ -173,8 +184,7 @@ async def put_file(request: Request) -> JSONResponse | Response:
     # the watcher can't see an outside-project theme at all, and even
     # in-project the direct event is deterministic. No file_change for the
     # alias — the tree entry is static.
-    theme = getattr(request.app.state, "theme_path", None)
-    if theme is not None and resolved == theme.resolve():
+    if is_theme_write:
         await _broadcast(request, {"type": "theme_changed", "path": rel})
 
     return JSONResponse({"ok": True, "path": rel})

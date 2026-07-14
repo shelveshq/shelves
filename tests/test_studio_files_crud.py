@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from starlette.testclient import TestClient
-
 from shelves import parse_chart
 from shelves.models.loader import clear_model_cache, load_model
 from shelves.studio.routes.files import (
@@ -21,6 +19,7 @@ from shelves.studio.routes.files import (
     MODEL_TEMPLATE,
 )
 from shelves.studio.server import create_app
+from tests.conftest import LoopbackTestClient as TestClient
 
 _CHART_YAML = "sheet: test\n"
 

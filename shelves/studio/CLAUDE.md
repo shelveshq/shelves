@@ -18,6 +18,11 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
   mounts `/static` and `/assets` (the latter via `_LenientStaticFiles`, which
   tolerates a missing dir so users can add `assets/` later without a restart),
   and injects a per-app `terminal_token` `<meta>` into the served HTML.
+  Every HTTP endpoint and mount validates the Host header against loopback
+  hosts (TrustedHostMiddleware, SHE-52) to block DNS rebinding; `PUT /file`
+  enforces the `.yaml/.yml/.json` write allow-list (theme file exempt).
+  Tests must use `tests/conftest.py::LoopbackTestClient` — a stock
+  TestClient sends `Host: testserver` and gets 400.
 - `routes/`
   - `compile.py` — `POST /compile` (YAML → `{vega_lite_spec, errors, warnings}`)
     and `GET /schema` (ChartSpec JSON Schema for Monaco).
@@ -119,6 +124,10 @@ same events for external file edits over `/ws`.
 - Compile requests are sequence-guarded (`compileSeq`) so a slow response can't
   overwrite a newer one — preserve this when touching compile paths.
 - Path safety: every file read/write goes through `resolve_safe`. Never bypass it.
+- Security posture (SHE-52): HTTP = loopback Host allow-list + write
+  extension allow-list; terminal WS = loopback Origin + per-app token. New
+  endpoints must not weaken either; new write paths go through
+  `_ALLOWED_WRITE_EXTENSIONS`.
 
 ## Design system
 
