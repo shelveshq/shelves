@@ -2,6 +2,10 @@
 // the unsaved-changes protections (SHE-51):
 //   - openFile over a dirty buffer asks confirm() and honors Cancel
 //   - opening the already-open file is a no-op (no prompt)
+//   - a missing (404) or failing (5xx) target never consumes the confirm:
+//     the file is probed BEFORE the prompt, 404 → 'not-found', 5xx → 'error'
+//   - the real openFile wired into nav.js's prune loop prompts exactly once
+//     when backing over a deleted entry with a dirty buffer (SHE-40 review)
 //   - state.fileDeleted renders the status-bar notice + breadcrumb badge,
 //     below compiling but above the marker counts
 //
@@ -13,7 +17,10 @@ const els = new Map();
 
 function stubEl(id) {
   if (!els.has(id)) {
-    els.set(id, { id, className: '', textContent: '', innerHTML: '' });
+    els.set(id, {
+      id, className: '', textContent: '', innerHTML: '', disabled: false,
+      addEventListener() {},   // nav.js wires click handlers on its buttons
+    });
   }
   return els.get(id);
 }
@@ -53,9 +60,19 @@ globalThis.window = {
 };
 
 let fetchCalls = 0;
-globalThis.fetch = async () => {
+let fetchRoutes = {};   // path fragment (unencoded) → status; default 200
+globalThis.fetch = async (url) => {
   fetchCalls += 1;
-  return { ok: true, json: async () => ({ content: '' }) };
+  let status = 200;
+  for (const [frag, s] of Object.entries(fetchRoutes)) {
+    if (String(url).includes(encodeURIComponent(frag))) status = s;
+  }
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => ({ content: '' }),
+    text: async () => 'read exploded',
+  };
 };
 
 const { state, updateStatusBar, updateBreadcrumb } = await import(
@@ -79,7 +96,9 @@ out.samePathPrompted = confirmCalls.length;
 out.samePathFetches = fetchCalls;
 
 // Different file, user cancels: buffer and current file unchanged, no
-// compile-start armed (a cancel must leave no veil pending). Raced against a
+// compile-start armed (a cancel must leave no veil pending). The side-effect-
+// free probe fetch runs BEFORE the prompt (so cancelFetches is 1, not 0), but
+// nothing downstream of the confirm may have happened. Raced against a
 // timeout: without the guard, openFile hangs on editorReady (never settles in
 // this harness) instead of returning.
 confirmAnswer = false;
@@ -93,11 +112,55 @@ out.cancelKeptFile = state.currentFile?.path === 'charts/a.yaml';
 out.cancelFetches = fetchCalls;
 out.cancelCompileStarts = compileStarts;
 
-// Clean buffer: no prompt (openFile proceeds to await editorReady, which
-// never settles in this harness — don't await it).
+// Clean buffer: no prompt. openFile parks at editorReady (never settles in
+// this harness), so don't await it — but DO flush it past the probe fetch and
+// the dirty check before the next scenario re-dirties the buffer.
 state.currentFile = { path: 'charts/a.yaml', dirty: false };
 openFile('charts/c.yaml');
+await new Promise((r) => setImmediate(r));
 out.cleanPromptCount = confirmCalls.length;
+
+// ── probe-before-confirm (SHE-40 review) ──
+// A 404 target returns 'not-found' WITHOUT consuming the dirty confirm —
+// answering "discard" for a file that then fails to open left the discard
+// un-acted-on and made nav.js's prune loop prompt once per pruned entry.
+state.currentFile = { path: 'charts/a.yaml', dirty: true };
+fetchRoutes = { 'charts/gone.yaml': 404 };
+let promptsBefore = confirmCalls.length;
+out.notFoundStatus = await openFile('charts/gone.yaml');
+out.notFoundPrompts = confirmCalls.length - promptsBefore;
+out.notFoundKeptFile = state.currentFile?.path === 'charts/a.yaml';
+
+// Only a definite 404 is 'not-found' (nav.js prunes history on it); a 5xx —
+// mid-write read, permissions — is 'error' and must not prompt either.
+fetchRoutes = { 'charts/flaky.yaml': 500 };
+promptsBefore = confirmCalls.length;
+out.serverErrorStatus = await openFile('charts/flaky.yaml');
+out.serverErrorPrompts = confirmCalls.length - promptsBefore;
+fetchRoutes = {};
+
+// ── nav prune walk: the REAL openFile prompts at most once ──
+// Regression for the SHE-40 double-confirm: dirty buffer, back over a deleted
+// entry. The prune loop re-enters openFile; only the entry that actually
+// opens may prompt. navigateBack hangs at editorReady after the confirm
+// (never settles here), so observe after a flush instead of awaiting it.
+const { initNav, navigateBack } = await import(
+  '../../shelves/studio/static/js/nav.js'
+);
+initNav({ openFile });
+state.nav.stack = ['charts/a.yaml', 'charts/dead.yaml', 'charts/z.yaml'];
+state.nav.index = 2;
+state.currentFile = { path: 'charts/z.yaml', dirty: true };
+fetchRoutes = { 'charts/dead.yaml': 404 };
+confirmAnswer = true;
+promptsBefore = confirmCalls.length;
+navigateBack();
+await new Promise((r) => setTimeout(r, 50));
+out.navPrunePrompts = confirmCalls.length - promptsBefore;
+out.navPrunePromptedFor = confirmCalls[confirmCalls.length - 1] ?? null;
+out.navPruneStack = [...state.nav.stack];
+fetchRoutes = {};
+confirmAnswer = false;
 
 // ── fileDeleted rendering (state.js) ──
 state.currentFile = { path: 'charts/a.yaml', dirty: true };

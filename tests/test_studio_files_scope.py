@@ -199,6 +199,17 @@ class TestFileIOUnchanged:
         resp = client.get("/file", params={"path": "../outside.yaml"})
         assert resp.status_code == 400
 
+    def test_get_unreadable_file_is_500_not_404(self, tmp_path):
+        # A failed read (here: invalid UTF-8, e.g. a mid-write partial
+        # sequence) must be 500 — the client prunes navigation history on 404,
+        # so a transient read failure must never look like a deletion.
+        project = _make_default_project(tmp_path)
+        (project / "charts" / "torn.yaml").write_bytes(b"sheet: \xff\xfe")
+        client = TestClient(create_app(project_dir=project))
+        resp = client.get("/file", params={"path": "charts/torn.yaml"})
+        assert resp.status_code == 500
+        assert "Could not read file" in resp.text
+
     def test_put_under_existing_file_rejected(self, tmp_path):
         # charts/revenue.yaml is a FILE — using it as a directory component
         # must be a clean 400, not an unhandled 500 (PR review).

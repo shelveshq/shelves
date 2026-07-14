@@ -105,7 +105,11 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     outdent/indent — Tab/Shift+Tab still indent) + mouse buttons 3/4. All
     navigation funnels through `openFile` (injected via `initNav`), so the
     dirty-buffer confirm applies; files deleted since being opened are
-    pruned and navigation falls through to the next entry.
+    pruned and navigation falls through to the next entry. `openFile` probes
+    `GET /file` BEFORE the dirty confirm (a missing target must not consume a
+    "discard" answer — the prune walk prompts at most once) and only a
+    definite 404 maps to `'not-found'`/pruning; any other failure is
+    `'error'`, which keeps the history entry.
   - `terminal.js` — xterm.js terminal tabs over the terminal WS.
   - `websocket.js` — single broadcast WS (`/ws`) → typed DOM events
     (`compile_result`, `file_change`, `dashboard_compile_result`,
