@@ -8,8 +8,9 @@ Endpoints:
   POST /compile   → accepts YAML body, returns {vega_lite_spec, errors, warnings}
   GET  /schema    → returns ChartSpec JSON Schema for Monaco validation
   GET  /project   → returns the project directory tree as JSON
-  GET  /file      → reads file content (query param: path)
-  PUT  /file      → writes file content (query param: path, body: content)
+  GET  /file      → reads file content (query param: path; accepts the @theme/<name> alias)
+  PUT  /file      → writes file content (query param: path, body: content;
+                    theme writes broadcast theme_changed)
   POST /file      → creates a new file (409 if exists; templated by dir)
   POST /file/rename → renames/moves a file (query: path, to)
   DELETE /file    → deletes a file

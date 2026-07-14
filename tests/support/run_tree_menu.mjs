@@ -157,10 +157,14 @@ globalThis.window = {
 };
 
 // ─── Fetch stub ────────────────────────────────────────────
-const TREE = [{
-  name: 'charts', type: 'dir', path: 'charts', group: 'charts',
-  children: [{ name: 'a.yaml', type: 'file', path: 'charts/a.yaml' }],
-}];
+const TREE = [
+  {
+    name: 'charts', type: 'dir', path: 'charts', group: 'charts',
+    children: [{ name: 'a.yaml', type: 'file', path: 'charts/a.yaml' }],
+  },
+  // SHE-44: the configured theme surfaces as a top-level file entry.
+  { name: 'brand.yaml', type: 'file', path: '@theme/brand.yaml', group: 'theme' },
+];
 const fetchLog = [];
 globalThis.fetch = async (url, opts = {}) => {
   const method = opts.method ?? 'GET';
@@ -306,6 +310,19 @@ state.fileDeleted = true;   // simulate the rename's deleted(old) broadcast raci
   const opened_ = !!menu();
   docDispatch('click', { target: body });
   out.menuClosedOnOutsideClick = opened_ && !menu();
+}
+
+// 9. theme entry (SHE-44): opens on click, distinct icon, no context menu
+{
+  const themeRow = ft.querySelector('.tree-file[data-path="@theme/brand.yaml"]');
+  out.themeRowExists = !!themeRow;
+  const openedBefore = opened.length;
+  themeRow?.dispatch('click', {});
+  out.themeRowOpens = opened[openedBefore] === '@theme/brand.yaml';
+  out.themeHasThemeIcon =
+    (themeRow?.querySelector('.tree-icon')?.innerHTML ?? '').includes('M12 2C6.5');
+  themeRow?.dispatch('contextmenu', { clientX: 100, clientY: 100 });
+  out.themeNoContextMenu = !menu();
 }
 
 console.log(JSON.stringify(out));

@@ -95,6 +95,12 @@ document.addEventListener('shelves:ws-reconnected', () => {
   if (state.currentFile) compileDashboardOrChart();
 });
 
+// The theme file changed (Studio save or external edit): every compile bakes
+// the theme in server-side, so re-run the open buffer's compile (SHE-44).
+document.addEventListener('shelves:theme-changed', () => {
+  if (state.currentFile) compileDashboardOrChart();
+});
+
 // ─── Status Bar Terminal Toggle ───────────────────────────
 // By id, not `.sh-status-term` — other chips may share that class.
 const termBtn = document.getElementById('terminal-toggle-status');

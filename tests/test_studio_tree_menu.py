@@ -130,3 +130,22 @@ def test_duplicate_reads_then_creates_copy():
     assert facts()["duplicateGet"] == "/file?path=charts%2Fa.yaml"
     assert facts()["duplicatePostUrl"] == "/file?path=charts%2Fa-copy.yaml"
     assert facts()["duplicateBody"] == "sheet: a\n"
+
+
+# ─── Theme entry (SHE-44) ────────────────────────────────────────
+
+
+def test_theme_row_renders():
+    assert facts()["themeRowExists"] is True
+
+
+def test_theme_row_opens_alias_path():
+    assert facts()["themeRowOpens"] is True
+
+
+def test_theme_row_uses_palette_icon():
+    assert facts()["themeHasThemeIcon"] is True
+
+
+def test_theme_row_has_no_context_menu():
+    assert facts()["themeNoContextMenu"] is True

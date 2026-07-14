@@ -90,15 +90,43 @@ def template_for(state: Any, resolved: Path) -> str:
     return ""
 
 
-async def _broadcast_file_change(request: Request, event: str, rel: str) -> None:
-    """Broadcast {"type": "file_change", event, path} via app.state.manager.
+def theme_alias(theme_path: Path | None) -> str | None:
+    """The exact tree path that aliases the configured theme file.
+
+    "@theme/<filename>" — a sentinel, not a directory namespace. Returns
+    None when no theme is configured. Exact-string matching (no user path
+    math) is what keeps the alias traversal-safe by construction.
+    """
+    return None if theme_path is None else f"@theme/{theme_path.name}"
+
+
+def _resolve_readwrite_path(state: Any, rel: str) -> tuple[Path | None, str | None]:
+    """Resolve a GET/PUT /file path: the theme alias, or resolve_safe.
+
+    Returns (resolved, None) on success, (None, error) on failure. Only
+    GET/PUT go through this — create/rename/delete stay resolve_safe-only,
+    so the alias can never be deleted, renamed, or shadowed.
+    """
+    theme = getattr(state, "theme_path", None)
+    if theme is not None and rel == theme_alias(theme):
+        return theme.resolve(), None
+    resolved, error = resolve_safe(state.project_dir, rel)
+    return (None, error) if error else (resolved, None)
+
+
+async def _broadcast(request: Request, payload: dict[str, Any]) -> None:
+    """Broadcast a payload via app.state.manager.
 
     Direct broadcast: the watcher also fires for these fs events, but relying
     on it makes UI refresh timing nondeterministic (and dead under TestClient
     without lifespan). Duplicates are harmless — sidebar.js debounces
     fetchTree by 500ms and editor.js's handlers are idempotent.
     """
-    await request.app.state.manager.broadcast({"type": "file_change", "event": event, "path": rel})
+    await request.app.state.manager.broadcast(payload)
+
+
+async def _broadcast_file_change(request: Request, event: str, rel: str) -> None:
+    await _broadcast(request, {"type": "file_change", "event": event, "path": rel})
 
 
 async def get_project(request: Request) -> JSONResponse:
@@ -110,17 +138,16 @@ async def get_project(request: Request) -> JSONResponse:
         ("models", state.models_dir),
         ("assets", state.assets_dir),
     ]
-    tree = build_group_tree(state.project_dir, groups)
+    tree = build_group_tree(state.project_dir, groups, theme_path=state.theme_path)
     return JSONResponse(tree)
 
 
 async def get_file(request: Request) -> JSONResponse | Response:
-    """GET /file?path=<relative> — read file content."""
-    project_dir: Path = request.app.state.project_dir
+    """GET /file?path=<relative> — read file content (accepts the theme alias)."""
     rel = request.query_params.get("path", "")
 
-    resolved, error = resolve_safe(project_dir, rel)
-    if error:
+    resolved, error = _resolve_readwrite_path(request.app.state, rel)
+    if error or resolved is None:
         return Response(status_code=400, content=error)
 
     if not resolved.exists():
@@ -130,17 +157,25 @@ async def get_file(request: Request) -> JSONResponse | Response:
 
 
 async def put_file(request: Request) -> JSONResponse | Response:
-    """PUT /file?path=<relative> — write file content."""
-    project_dir: Path = request.app.state.project_dir
+    """PUT /file?path=<relative> — write file content (accepts the theme alias)."""
     rel = request.query_params.get("path", "")
 
-    resolved, error = resolve_safe(project_dir, rel)
-    if error:
+    resolved, error = _resolve_readwrite_path(request.app.state, rel)
+    if error or resolved is None:
         return Response(status_code=400, content=error)
 
     resolved.parent.mkdir(parents=True, exist_ok=True)
     content = (await request.body()).decode("utf-8")
     resolved.write_text(content)
+
+    # Theme write → tell clients to recompile with the new theme. Direct and
+    # unconditional (same rationale as the create/rename/delete broadcasts):
+    # the watcher can't see an outside-project theme at all, and even
+    # in-project the direct event is deterministic. No file_change for the
+    # alias — the tree entry is static.
+    theme = getattr(request.app.state, "theme_path", None)
+    if theme is not None and resolved == theme.resolve():
+        await _broadcast(request, {"type": "theme_changed", "path": rel})
 
     return JSONResponse({"ok": True, "path": rel})
 
@@ -249,6 +284,7 @@ def resolve_safe(project_dir: Path, rel: str) -> tuple[Path, str | None]:
 def build_group_tree(
     project_dir: Path,
     groups: list[tuple[str, Path]],
+    theme_path: Path | None = None,
 ) -> list[dict[str, Any]]:
     """
     Build the /project tree as typed top-level groups.
@@ -262,6 +298,9 @@ def build_group_tree(
     Dirs that resolve outside project_dir are skipped with a warning
     (resolve_safe stays single-root, so their files would be unreachable).
     Duplicate dirs are emitted once — first role wins.
+    When theme_path names an existing file, a top-level theme entry is
+    appended last: real relative path when inside the project, else the
+    exact-match "@theme/<name>" alias (SHE-44).
 
     Known edge (accepted, PR #62 review): a configured dir equal to
     project_dir walks the whole project into that group — deliberate, since
@@ -297,6 +336,11 @@ def build_group_tree(
                 "children": children,
             }
         )
+    if theme_path is not None:
+        tp = theme_path.resolve()
+        if tp.is_file():  # missing theme → no entry (nothing to open)
+            rel = str(tp.relative_to(root)) if tp.is_relative_to(root) else theme_alias(theme_path)
+            entries.append({"name": tp.name, "type": "file", "path": rel, "group": "theme"})
     return entries
 
 

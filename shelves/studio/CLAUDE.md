@@ -33,9 +33,19 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     configured dirs; the three primary groups are listed even when empty or
     missing so the UI can offer "create first file" (assets stays
     omit-when-empty); paths stay relative to `project_dir`.
+    When `--theme` is set, the tree gains a top-level theme entry — real
+    relative path when the theme is inside the project, else the exact-match
+    alias `@theme/<name>` that only GET/PUT `/file` resolve (never
+    create/rename/delete). Theme writes broadcast `theme_changed` so clients
+    recompile.
   - `terminal.py` — PTY-backed terminal over `WS /ws/terminal`, token-gated.
 - `lifespan.py` — startup/shutdown; wires the file watcher and pushes results
-  over the broadcast WebSocket.
+  over the broadcast WebSocket. The watcher callback is the module-level
+  `handle_fs_event` (testable); theme-file events broadcast `theme_changed`
+  instead of attempting a compile. The theme path is in the watch scope, but
+  a theme OUTSIDE project_dir is not watched (the watch roots at
+  project_dir) — Studio saves to it still recompile via PUT /file's direct
+  broadcast; external edits to it don't live-reload (known limitation).
 - `watcher.py` — filesystem watch → recompile → broadcast `file_change` /
   `compile_result` to connected clients.
 - `connection.py` — `ConnectionManager` (broadcast WS fan-out for live reload).
@@ -86,7 +96,9 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     updates `state.currentFile.path` in place — the buffer (dirty or not) is
     never dropped.
   - `terminal.js` — xterm.js terminal tabs over the terminal WS.
-  - `websocket.js` — single broadcast WS (`/ws`) → typed DOM events.
+  - `websocket.js` — single broadcast WS (`/ws`) → typed DOM events
+    (`compile_result`, `file_change`, `dashboard_compile_result`,
+    `theme_changed`).
 
 ## Event flow
 

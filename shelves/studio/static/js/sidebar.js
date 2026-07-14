@@ -31,6 +31,7 @@ const ICONS = {
   json:      `<svg ${ICON_ATTRS}><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/></svg>`,                                   // braces
   file:      `<svg ${ICON_ATTRS}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>`,                                    // file-text
   plus:      `<svg ${ICON_ATTRS}><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
+  theme:     `<svg ${ICON_ATTRS}><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>`, // palette
 };
 
 function iconForEntry(entry, groupRole) {
@@ -40,6 +41,7 @@ function iconForEntry(entry, groupRole) {
   if (groupRole === 'charts')     return ICONS.chart;
   if (groupRole === 'dashboards') return ICONS.dashboard;
   if (groupRole === 'models')     return ICONS.model;
+  if (groupRole === 'theme')      return ICONS.theme;
   if (entry.path.endsWith('.json')) return ICONS.json;
   return ICONS.file;
 }
@@ -371,19 +373,23 @@ function renderTreeLevel(entries, depth, groupRole) {
       row.appendChild(icon);
       row.appendChild(name);
       row.addEventListener('click', () => window.shelvesStudio.openFile(entry.path));
-      row.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const dirPath = entry.path.split('/').slice(0, -1).join('/');
-        showTreeMenu(e.clientX, e.clientY, [
-          // depth-1: the input lands at the file's own indent, inside its dir
-          { label: 'New file', onClick: () => startCreateInput(dirPath, depth - 1, row) },
-          { label: 'Rename', onClick: () => startRenameInput(row, entry) },
-          { label: 'Duplicate', onClick: () => duplicateFile(entry.path) },
-          'sep',
-          { label: 'Delete', danger: true, confirm: true, onClick: () => deleteFileOp(entry.path) },
-        ]);
-      });
+      // The theme entry is open-only (SHE-44): renaming/deleting/duplicating
+      // it would break the --theme path the server resolved at startup.
+      if (role !== 'theme') {
+        row.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const dirPath = entry.path.split('/').slice(0, -1).join('/');
+          showTreeMenu(e.clientX, e.clientY, [
+            // depth-1: the input lands at the file's own indent, inside its dir
+            { label: 'New file', onClick: () => startCreateInput(dirPath, depth - 1, row) },
+            { label: 'Rename', onClick: () => startRenameInput(row, entry) },
+            { label: 'Duplicate', onClick: () => duplicateFile(entry.path) },
+            'sep',
+            { label: 'Delete', danger: true, confirm: true, onClick: () => deleteFileOp(entry.path) },
+          ]);
+        });
+      }
       container.appendChild(row);
     }
   }
