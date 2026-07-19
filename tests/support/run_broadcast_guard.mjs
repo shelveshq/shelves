@@ -1,7 +1,7 @@
 // Runs preview.js + dashboard.js under node with a minimal DOM stub and a
 // working document-event bus, then replays the compile/dashboard event flow:
 //   - SHE-49: results stamped with a foreign path must not repaint the
-//     preview, the JSON view, the dashboard iframe, or end the loading veil.
+//     preview, the Data view, the dashboard iframe, or end the loading veil.
 //   - SHE-50: dashboard results feed the status-bar error/warning counters.
 //   - SHE-67: the dashboard veil ends on the iframe's rendered signal, not
 //     on the compile result.
@@ -95,12 +95,12 @@ initDashboard();
 
 const out = {};
 const previewPane = stubEl('preview-pane');
-const jsonView = stubEl('json-view');
+const dataView = stubEl('data-view');
 const iframe = stubEl('dashboard-iframe');
 
-// ── Chart scenarios: charts/a.yaml open, JSON view (no vegaEmbed needed) ──
+// ── Chart scenarios: charts/a.yaml open, Data view (no vegaEmbed needed) ──
 state.currentFile = { path: 'charts/a.yaml', dirty: false };
-state.currentView = 'json';
+state.currentView = 'data';
 state.dashboardMode = false;
 state.lastCompileResult = null;
 
@@ -113,7 +113,7 @@ dispatch('shelves:compile-result', {
   path: 'charts/b.yaml', vega_lite_spec: { mark: 'bar' }, errors: [], warnings: [],
 });
 out.foreignChartApplied = state.lastCompileResult !== null;
-out.foreignJsonPainted = jsonView.innerHTML !== '';
+out.foreignDataPainted = dataView.innerHTML !== '';
 out.veilAfterForeign = previewPane.classList.contains('is-compiling');
 
 // Broadcast for the OPEN file: applies and ends the veil.

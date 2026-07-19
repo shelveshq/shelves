@@ -102,13 +102,22 @@ async def compile_yaml(request: Request) -> JSONResponse:
     yaml_body = (await request.body()).decode("utf-8")
 
     if not yaml_body.strip():
-        return JSONResponse({"vega_lite_spec": None, "errors": ["Empty YAML body"], "warnings": []})
+        return JSONResponse(
+            {
+                "vega_lite_spec": None,
+                "errors": ["Empty YAML body"],
+                "warnings": [],
+                "model": None,
+            }
+        )
 
     # Skip non-chart YAML (e.g. dashboards, models)
     try:
         raw = _yaml.safe_load(yaml_body)
         if not isinstance(raw, dict) or "sheet" not in raw:
-            return JSONResponse({"vega_lite_spec": None, "errors": [], "warnings": []})
+            return JSONResponse(
+                {"vega_lite_spec": None, "errors": [], "warnings": [], "model": None}
+            )
     except Exception:
         pass  # Let compile_chart handle malformed YAML
 
@@ -132,6 +141,7 @@ async def compile_yaml(request: Request) -> JSONResponse:
                 "vega_lite_spec": None,
                 "errors": _format_validation_errors(e, yaml_body),
                 "warnings": [],
+                "model": None,
             }
         )
     except _yaml.YAMLError as e:
@@ -140,6 +150,7 @@ async def compile_yaml(request: Request) -> JSONResponse:
                 "vega_lite_spec": None,
                 "errors": [_format_yaml_error(e)],
                 "warnings": [],
+                "model": None,
             }
         )
     except Exception as e:
@@ -159,6 +170,7 @@ async def compile_yaml(request: Request) -> JSONResponse:
                     }
                 ],
                 "warnings": [],
+                "model": None,
             }
         )
 
@@ -173,7 +185,11 @@ async def compile_yaml(request: Request) -> JSONResponse:
     except Exception as e:
         warnings.append(f"Data resolution skipped: {e}")
 
-    return JSONResponse({"vega_lite_spec": vl_spec, "errors": [], "warnings": warnings})
+    # model stays set when only data resolution was skipped — the compile
+    # itself succeeded (the Data view labels its skipped state with it).
+    return JSONResponse(
+        {"vega_lite_spec": vl_spec, "errors": [], "warnings": warnings, "model": spec.data}
+    )
 
 
 async def get_schema() -> JSONResponse:

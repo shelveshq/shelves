@@ -2,7 +2,7 @@
 // Dashboard detection, compile, preview, zoom control.
 
 import { state, updateStatusBar, resultIsForCurrentFile } from './state.js';
-import { highlightJson, showErrorOverlay, hideErrorOverlay, renderPreviewHeader } from './preview.js';
+import { showErrorOverlay, hideErrorOverlay, renderPreviewHeader } from './preview.js';
 
 const DEFAULT_CANVAS_W = 1440;
 const DEFAULT_CANVAS_H = 900;
@@ -13,7 +13,7 @@ let canvasW = DEFAULT_CANVAS_W;
 let canvasH = DEFAULT_CANVAS_H;
 
 const elPreview          = document.getElementById('preview');
-const elJsonView         = document.getElementById('json-view');
+const elDataView         = document.getElementById('data-view');
 const elDashboardPreview = document.getElementById('dashboard-preview');
 const elDashboardStage   = document.getElementById('dashboard-stage');
 const elDashboardIframe  = document.getElementById('dashboard-iframe');
@@ -97,7 +97,7 @@ export async function compileDashboardContent() {
 // ─── Dashboard Preview Rendering ──────────────────────────
 function renderDashboardPreview(result) {
   elPreview.style.display = 'none';
-  elJsonView.style.display = 'none';
+  elDataView.style.display = 'none';
 
   if (!result || result.html === null) {
     showErrorOverlay(result?.errors, "Can't compile this dashboard");
@@ -174,20 +174,6 @@ export function restoreChartLayout() {
   renderPreviewHeader('chart');
 }
 
-// ─── Dashboard View Rendering ─────────────────────────────
-function renderDashboardView(result) {
-  if (state.currentView === 'json') {
-    elPreview.style.display = 'none';
-    elDashboardPreview.style.display = 'none';
-    hideErrorOverlay();
-    elJsonView.style.display = 'block';
-    elJsonView.innerHTML = highlightJson(JSON.stringify(result.component_tree, null, 2));
-    signalDashboardRendered();  // JSON view paints synchronously
-  } else {
-    renderDashboardPreview(result);
-  }
-}
-
 // ─── Init ──────────────────────────────────────────────────
 export function initDashboard() {
   new ResizeObserver(scaleDashboardIframe).observe(elDashboardPreview);
@@ -214,13 +200,13 @@ export function initDashboard() {
     state.dashboardWarnings = (e.detail.warnings ?? []).length;
     updateStatusBar();
     // Every result arms exactly one rendered signal (SHE-37 invariant):
-    // error/JSON paths fire it synchronously inside renderDashboardView; the
-    // iframe path fires it on the page's postMessage or a fallback timer.
+    // the error path fires it synchronously inside renderDashboardPreview;
+    // the iframe path fires it on the page's postMessage or a fallback timer.
     // Broadcasts carry the file's path; local compiles are stamped with the
     // open file so a late signal can be attributed (see signalDashboardRendered).
     awaitingRendered = true;
     awaitingRenderedPath = e.detail.path ?? state.currentFile?.path ?? null;
-    renderDashboardView(lastDashboardResult);
+    renderDashboardPreview(lastDashboardResult);
   });
 
   window.addEventListener('message', (e) => {
@@ -239,7 +225,7 @@ export function initDashboard() {
   document.addEventListener('shelves:view-change', () => {
     if (!state.dashboardMode) return;
     if (lastDashboardResult) {
-      renderDashboardView(lastDashboardResult);
+      renderDashboardPreview(lastDashboardResult);
     }
   });
 
