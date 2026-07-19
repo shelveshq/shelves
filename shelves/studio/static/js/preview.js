@@ -256,10 +256,12 @@ function buildDataTable(model, values) {
   const shown = values.slice(0, DATA_ROW_CAP);
 
   // Union of keys across displayed rows, first-seen order — inline data may
-  // be ragged; adapter-backed rows are uniform and take the fast path.
+  // be ragged (and rows may even be null: bind_data inlines the source JSON
+  // verbatim); adapter-backed rows are uniform and take the fast path.
   const columns = [];
   const seen = new Set();
   for (const row of shown) {
+    if (row == null || typeof row !== 'object') continue;
     for (const key of Object.keys(row)) {
       if (!seen.has(key)) { seen.add(key); columns.push(key); }
     }
@@ -269,7 +271,7 @@ function buildDataTable(model, values) {
   // non-null displayed value is a number — values only, no model lookups.
   const numeric = new Map();
   for (const col of columns) {
-    const probe = shown.find((row) => row[col] != null);
+    const probe = shown.find((row) => row?.[col] != null);
     numeric.set(col, typeof probe?.[col] === 'number');
   }
 
@@ -278,7 +280,7 @@ function buildDataTable(model, values) {
     .join('');
   const rows = shown
     .map((row) => `<tr>${columns
-      .map((c) => `<td${numeric.get(c) ? ' class="is-num"' : ''}>${renderCell(row[c])}</td>`)
+      .map((c) => `<td${numeric.get(c) ? ' class="is-num"' : ''}>${renderCell(row?.[c])}</td>`)
       .join('')}</tr>`)
     .join('');
 
@@ -318,6 +320,18 @@ function renderData(result) {
       model,
       'no rows',
       skipped ?? 'No data resolved for this chart — the compiled spec has no inline rows.',
+    );
+    return;
+  }
+
+  if (!Array.isArray(values)) {
+    // bind_data inlines the source JSON verbatim, so a malformed file (null
+    // or a non-array top level) reaches the browser — degrade to a message,
+    // never a TypeError over a stale table (PR #67 review).
+    elDataView.innerHTML = dataMessage(
+      model,
+      'no rows',
+      "The resolved data is not a list of rows — check the model's source file.",
     );
     return;
   }

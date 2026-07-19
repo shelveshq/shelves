@@ -119,6 +119,30 @@ def test_ragged_rows_union_columns():
     assert html.count("sh-data-null") == 1  # row 1 has no b
 
 
+def test_non_array_values_shows_message():
+    """A non-array top-level value in the source JSON must degrade to a
+    message — not a TypeError leaving the previous table visible (PR #67)."""
+    html = run_scenarios()["nonArrayHtml"]
+    assert "not a list of rows" in html
+    assert "sh-data-empty" in html
+    assert "<table" not in html
+
+
+def test_null_values_shows_message():
+    html = run_scenarios()["nullValuesHtml"]
+    assert "not a list of rows" in html
+    assert "<table" not in html
+
+
+def test_null_row_renders_null_cells():
+    """A null row inside the array renders as a row of null cells."""
+    html = run_scenarios()["nullRowHtml"]
+    assert "<table" in html
+    assert html.count("<tr>") == 3  # header + 2 body rows
+    assert '<th class="is-num">a</th>' in html
+    assert html.count("sh-data-null") == 1  # the null row's single cell
+
+
 def test_error_result_shows_overlay():
     out = run_scenarios()
     assert out["errorOverlayShown"] is True

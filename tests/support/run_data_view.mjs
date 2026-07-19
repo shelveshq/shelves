@@ -155,6 +155,27 @@ dispatch('shelves:compile-result', {
 });
 out.raggedHtml = dataView.innerHTML;
 
+// ── S8b: malformed values — never a TypeError, never a stale table ──
+// bind_data inlines whatever the source JSON contains; a non-array top level
+// or null rows must degrade to a message / null cells (PR #67 review).
+dispatch('shelves:compile-result', {
+  path: null, model: 'orders', errors: [], warnings: [],
+  vega_lite_spec: { mark: 'bar', data: { values: { a: 1 } } },
+});
+out.nonArrayHtml = dataView.innerHTML;
+
+dispatch('shelves:compile-result', {
+  path: null, model: 'orders', errors: [], warnings: [],
+  vega_lite_spec: { mark: 'bar', data: { values: null } },
+});
+out.nullValuesHtml = dataView.innerHTML;
+
+dispatch('shelves:compile-result', {
+  path: null, model: 'orders', errors: [], warnings: [],
+  vega_lite_spec: { mark: 'bar', data: { values: [null, { a: 1 }] } },
+});
+out.nullRowHtml = dataView.innerHTML;
+
 // ── S9: compile error while in Data view — overlay, table hidden ──
 dispatch('shelves:compile-result', {
   path: null, model: null, warnings: [],
