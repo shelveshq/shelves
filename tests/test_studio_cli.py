@@ -210,7 +210,7 @@ class TestServerIndexPage:
         # KAN-207: Preview DOM elements
         assert 'id="preview"' in response.text
         assert 'id="error-overlay"' in response.text
-        assert 'id="json-view"' in response.text
+        assert 'id="data-view"' in response.text
 
     def test_workspace_includes_sidebar(self):
         """GET / returns HTML with file explorer sidebar DOM elements."""

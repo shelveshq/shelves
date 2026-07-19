@@ -3,7 +3,7 @@ export const state = {
   editor: null,        // Monaco editor instance
   currentFile: null,   // { path: string, dirty: boolean } | null
   compileTimer: null,
-  currentView: 'chart', // 'chart' | 'json' | 'dashboard'
+  currentView: 'chart', // 'chart' | 'data' | 'dashboard'
   lastCompileResult: null,
   vegaView: null,       // vega-embed View instance for cleanup
   dashboardMode: false,

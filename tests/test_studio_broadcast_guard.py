@@ -45,7 +45,7 @@ def test_veil_arms_on_compile_start():
 def test_foreign_chart_broadcast_does_not_repaint():
     out = run_scenarios()
     assert out["foreignChartApplied"] is False
-    assert out["foreignJsonPainted"] is False
+    assert out["foreignDataPainted"] is False
 
 
 def test_foreign_chart_broadcast_does_not_end_veil():

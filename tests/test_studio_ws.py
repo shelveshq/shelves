@@ -249,6 +249,33 @@ class TestDefaultThemeInCompile:
 
         asyncio.run(_test())
 
+    def test_watcher_broadcast_includes_model(self, tmp_path):
+        """The broadcast payload carries the model name, in shape-parity with
+        POST /compile (SHE-43 Data view header)."""
+
+        async def _test():
+            chart_path = tmp_path / "chart.yaml"
+            chart_path.write_text(self._CHART_YAML)
+
+            captured: list[dict] = []
+
+            class _Capture:
+                async def broadcast(self, msg: dict) -> None:
+                    captured.append(msg)
+
+            await _compile_file_and_broadcast(
+                chart_path,
+                "chart.yaml",
+                _Capture(),  # type: ignore[arg-type]
+                models_dir=MODELS_DIR,
+                theme_path=None,
+            )
+
+            assert captured, "No broadcast emitted"
+            assert captured[-1]["model"] == "orders"
+
+        asyncio.run(_test())
+
 
 # ─── Watcher broadcasts structured YAML syntax errors ────────────
 

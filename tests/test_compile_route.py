@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from shelves.studio.server import create_app
-from tests.conftest import MODELS_DIR
+from tests.conftest import DATA_DIR, MODELS_DIR
 from tests.conftest import LoopbackTestClient as TestClient
 
 
@@ -15,6 +15,11 @@ def _make_client(tmp_path: Path) -> TestClient:
     models = tmp_path / "models"
     models.mkdir()
     shutil.copy(MODELS_DIR / "orders.yaml", models / "orders.yaml")
+    # The orders model's inline source is data/orders.json relative to the
+    # project dir — copy it so compiles resolve rows (SHE-43 Data view).
+    data = tmp_path / "data"
+    data.mkdir()
+    shutil.copy(DATA_DIR / "orders.json", data / "orders.json")
     app = create_app(project_dir=tmp_path, models_dir=models)
     return TestClient(app, raise_server_exceptions=False)
 
@@ -108,7 +113,53 @@ class TestCompileRoute:
             "vega_lite_spec": None,
             "errors": ["Empty YAML body"],
             "warnings": [],
+            "model": None,
         }
+
+
+class TestCompileModelKey:
+    """The compile payload names the chart's model so the Data view can label
+    the resolved-rows table (SHE-43)."""
+
+    def test_success_response_includes_model(self, tmp_path: Path):
+        client = _make_client(tmp_path)
+        yaml_body = "sheet: test\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n"
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        assert data["errors"] == []
+        assert data["model"] == "orders"
+        assert len(data["vega_lite_spec"]["data"]["values"]) == 12
+
+    def test_error_response_model_is_null(self, tmp_path: Path):
+        client = _make_client(tmp_path)
+        yaml_body = "sheet: test\nmarks: 12345\n"
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        assert data["vega_lite_spec"] is None
+        assert len(data["errors"]) >= 1
+        assert data["model"] is None
+
+    def test_skipped_resolution_still_reports_model(self, tmp_path: Path):
+        """A successful compile whose data binding is skipped keeps the model
+        name — only data resolution failed, not the compile."""
+        models = tmp_path / "models"
+        models.mkdir()
+        shutil.copy(MODELS_DIR / "orders.yaml", models / "orders.yaml")
+        # No data/orders.json: the inline source is a silent no-op, so the
+        # spec compiles with no data.values and model stays set.
+        app = create_app(project_dir=tmp_path, models_dir=models)
+        client = TestClient(app, raise_server_exceptions=False)
+        yaml_body = "sheet: test\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n"
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        assert data["errors"] == []
+        assert data["model"] == "orders"
+        assert "data" not in data["vega_lite_spec"] or "values" not in data["vega_lite_spec"].get(
+            "data", {}
+        )
 
 
 class TestLabelPatchAsset:

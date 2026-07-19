@@ -522,11 +522,11 @@ body {
 }
 
 /* Compile-in-progress: dim the stale render, never blank it. */
-#preview, #json-view, #dashboard-preview {
+#preview, #data-view, #dashboard-preview {
   transition: opacity var(--dur-base) var(--ease);
 }
 #preview-pane.is-compiling #preview,
-#preview-pane.is-compiling #json-view,
+#preview-pane.is-compiling #data-view,
 #preview-pane.is-compiling #dashboard-preview {
   opacity: 0.45;
   pointer-events: none;      /* a stale chart shouldn't accept tooltips/clicks */
@@ -601,33 +601,104 @@ body {
   height: auto;
 }
 
-/* ─── JSON View ───────────────────────────────────────────── */
-/* studio.css .sh-json-view: a sunk, hairline-bordered card (margins match
-   the chart pane gap so the two views land on the same footprint). */
-#json-view {
+/* ─── Data View (SHE-43) ──────────────────────────────────── */
+/* Sunk hairline card on the old JSON view's footprint (margins match the
+   chart pane gap so the two views land on the same footprint). JS toggles
+   display:none ↔ flex. */
+#data-view {
   display: none;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   margin: 24px 24px 20px;
-  padding: 16px 18px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.65;
-  color: var(--text-secondary);
   background: var(--pill-bg);
   border: 1px solid var(--border-default);
   border-radius: var(--r-2);
+  overflow: hidden;
+}
+
+.sh-data-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-default);
+  flex: none;
+}
+.sh-data-label {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+}
+.sh-data-model {
+  font-family: var(--font-mono);
+  font-size: 12px; font-weight: 500;
+  color: var(--text-primary);
+}
+.sh-data-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+.sh-data-scroll {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
-  white-space: pre-wrap;
   scrollbar-width: thin;
   scrollbar-color: rgba(11,11,10,0.15) transparent;
 }
+.sh-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.sh-data-table th {
+  position: sticky; top: 0;
+  background: var(--pill-bg);       /* opaque over scrolled rows */
+  text-align: left;
+  font-size: 10px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border-default);
+  white-space: nowrap;
+}
+.sh-data-table td {
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--border-default);   /* hairline separators */
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.sh-data-table tbody tr:last-child td { border-bottom: none; }
+.sh-data-table .is-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sh-data-null { color: var(--text-faint); }
 
-.json-key    { color: var(--syntax-key); }
-.json-string { color: var(--syntax-string); }
-.json-number { color: var(--syntax-number); }
-.json-bool   { color: var(--syntax-bool); }
-.json-null   { color: var(--syntax-bool); font-style: italic; }
+.sh-data-empty {
+  padding: 24px 18px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.sh-data-foot {
+  flex: none;
+  padding: 7px 16px;
+  border-top: 1px solid var(--border-default);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
 
 /* ─── Error Overlay ───────────────────────────────────────── */
 #error-overlay {

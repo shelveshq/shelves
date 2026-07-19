@@ -152,6 +152,7 @@ async def compile_file_and_broadcast(
                     "vega_lite_spec": None,
                     "errors": ["Empty YAML body"],
                     "warnings": [],
+                    "model": None,
                 }
             )
             return
@@ -203,6 +204,7 @@ async def compile_file_and_broadcast(
                 "vega_lite_spec": vl_spec,
                 "errors": [],
                 "warnings": warnings,
+                "model": spec.data,
             }
         )
     except _ValidationError as e:
@@ -215,6 +217,7 @@ async def compile_file_and_broadcast(
                 "vega_lite_spec": None,
                 "errors": _format_validation_errors(e, content),
                 "warnings": [],
+                "model": None,
             }
         )
     except _yaml.YAMLError as e:
@@ -227,6 +230,7 @@ async def compile_file_and_broadcast(
                 "vega_lite_spec": None,
                 "errors": [_format_yaml_error(e)],
                 "warnings": [],
+                "model": None,
             }
         )
     except Exception as e:
@@ -250,6 +254,7 @@ async def compile_file_and_broadcast(
                     }
                 ],
                 "warnings": [],
+                "model": None,
             }
         )
 

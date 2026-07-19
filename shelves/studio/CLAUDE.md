@@ -24,8 +24,10 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
   Tests must use `tests/conftest.py::LoopbackTestClient` — a stock
   TestClient sends `Host: testserver` and gets 400.
 - `routes/`
-  - `compile.py` — `POST /compile` (YAML → `{vega_lite_spec, errors, warnings}`)
-    and `GET /schema` (ChartSpec JSON Schema for Monaco).
+  - `compile.py` — `POST /compile` (YAML → `{vega_lite_spec, errors, warnings,
+    model}`) and `GET /schema` (ChartSpec JSON Schema for Monaco).
+    `model` is the chart's model name (`spec.data`) on success, `null` on error
+    payloads — kept in shape-parity with the watcher broadcast (`lifespan.py`).
   - `dashboard.py` — `POST /compile-dashboard` (dashboard YAML → `{html, canvas,
     component_tree, errors, warnings}`).
   - `files.py` — `GET /project` (directory tree), `GET/PUT/POST/DELETE /file`,
@@ -92,7 +94,9 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     deleted-on-disk open file shows a status/breadcrumb notice and is never
     auto-closed.
   - `preview.js` — chart render via `vegaEmbed` (with the shared label patch),
-    JSON view, error overlay, `ResizeObserver` re-fit.
+    Data view (SHE-43: resolved-rows table from `vega_lite_spec.data.values` —
+    model-name header, 500-row cap, skipped/empty states; replaced the old
+    JSON view), error overlay, `ResizeObserver` re-fit.
   - `dashboard.js` — dashboard compile + iframe preview, canvas scaling / zoom.
   - `sidebar.js` — file tree fetch/render, collapse state, sidebar show/hide,
     and file management (SHE-42): group-header `+`, right-click context menu
@@ -160,6 +164,9 @@ loaded in that order before `styles.css`. Re-sync = re-copy those two files.
 `studio.css` is tracked per-ticket (SHE-34/35/36/47). The real Studio layout is **3 columns + a 1px splitter**
 (tree | editor | splitter | preview), and the inspector is a **preview mode**
 (view modes: chart / dashboard / model / theme / empty), not a permanent column.
+The repo Studio's chart preview now has modes chart / data (SHE-43 replaced the
+JSON view with the Data table); the design's `model` and `theme` inspector modes
+are not yet implemented.
 Multi-tab, command palette, and a recents empty state are designed but deferred.
 See `docs/design-system/studio/README.md` for the full adherence analysis.
 

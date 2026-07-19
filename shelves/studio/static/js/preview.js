@@ -1,11 +1,12 @@
 // ─── Preview Module ────────────────────────────────────────
-// Chart rendering, JSON syntax highlighting, error overlay, preview header.
+// Chart rendering, Data view (resolved rows table), error overlay,
+// preview header.
 
 import { state, resultIsForCurrentFile } from './state.js';
 
 const elPreview        = document.getElementById('preview');
 const elChartContainer = document.getElementById('chart-container');
-const elJsonView       = document.getElementById('json-view');
+const elDataView       = document.getElementById('data-view');
 const elErrorOverlay   = document.getElementById('error-overlay');
 
 // Mirror of shelves/translator/layout.py::_is_compound_spec. Compound specs
@@ -71,7 +72,7 @@ export function renderPreviewHeader(mode) {
     rightEl.innerHTML = `
       <div id="view-toggles" class="sh-seg">
         <button class="sh-seg-btn${state.currentView === 'chart' ? ' is-active' : ''}" data-view="chart">Chart</button>
-        <button class="sh-seg-btn${state.currentView === 'json' ? ' is-active' : ''}" data-view="json">JSON</button>
+        <button class="sh-seg-btn${state.currentView === 'data' ? ' is-active' : ''}" data-view="data">Data</button>
       </div>`;
     rightEl.querySelectorAll('.sh-seg-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -93,26 +94,6 @@ function updateAmbientTime() {
   }
 }
 
-// ─── JSON Syntax Highlighting ──────────────────────────────
-export function highlightJson(json) {
-  const escaped = json
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  return escaped
-    .replace(/("(?:\\.|[^"\\])*")(\s*:)/g,
-      '<span class="json-key">$1</span>$2')
-    .replace(/:\s*("(?:\\.|[^"\\])*")/g,
-      ': <span class="json-string">$1</span>')
-    .replace(/:\s*(-?\d+\.?\d*(?:[eE][+-]?\d+)?)/g,
-      ': <span class="json-number">$1</span>')
-    .replace(/:\s*(true|false)/g,
-      ': <span class="json-bool">$1</span>')
-    .replace(/:\s*(null)/g,
-      ': <span class="json-null">$1</span>');
-}
-
 // ─── Error Overlay ─────────────────────────────────────────
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -121,7 +102,7 @@ function esc(s) {
 
 export function showErrorOverlay(errors, title = "Can't compile this chart") {
   elPreview.style.display = 'none';
-  elJsonView.style.display = 'none';
+  elDataView.style.display = 'none';
   elErrorOverlay.style.display = 'block';
 
   // Callers hide every other pane before invoking, so an empty error list
@@ -156,7 +137,7 @@ export function hideErrorOverlay() {
 // ─── Empty State ──────────────────────────────────────────
 export function showEmptyState({ title, sub }) {
   hideErrorOverlay();
-  elJsonView.style.display = 'none';
+  elDataView.style.display = 'none';
   elPreview.style.display = '';
   const card = document.getElementById('chart-card');
   card.classList.remove('is-scroll');
@@ -172,7 +153,7 @@ export function showEmptyState({ title, sub }) {
 
 // ─── Chart Rendering ───────────────────────────────────────
 async function renderChart(result) {
-  elJsonView.style.display = 'none';
+  elDataView.style.display = 'none';
 
   if (!result || result.vega_lite_spec === null) {
     // A local compile of non-chart content still yields null-spec/no-error.
@@ -242,26 +223,131 @@ async function renderChart(result) {
   }
 }
 
-// ─── JSON View Rendering ──────────────────────────────────
-function renderJson(result) {
-  elPreview.style.display = 'none';
-  hideErrorOverlay();
-  elJsonView.style.display = 'block';
+// ─── Data View (SHE-43) ───────────────────────────────────
+// The resolved rows behind the current chart, straight from
+// vega_lite_spec.data.values (every backend inlines rows via bind_data).
+// Granularity follows the binding: raw pre-aggregation rows for inline/file
+// sources (Vega-Lite aggregates client-side), aggregated rows for Cube.
+const DATA_ROW_CAP = 500;   // rows rendered; footer states the truncation
 
+const fmtCount = (n) => n.toLocaleString('en-US');
+
+function renderCell(v) {
+  if (v == null) return '<span class="sh-data-null">null</span>';
+  if (typeof v === 'object') return esc(JSON.stringify(v));
+  return esc(String(v));
+}
+
+function dataHead(model, countText) {
+  return `
+    <div class="sh-data-head">
+      <span class="sh-data-label">Data</span>
+      <span class="sh-data-model">${esc(model ?? '—')}</span>
+      <span class="sh-data-count">${esc(countText)}</span>
+    </div>`;
+}
+
+function dataMessage(model, countText, message) {
+  return dataHead(model, countText)
+    + `<div class="sh-data-empty">${esc(message)}</div>`;
+}
+
+function buildDataTable(model, values) {
+  const shown = values.slice(0, DATA_ROW_CAP);
+
+  // Union of keys across displayed rows, first-seen order — inline data may
+  // be ragged (and rows may even be null: bind_data inlines the source JSON
+  // verbatim); adapter-backed rows are uniform and take the fast path.
+  const columns = [];
+  const seen = new Set();
+  for (const row of shown) {
+    if (row == null || typeof row !== 'object') continue;
+    for (const key of Object.keys(row)) {
+      if (!seen.has(key)) { seen.add(key); columns.push(key); }
+    }
+  }
+
+  // A column is numeric (right-aligned, tabular-nums) when its first
+  // non-null displayed value is a number — values only, no model lookups.
+  const numeric = new Map();
+  for (const col of columns) {
+    const probe = shown.find((row) => row?.[col] != null);
+    numeric.set(col, typeof probe?.[col] === 'number');
+  }
+
+  const th = columns
+    .map((c) => `<th${numeric.get(c) ? ' class="is-num"' : ''}>${esc(c)}</th>`)
+    .join('');
+  const rows = shown
+    .map((row) => `<tr>${columns
+      .map((c) => `<td${numeric.get(c) ? ' class="is-num"' : ''}>${renderCell(row?.[c])}</td>`)
+      .join('')}</tr>`)
+    .join('');
+
+  const footer = values.length > DATA_ROW_CAP
+    ? `<div class="sh-data-foot">showing ${fmtCount(DATA_ROW_CAP)} of ${fmtCount(values.length)} rows</div>`
+    : '';
+
+  return dataHead(model, `${fmtCount(values.length)} rows`)
+    + `<div class="sh-data-scroll"><table class="sh-data-table">`
+    + `<thead><tr>${th}</tr></thead><tbody>${rows}</tbody>`
+    + `</table></div>`
+    + footer;
+}
+
+function renderData(result) {
   if (!result || result.vega_lite_spec === null) {
-    const errText = (result?.errors ?? ['No spec.']).join('\n');
-    elJsonView.textContent = errText;
+    // Degrade exactly like the Chart view so the two segments agree.
+    if (result?.errors?.length) { showErrorOverlay(result.errors); }
+    else { showEmptyState({ title: 'Nothing to render yet', sub: 'The compile returned no chart and no errors.' }); }
     return;
   }
 
-  const pretty = JSON.stringify(result.vega_lite_spec, null, 2);
-  elJsonView.innerHTML = highlightJson(pretty);
+  hideErrorOverlay();
+  elPreview.style.display = 'none';
+  elDataView.style.display = 'flex';
+
+  const model = result.model ?? null;
+  const values = result.vega_lite_spec?.data?.values;
+
+  if (values === undefined) {
+    // Either resolution was skipped (warning present) or the inline source
+    // file is missing (silent no-op in resolve_model_data) — say which.
+    const skipped = (result.warnings ?? []).find(
+      (w) => typeof w === 'string' && w.startsWith('Data resolution skipped:'),
+    );
+    elDataView.innerHTML = dataMessage(
+      model,
+      'no rows',
+      skipped ?? 'No data resolved for this chart — the compiled spec has no inline rows.',
+    );
+    return;
+  }
+
+  if (!Array.isArray(values)) {
+    // bind_data inlines the source JSON verbatim, so a malformed file (null
+    // or a non-array top level) reaches the browser — degrade to a message,
+    // never a TypeError over a stale table (PR #67 review).
+    elDataView.innerHTML = dataMessage(
+      model,
+      'no rows',
+      "The resolved data is not a list of rows — check the model's source file.",
+    );
+    return;
+  }
+
+  if (values.length === 0) {
+    elDataView.innerHTML = dataMessage(model, '0 rows', 'The query returned 0 rows.');
+    return;
+  }
+
+  elDataView.innerHTML = buildDataTable(model, values);
 }
 
 // ─── Render Dispatcher ────────────────────────────────────
 function renderPreview(result) {
-  if (state.currentView === 'json') {
-    renderJson(result);
+  if (state.currentView === 'data') {
+    renderData(result);
   } else {
     renderChart(result);
   }
