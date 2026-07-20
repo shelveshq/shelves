@@ -53,7 +53,7 @@ class StyleProperties(BaseModel):
     border_right: str | None = None
     border_radius: int | str | None = None
     shadow: str | None = None
-    opacity: float | None = Field(None, ge=0.0, le=1.0)
+    opacity: float | None = Field(default=None, ge=0.0, le=1.0)
     font_size: int | None = None
     font_weight: str | int | None = None
     font_family: str | None = None
