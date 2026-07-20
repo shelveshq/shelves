@@ -10,7 +10,7 @@ These tests define expected behavior for the implementation to follow.
 
 import warnings
 
-from shelves.schema.layout_schema import parse_dashboard
+from shelves.schema.layout_schema import LegendComponent, parse_dashboard
 from shelves.translator.layout_flatten import flatten_dashboard
 from shelves.translator.layout_solver import (
     parse_spacing,
@@ -1285,6 +1285,7 @@ class TestLegendPlacement:
 
         assert len(resolved.children) == 2
         legend_node = resolved.children[1]
+        assert isinstance(legend_node.component, LegendComponent)
         assert legend_node.component.type == "legend"
         assert legend_node.outer_width == 180  # explicit px main-axis size
         assert legend_node.outer_height == 800  # fills the cross axis

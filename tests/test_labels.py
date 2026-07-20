@@ -106,6 +106,7 @@ class TestLabelSchema:
             label: true
         """)
         )
+        assert isinstance(spec.rows, list)
         assert spec.rows[0].label is False
         assert spec.rows[1].label is None
         assert spec.label is True
@@ -127,6 +128,8 @@ class TestLabelSchema:
             label: true
         """)
         )
+        assert isinstance(spec.rows, list)
+        assert spec.rows[0].layer is not None
         assert spec.rows[0].layer[0].label is False
 
     def test_invalid_color_rejected(self):

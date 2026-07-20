@@ -16,7 +16,7 @@ DSL reference says:
 import pytest
 from pydantic import ValidationError
 
-from shelves.schema.chart_schema import parse_chart
+from shelves.schema.chart_schema import MarkObject, parse_chart
 from shelves.translator.translate import translate_chart
 from tests.conftest import MODELS_DIR
 
@@ -92,6 +92,7 @@ marks:
   type: line
 """)
         )
+        assert isinstance(spec.marks, MarkObject)
         assert spec.marks.type == "line"
 
     def test_object_form_with_style(self):
@@ -102,6 +103,7 @@ marks:
   style: dashed
 """)
         )
+        assert isinstance(spec.marks, MarkObject)
         assert spec.marks.type == "line"
         assert spec.marks.style == "dashed"
 
@@ -113,6 +115,7 @@ marks:
   point: true
 """)
         )
+        assert isinstance(spec.marks, MarkObject)
         assert spec.marks.type == "line"
         assert spec.marks.point is True
 
@@ -124,6 +127,7 @@ marks:
   opacity: 0.8
 """)
         )
+        assert isinstance(spec.marks, MarkObject)
         assert spec.marks.type == "line"
         assert spec.marks.opacity == 0.8
 
@@ -137,6 +141,7 @@ marks:
   opacity: 0.5
 """)
         )
+        assert isinstance(spec.marks, MarkObject)
         assert spec.marks.type == "line"
         assert spec.marks.style == "dotted"
         assert spec.marks.point is True
@@ -151,6 +156,7 @@ marks:
   style: {style}
 """)
         )
+        assert isinstance(spec.marks, MarkObject)
         assert spec.marks.style == style
 
     def test_rejects_invalid_style(self):
