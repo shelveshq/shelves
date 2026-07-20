@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from shelves.models.loader import clear_model_cache, load_model
 from shelves.models.schema import (
+    Aggregation,
     CubeSource,
     DataModel,
     FileSource,
@@ -125,7 +126,9 @@ class TestModelSchema:
 
     def test_temporal_requires_default_grain(self):
         with pytest.raises(ValidationError):
-            TemporalDimensionDefinition(type="temporal", label="Date")
+            # defaultGrain is omitted on purpose — its absence is what this
+            # test asserts. pyright is correct that the call is invalid.
+            TemporalDimensionDefinition(type="temporal", label="Date")  # pyright: ignore[reportCallIssue]
 
     def test_default_grain_must_be_in_grains(self):
         with pytest.raises(ValidationError, match="not in grains"):
@@ -368,7 +371,8 @@ class TestModelSchemaExtensions:
         assert model.measures["margin"].calculation == "{{ profit }} / {{ revenue }}"
 
     def test_aggregation_literals(self):
-        for agg in ["sum", "count", "avg", "min", "max", "count_distinct"]:
+        aggregations: list[Aggregation] = ["sum", "count", "avg", "min", "max", "count_distinct"]
+        for agg in aggregations:
             m = MeasureDefinition(label="X", aggregation=agg)
             assert m.aggregation == agg
 
@@ -514,7 +518,9 @@ class TestModelSchemaExtensions:
 
     def test_aggregation_invalid(self):
         with pytest.raises(ValidationError):
-            MeasureDefinition(label="X", aggregation="median")
+            # "median" is not a valid Aggregation — rejecting it is the point
+            # of the test, so pyright is correct to flag the argument.
+            MeasureDefinition(label="X", aggregation="median")  # pyright: ignore[reportArgumentType]
 
     def test_file_source_empty_path(self):
         with pytest.raises(ValidationError):

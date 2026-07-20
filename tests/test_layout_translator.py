@@ -10,6 +10,7 @@ These tests define expected behavior for the implementation to follow.
 
 import re
 import warnings
+from typing import Literal
 
 import pytest
 
@@ -32,7 +33,12 @@ def _make_ctx(theme=None):
     return RenderContext(theme=theme or _default_theme())
 
 
-def _resolve_component_styles(entry, ctx=None, parent_orientation="vertical", **kwargs):
+def _resolve_component_styles(
+    entry,
+    ctx=None,
+    parent_orientation: Literal["horizontal", "vertical"] | None = "vertical",
+    **kwargs,
+):
     """Parse a type-led entry, resolve it, and return CSS string."""
     from shelves.schema.layout_schema import resolve_child
 

@@ -488,4 +488,11 @@ class TestFilterFieldGuard:
 
         f = ShelfFilter(field="nonexistent", operator="eq", value="x")
         with pytest.raises(ValueError, match="Cannot resolve filter field"):
-            _translate_filter(f, _NoneResolver())
+            # _NoneResolver deliberately violates FieldTypeResolver: it returns
+            # None where the protocol declares str. That mismatch is the point
+            # of the test — it exercises the unresolvable-field guard in
+            # _translate_filter, which no real resolver can currently trigger
+            # (ModelFieldResolver.resolve_base_field always returns a str).
+            # Do NOT "fix" this by widening the protocol to `str | None`: that
+            # cascades into 8 errors across duckdb_adapter.py and legend_link.py.
+            _translate_filter(f, _NoneResolver())  # pyright: ignore[reportArgumentType]

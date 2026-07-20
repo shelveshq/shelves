@@ -9,6 +9,7 @@ Tests for dot-notation support through the translator layer:
 """
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -101,7 +102,7 @@ class TestFilterBaseField:
 class TestSortBaseField:
     def test_sort_strips_grain(self, orders_model):
         resolver = ModelResolver(orders_model)
-        encoding = {"x": {"field": "week", "type": "temporal"}}
+        encoding: dict[str, Any] = {"x": {"field": "week", "type": "temporal"}}
         sort = FieldSort(field="week.month", order="ascending")
         apply_sort(encoding, sort, resolver)
         assert encoding["x"]["sort"]["field"] == "week"
