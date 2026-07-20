@@ -222,6 +222,7 @@ class TestImportCLI:
         parsed = yaml.safe_load(model_path.read_text())
         model = DataModel.model_validate(parsed)
         assert model.model == "import_sales"
+        assert model.source is not None
         assert model.source.type == "file"
         assert "Created model:" in result.stdout
 

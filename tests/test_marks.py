@@ -202,6 +202,7 @@ class TestMarkTranslationStringShorthand:
         vl = _compile(_make_yaml(f"marks: {mark_type}"))
         # Vega-Lite mark should be the string or an object with "type"
         mark = vl.get("mark")
+        assert mark is not None
         if isinstance(mark, str):
             assert mark == mark_type
         else:

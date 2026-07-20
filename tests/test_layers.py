@@ -32,6 +32,7 @@ class TestLayerSchemaParsing:
 
     def test_triple_axis_parses(self):
         spec = parse_chart(load_yaml("triple_axis.yaml"))
+        assert spec.rows is not None
         entry = spec.rows[0]
         assert entry.measure == "revenue"
         assert len(entry.layer) == 2

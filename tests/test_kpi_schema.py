@@ -22,6 +22,7 @@ class TestKPISchemaHappyPath:
         spec = parse_chart(load_yaml("kpi_simple.yaml"))
         assert spec.sheet == "Total Revenue"
         assert spec.data == "orders"
+        assert spec.kpi is not None
         assert spec.kpi.value == "revenue"
         assert spec.kpi.format == "$,.0f"
         assert spec.kpi.title is None
@@ -33,10 +34,12 @@ class TestKPISchemaHappyPath:
 
     def test_full_kpi(self):
         spec = parse_chart(load_yaml("kpi_full.yaml"))
+        assert spec.kpi is not None
         assert spec.kpi.value == "revenue"
         assert spec.kpi.format == "$,.0f"
         assert spec.kpi.title == "Monthly Revenue"
         assert spec.kpi.spacing == 8
+        assert spec.kpi.comparison is not None
         assert spec.kpi.comparison.field == "cost"
         assert spec.kpi.comparison.mode == "delta_percent"
         assert spec.kpi.comparison.format == ".1%"
@@ -54,6 +57,8 @@ kpi:
     field: cost
 """
         spec = parse_chart(yaml_str)
+        assert spec.kpi is not None
+        assert spec.kpi.comparison is not None
         assert spec.kpi.comparison.mode == "delta_percent"
         assert spec.kpi.comparison.format is None
         assert spec.kpi.comparison.label is None
@@ -72,6 +77,8 @@ kpi:
     polarity: down_is_good
 """
         spec = parse_chart(yaml_str)
+        assert spec.kpi is not None
+        assert spec.kpi.comparison is not None
         assert spec.kpi.comparison.mode == "delta_absolute"
         assert spec.kpi.comparison.polarity == "down_is_good"
 
@@ -90,6 +97,8 @@ kpi:
     polarity: neutral
 """
         spec = parse_chart(yaml_str)
+        assert spec.kpi is not None
+        assert spec.kpi.comparison is not None
         assert spec.kpi.comparison.mode == "value"
         assert spec.kpi.comparison.polarity == "neutral"
         assert spec.kpi.comparison.label == "Target"
@@ -110,6 +119,7 @@ kpi:
         assert spec.filters is not None
         assert len(spec.filters) == 1
         assert spec.filters[0].field == "country"
+        assert spec.kpi is not None
         assert spec.kpi.value == "revenue"
 
     def test_zero_spacing(self):
@@ -122,6 +132,7 @@ kpi:
   spacing: 0
 """
         spec = parse_chart(yaml_str)
+        assert spec.kpi is not None
         assert spec.kpi.spacing == 0
 
 

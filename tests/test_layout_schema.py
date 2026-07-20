@@ -228,6 +228,7 @@ root:
     - revenue_kpi
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         assert "revenue_kpi" in spec.components
         comp = spec.components["revenue_kpi"]
         assert comp.type == "sheet"
@@ -254,6 +255,7 @@ root:
     - kpi_row
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["kpi_row"]
         assert comp.type == "horizontal"
         assert comp.gap == 16
@@ -276,6 +278,7 @@ root:
     - header
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["header"]
         assert comp.type == "text"
         assert comp.content == "My Dashboard"
@@ -299,6 +302,7 @@ root:
     - logo
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["logo"]
         assert comp.type == "image"
         assert comp.src == "logo.svg"
@@ -327,6 +331,7 @@ root:
     - kpi
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["kpi"]
         assert comp.type == "sheet"
         assert comp.style == "card"
@@ -349,6 +354,7 @@ root:
     - kpi
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["kpi"]
         assert comp.style == "fancy"
 
@@ -368,6 +374,7 @@ root:
     - export_btn
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["export_btn"]
         assert comp.type == "button"
         assert comp.text == "Export"

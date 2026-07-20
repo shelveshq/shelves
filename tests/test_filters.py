@@ -59,6 +59,7 @@ filters:
     value: "US"
 """)
         )
+        assert spec.filters is not None
         assert len(spec.filters) == 1
         assert spec.filters[0].operator == "eq"
         assert spec.filters[0].value == "US"
@@ -72,6 +73,7 @@ filters:
     value: "Other"
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "neq"
 
     def test_gt_filter(self):
@@ -83,6 +85,7 @@ filters:
     value: 1000
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "gt"
         assert spec.filters[0].value == 1000
 
@@ -95,6 +98,7 @@ filters:
     value: 5000
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "lt"
 
     def test_gte_filter(self):
@@ -106,6 +110,7 @@ filters:
     value: 1000
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "gte"
 
     def test_lte_filter(self):
@@ -117,6 +122,7 @@ filters:
     value: 5000
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "lte"
 
     def test_in_filter(self):
@@ -128,6 +134,7 @@ filters:
     values: ["US", "UK", "DE"]
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "in"
         assert spec.filters[0].values == ["US", "UK", "DE"]
 
@@ -140,6 +147,7 @@ filters:
     values: ["Other"]
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "not_in"
         assert spec.filters[0].values == ["Other"]
 
@@ -152,6 +160,7 @@ filters:
     range: [1000, 5000]
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "between"
         assert spec.filters[0].range == [1000, 5000]
 
@@ -171,6 +180,7 @@ filters:
     value: 10000
 """)
         )
+        assert spec.filters is not None
         assert len(spec.filters) == 3
 
 
