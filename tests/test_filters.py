@@ -59,6 +59,7 @@ filters:
     value: "US"
 """)
         )
+        assert spec.filters is not None
         assert len(spec.filters) == 1
         assert spec.filters[0].operator == "eq"
         assert spec.filters[0].value == "US"
@@ -72,6 +73,7 @@ filters:
     value: "Other"
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "neq"
 
     def test_gt_filter(self):
@@ -83,6 +85,7 @@ filters:
     value: 1000
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "gt"
         assert spec.filters[0].value == 1000
 
@@ -95,6 +98,7 @@ filters:
     value: 5000
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "lt"
 
     def test_gte_filter(self):
@@ -106,6 +110,7 @@ filters:
     value: 1000
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "gte"
 
     def test_lte_filter(self):
@@ -117,6 +122,7 @@ filters:
     value: 5000
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "lte"
 
     def test_in_filter(self):
@@ -128,6 +134,7 @@ filters:
     values: ["US", "UK", "DE"]
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "in"
         assert spec.filters[0].values == ["US", "UK", "DE"]
 
@@ -140,6 +147,7 @@ filters:
     values: ["Other"]
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "not_in"
         assert spec.filters[0].values == ["Other"]
 
@@ -152,6 +160,7 @@ filters:
     range: [1000, 5000]
 """)
         )
+        assert spec.filters is not None
         assert spec.filters[0].operator == "between"
         assert spec.filters[0].range == [1000, 5000]
 
@@ -171,6 +180,7 @@ filters:
     value: 10000
 """)
         )
+        assert spec.filters is not None
         assert len(spec.filters) == 3
 
 
@@ -478,4 +488,11 @@ class TestFilterFieldGuard:
 
         f = ShelfFilter(field="nonexistent", operator="eq", value="x")
         with pytest.raises(ValueError, match="Cannot resolve filter field"):
-            _translate_filter(f, _NoneResolver())
+            # _NoneResolver deliberately violates FieldTypeResolver: it returns
+            # None where the protocol declares str. That mismatch is the point
+            # of the test — it exercises the unresolvable-field guard in
+            # _translate_filter, which no real resolver can currently trigger
+            # (ModelFieldResolver.resolve_base_field always returns a str).
+            # Do NOT "fix" this by widening the protocol to `str | None`: that
+            # cascades into 8 errors across duckdb_adapter.py and legend_link.py.
+            _translate_filter(f, _NoneResolver())  # pyright: ignore[reportArgumentType]

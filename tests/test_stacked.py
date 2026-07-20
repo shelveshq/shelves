@@ -201,11 +201,13 @@ cols:
     def test_parses_shared_axis_on_measure_entry(self):
         """KAN-232: shared_axis parses as bool | None."""
         spec = parse_chart(load_yaml("stacked_shared_axis_all.yaml"))
+        assert isinstance(spec.rows, list)
         for entry in spec.rows:
             assert entry.shared_axis is True
 
     def test_parses_shared_axis_none_by_default(self):
         spec = parse_chart(load_yaml("stacked_panels.yaml"))
+        assert isinstance(spec.rows, list)
         for entry in spec.rows:
             assert entry.shared_axis is None
 
@@ -225,6 +227,7 @@ rows:
           style: dashed
     axis: independent
 """)
+        assert isinstance(spec.rows, list)
         assert spec.rows[0].layer is not None
         assert spec.rows[0].layer[0].measure == "arpu"
         assert spec.rows[0].axis == "independent"

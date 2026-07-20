@@ -11,7 +11,7 @@ import textwrap
 
 import pytest
 
-from shelves.schema.chart_schema import parse_chart
+from shelves.schema.chart_schema import MarkObject, RowColumnFacet, parse_chart
 from shelves.translator.translate import translate_chart
 from tests.conftest import MODELS_DIR, compile_fixture, load_yaml
 
@@ -32,8 +32,10 @@ class TestLayerSchemaParsing:
 
     def test_triple_axis_parses(self):
         spec = parse_chart(load_yaml("triple_axis.yaml"))
+        assert isinstance(spec.rows, list)
         entry = spec.rows[0]
         assert entry.measure == "revenue"
+        assert entry.layer is not None
         assert len(entry.layer) == 2
         assert entry.layer[0].measure == "arpu"
         assert entry.layer[1].measure == "margin_pct"
@@ -41,6 +43,7 @@ class TestLayerSchemaParsing:
 
     def test_stacked_layers_parses(self):
         spec = parse_chart(load_yaml("stacked_layers.yaml"))
+        assert isinstance(spec.rows, list)
         assert len(spec.rows) == 2
         # First entry has layers
         assert spec.rows[0].layer is not None
@@ -51,16 +54,18 @@ class TestLayerSchemaParsing:
 
     def test_layers_faceted_parses(self):
         spec = parse_chart(load_yaml("layers_faceted.yaml"))
+        assert isinstance(spec.rows, list)
         assert spec.rows[0].layer is not None
-        assert spec.facet is not None
-        assert hasattr(spec.facet, "row")
+        assert isinstance(spec.facet, RowColumnFacet)
         assert spec.facet.row == "region"
 
     def test_layer_mark_object_parses(self):
         spec = parse_chart(load_yaml("dual_axis.yaml"))
+        assert isinstance(spec.rows, list)
+        assert spec.rows[0].layer is not None
         layer = spec.rows[0].layer[0]
         # Mark should be parsed as MarkObject with style
-        assert hasattr(layer.mark, "type")
+        assert isinstance(layer.mark, MarkObject)
         assert layer.mark.type == "line"
         assert layer.mark.style == "dashed"
 
@@ -80,6 +85,8 @@ class TestLayerSchemaParsing:
             """
         )
         spec = parse_chart(yaml_str)
+        assert isinstance(spec.rows, list)
+        assert spec.rows[0].layer is not None
         layer = spec.rows[0].layer[0]
         assert layer.mark is None
         assert layer.color is None

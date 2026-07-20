@@ -12,6 +12,13 @@ import pytest
 from pydantic import ValidationError
 
 from shelves.schema.layout_schema import (
+    ButtonComponent,
+    ContainerComponent,
+    ImageComponent,
+    LegendComponent,
+    LinkComponent,
+    SheetComponent,
+    TextComponent,
     parse_dashboard,
     resolve_child,
 )
@@ -36,6 +43,7 @@ class TestLayoutParsing:
         assert spec.dashboard == "Sales Overview"
         assert spec.description == "Weekly sales KPIs and revenue trends"
         assert spec.canvas.width == 1440
+        assert spec.styles is not None
         assert "card" in spec.styles
         assert spec.root.orientation == "vertical"
         # root contains: header row, kpi row, charts row
@@ -84,11 +92,13 @@ class TestResolveChild:
         entry = {"sheet": "charts/revenue.yaml", "name": "revenue_chart"}
         name, comp = resolve_child(entry, {})
         assert name == "revenue_chart"
+        assert isinstance(comp, SheetComponent)
         assert comp.link == "charts/revenue.yaml"
 
     def test_resolve_sheet_with_fit(self):
         entry = {"sheet": "charts/foo.yaml", "fit": "width", "show_title": False}
         _, comp = resolve_child(entry, {})
+        assert isinstance(comp, SheetComponent)
         assert comp.fit == "width"
         assert comp.show_title is False
 
@@ -103,6 +113,7 @@ class TestResolveChild:
     def test_resolve_text_multiline(self):
         entry = {"text": "Line 1\nLine 2\n", "preset": "caption"}
         _, comp = resolve_child(entry, {})
+        assert isinstance(comp, TextComponent)
         assert "Line 1" in comp.content
         assert "Line 2" in comp.content
 
@@ -228,6 +239,7 @@ root:
     - revenue_kpi
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         assert "revenue_kpi" in spec.components
         comp = spec.components["revenue_kpi"]
         assert comp.type == "sheet"
@@ -254,6 +266,7 @@ root:
     - kpi_row
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["kpi_row"]
         assert comp.type == "horizontal"
         assert comp.gap == 16
@@ -276,6 +289,7 @@ root:
     - header
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["header"]
         assert comp.type == "text"
         assert comp.content == "My Dashboard"
@@ -299,6 +313,7 @@ root:
     - logo
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["logo"]
         assert comp.type == "image"
         assert comp.src == "logo.svg"
@@ -327,9 +342,11 @@ root:
     - kpi
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["kpi"]
         assert comp.type == "sheet"
         assert comp.style == "card"
+        assert spec.styles is not None
         assert "card" in spec.styles
 
     def test_component_with_undefined_style_allowed(self):
@@ -349,6 +366,7 @@ root:
     - kpi
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["kpi"]
         assert comp.style == "fancy"
 
@@ -368,6 +386,7 @@ root:
     - export_btn
 """
         spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
         comp = spec.components["export_btn"]
         assert comp.type == "button"
         assert comp.text == "Export"
@@ -521,32 +540,38 @@ root:
     def test_alt_defaults_to_empty(self):
         entry = {"image": "logo.svg"}
         _, comp = resolve_child(entry, {})
+        assert isinstance(comp, ImageComponent)
         assert comp.alt == ""
 
     def test_target_defaults_to_self(self):
         entry = {"button": "Go", "href": "/go"}
         _, comp = resolve_child(entry, {})
+        assert isinstance(comp, ButtonComponent)
         assert comp.target == "_self"
 
     def test_link_target_defaults_to_self(self):
         entry = {"link": "Go", "href": "/go"}
         _, comp = resolve_child(entry, {})
+        assert isinstance(comp, LinkComponent)
         assert comp.target == "_self"
 
     def test_sheet_fit_default_none_or_fill(self):
         entry = {"sheet": "charts/foo.yaml"}
         _, comp = resolve_child(entry, {})
         # fit defaults to None (solver decides) or "fill"
+        assert isinstance(comp, SheetComponent)
         assert comp.fit is None or comp.fit == "fill"
 
     def test_sheet_show_title_default_true(self):
         entry = {"sheet": "charts/foo.yaml"}
         _, comp = resolve_child(entry, {})
+        assert isinstance(comp, SheetComponent)
         assert comp.show_title is True
 
     def test_gap_defaults_to_zero(self):
         entry = {"horizontal": {"contains": []}}
         _, comp = resolve_child(entry, {})
+        assert isinstance(comp, ContainerComponent)
         assert comp.gap == 0 or comp.gap is None
 
     def test_blank_as_flex_spacer(self):
@@ -650,6 +675,7 @@ class TestImageComponent:
     def test_image_fit_center_defaults(self):
         entry = {"image": "logo.svg"}
         _, comp = resolve_child(entry, {})
+        assert isinstance(comp, ImageComponent)
         assert comp.fit is True
         assert comp.center is False
 
@@ -812,6 +838,8 @@ root:
 """
         spec = parse_dashboard(yaml_str)
         assert len(spec.root.contains) == 3
+        assert spec.styles is not None
+        assert spec.components is not None
         assert "card" in spec.styles
         assert "logo" in spec.components
 
@@ -874,6 +902,7 @@ root:
 """
         spec = parse_dashboard(yaml_str)
         # The horizontal container's contains should have two refs to "kpi"
+        assert spec.components is not None
         assert "kpi" in spec.components
 
 
@@ -916,6 +945,7 @@ class TestLegendComponent:
     def test_resolve_legend_minimal(self):
         entry = {"legend": "charts/foo.yaml", "field": "Region"}
         _, comp = resolve_child(entry, {})
+        assert isinstance(comp, LegendComponent)
         assert comp.source == "charts/foo.yaml"
         assert comp.field == "Region"
         assert comp.title is None
@@ -927,12 +957,14 @@ class TestLegendComponent:
     def test_resolve_legend_orientation_horizontal(self):
         entry = {"legend": "charts/foo.yaml", "field": "Region", "orientation": "horizontal"}
         _, comp = resolve_child(entry, {})
+        assert isinstance(comp, LegendComponent)
         assert comp.orientation == "horizontal"
 
     def test_resolve_legend_with_name(self):
         entry = {"legend": "charts/foo.yaml", "field": "X", "name": "cat_legend"}
         name, comp = resolve_child(entry, {})
         assert name == "cat_legend"
+        assert isinstance(comp, LegendComponent)
         assert comp.source == "charts/foo.yaml"
 
     def test_resolve_legend_with_html(self):

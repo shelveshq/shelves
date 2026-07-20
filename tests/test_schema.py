@@ -8,7 +8,12 @@ Tests both valid specs (should pass) and invalid specs (should raise).
 import pytest
 from pydantic import ValidationError
 
-from shelves.schema.chart_schema import parse_chart
+from shelves.schema.chart_schema import (
+    ColorFieldMapping,
+    RowColumnFacet,
+    WrapFacet,
+    parse_chart,
+)
 from tests.conftest import load_yaml
 
 
@@ -33,13 +38,13 @@ class TestParseValidSpecs:
     def test_facet_row(self):
         spec = parse_chart(load_yaml("facet_row.yaml"))
         assert spec.facet is not None
-        assert hasattr(spec.facet, "row")
+        assert isinstance(spec.facet, RowColumnFacet)
         assert spec.facet.row == "region"
 
     def test_facet_wrap(self):
         spec = parse_chart(load_yaml("facet_wrap.yaml"))
         assert spec.facet is not None
-        assert hasattr(spec.facet, "field")
+        assert isinstance(spec.facet, WrapFacet)
         assert spec.facet.field == "country"
         assert spec.facet.columns == 4
 
@@ -58,7 +63,7 @@ class TestParseValidSpecs:
     def test_heatmap_with_quantitative_color(self):
         spec = parse_chart(load_yaml("heatmap.yaml"))
         assert spec.marks == "rect"
-        assert hasattr(spec.color, "field")
+        assert isinstance(spec.color, ColorFieldMapping)
         assert spec.color.field == "revenue"
         assert spec.color.type == "quantitative"
 

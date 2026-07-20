@@ -10,6 +10,7 @@ These tests define expected behavior for the implementation to follow.
 
 import re
 import warnings
+from typing import Literal
 
 import pytest
 
@@ -32,7 +33,12 @@ def _make_ctx(theme=None):
     return RenderContext(theme=theme or _default_theme())
 
 
-def _resolve_component_styles(entry, ctx=None, parent_orientation="vertical", **kwargs):
+def _resolve_component_styles(
+    entry,
+    ctx=None,
+    parent_orientation: Literal["horizontal", "vertical"] | None = "vertical",
+    **kwargs,
+):
     """Parse a type-led entry, resolve it, and return CSS string."""
     from shelves.schema.layout_schema import resolve_child
 
@@ -738,6 +744,7 @@ root:
 
         # The Vega spec should NOT carry spec-level padding
         m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert m is not None
         specs = json.loads(m.group(1))
         spec = specs["sheet-padded"]
         assert "padding" not in spec
@@ -772,6 +779,7 @@ root:
 
         # Vega spec has no padding
         m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert m is not None
         specs = json.loads(m.group(1))
         spec = specs["sheet-asym"]
         assert "padding" not in spec
@@ -802,6 +810,7 @@ root:
 
         # Vega spec has no padding
         m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert m is not None
         specs = json.loads(m.group(1))
         spec = specs["sheet-fourpad"]
         assert "padding" not in spec
@@ -828,6 +837,7 @@ root:
         assert "padding: 8px" in html
         # Vega config.padding zeroed out
         m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert m is not None
         specs = json.loads(m.group(1))
         spec = specs["sheet-fixed"]
         assert spec.get("config", {}).get("padding") == 0
@@ -863,6 +873,7 @@ root:
         )
 
         m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert m is not None
         specs = json.loads(m.group(1))
         spec = specs["sheet-colored"]
         # Vega background zeroed to transparent — CSS wrapper background shows through
@@ -889,6 +900,7 @@ root:
         )
 
         m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert m is not None
         specs = json.loads(m.group(1))
         spec = specs["sheet-plain"]
         assert spec.get("config", {}).get("background") == "transparent"
@@ -923,13 +935,17 @@ root:
             },
         )
 
-        specs = json.loads(re.search(r"const specs = ({.*?});", html, re.DOTALL).group(1))
+        specs_match = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert specs_match is not None
+        specs = json.loads(specs_match.group(1))
         spec = specs["sheet-faceted"]
         # Python does NOT size the cell — the browser does.
         assert "width" not in spec
         assert "width" not in spec["spec"]
         # Routed with its solved content box (780x580 from 800x600 minus padding 10).
-        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        targets_match = re.search(r"const fitTargets = ({.*?});", html, re.DOTALL)
+        assert targets_match is not None
+        targets = json.loads(targets_match.group(1))
         assert targets["sheet-faceted"] == {"width": 780, "height": 580}
         # config.padding still zeroed out
         assert spec.get("config", {}).get("padding") == 0
@@ -962,11 +978,15 @@ root:
             },
         )
 
-        specs = json.loads(re.search(r"const specs = ({.*?});", html, re.DOTALL).group(1))
+        specs_match = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert specs_match is not None
+        specs = json.loads(specs_match.group(1))
         spec = specs["sheet-faceted"]
         assert "width" not in spec and "height" not in spec
         assert "width" not in spec["spec"] and "height" not in spec["spec"]
-        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        targets_match = re.search(r"const fitTargets = ({.*?});", html, re.DOTALL)
+        assert targets_match is not None
+        targets = json.loads(targets_match.group(1))
         assert targets["sheet-faceted"] == {"width": 780, "height": 580}
 
     def test_faceted_chart_routes_for_fit_height(self):
@@ -996,7 +1016,9 @@ root:
             },
         )
 
-        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        targets_match = re.search(r"const fitTargets = ({.*?});", html, re.DOTALL)
+        assert targets_match is not None
+        targets = json.loads(targets_match.group(1))
         assert targets["sheet-faceted"] == {"width": 780, "height": 580}
 
     def test_rowcol_facet_routed(self):
@@ -1025,8 +1047,12 @@ root:
             },
         )
 
-        specs = json.loads(re.search(r"const specs = ({.*?});", html, re.DOTALL).group(1))
-        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        specs_match = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert specs_match is not None
+        specs = json.loads(specs_match.group(1))
+        targets_match = re.search(r"const fitTargets = ({.*?});", html, re.DOTALL)
+        assert targets_match is not None
+        targets = json.loads(targets_match.group(1))
         assert targets["sheet-faceted"] == {"width": 780, "height": 580}
         assert "height" not in specs["sheet-faceted"]["spec"]
 
@@ -1364,6 +1390,7 @@ root:
         import json
 
         m2 = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert m2 is not None
         specs = json.loads(m2.group(1))
         spec = specs["sheet-padded_chart"]
         assert "padding" not in spec
@@ -1448,6 +1475,7 @@ root:
         assert m is not None
         # Vega config.padding zeroed out — CSS outer div handles spacing
         m2 = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert m2 is not None
         specs = json.loads(m2.group(1))
         spec = specs["sheet-fixed"]
         assert "padding" not in spec
@@ -1545,7 +1573,9 @@ root:
                 }
             },
         )
-        targets = json.loads(re.search(r"const fitTargets = ({.*?});", html, re.DOTALL).group(1))
+        targets_match = re.search(r"const fitTargets = ({.*?});", html, re.DOTALL)
+        assert targets_match is not None
+        targets = json.loads(targets_match.group(1))
         # content_dims is (780, 580) [800-2*10, 600-2*10]
         assert targets["sheet-faceted"] == {"width": 780, "height": 580}
 
@@ -1571,6 +1601,7 @@ root:
         assert "padding: 8px 16px" in html
         assert "box-sizing: border-box" in html
         m = re.search(r"const specs = ({.*?});", html, re.DOTALL)
+        assert m is not None
         specs = json.loads(m.group(1))
         spec = specs["sheet-asym"]
         assert "padding" not in spec

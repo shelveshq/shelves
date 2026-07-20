@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-20
+
+The **Shelves Studio — UX & Design-System Polish** release: Studio is brought in
+line with the Shelves Design System and its core interaction rough edges are
+fixed. No changes to the chart or dashboard DSL — `DSL_VERSION` stays `0.9.0`.
+
+### Studio
+
+- **Design-system adoption** — Studio chrome now renders from Shelves Design System tokens via a bridge layer (`shelves-tokens.css` + `tokens-bridge.css`), covering the topbar, status bar, preview header, file tree, and Monaco theme. Adds the real Shelves wordmark and a synced favicon, DS empty/error states, and inline Lucide icons in the sidebar. (SHE-33, SHE-34, SHE-35, SHE-36, SHE-46)
+- **Compile states without the flash** — a stale render now stays visible while recompiling; a 150ms-gated veil dims it with a "Compiling…" pill, so fast compiles are seamless and slow ones show progress. (SHE-37)
+- **Data view** — the chart preview's JSON view is replaced by a **Data** view showing the resolved rows behind the current chart, across all three backends (inline, file/DuckDB, Cube). Rendered rows are capped at 500 with a `showing N of M rows` footer; skipped resolution, zero rows, and compile errors each have their own state. (SHE-43)
+- **File management from the UI** — create, rename, duplicate, and delete files from the file tree, with starter templates chosen by the configured directory. Renaming the open file preserves the buffer, dirty or not. (SHE-42)
+- **Theme file in the explorer** — the `--theme` file appears as a top-level tree entry and theme writes now trigger a recompile of the open buffer. Themes outside the project are reachable by an exact-match alias. Known limitation: external edits to a theme outside the project are not watched. (SHE-44)
+- **File navigation history** — back/forward across visited files via topbar chevrons, `Cmd/Ctrl+[` / `Cmd/Ctrl+]`, and mouse buttons 3/4. Entries deleted since being opened are pruned and skipped. The chords deliberately shadow Monaco's outdent/indent; `Tab` / `Shift+Tab` still indent YAML. (SHE-40)
+- **Editor correctness and save safety** — the ChartSpec schema is now attached only to chart buffers, so dashboards and models no longer get phantom "Missing property" markers. `Cmd+S` clears the dirty flag only on a confirmed 2xx and surfaces a persistent "Save failed" message otherwise. Dirty buffers prompt before navigation or discard, and a file deleted on disk is never auto-closed. (SHE-48, SHE-65, SHE-51)
+- **Sidebar and panes** — the file tree and watcher are scoped to the configured charts/dashboards/models/assets directories instead of the whole project. Collapsing the sidebar leaves a 36px reopen rail (`Cmd/Ctrl+B`), and the editor/preview/terminal splitters use pointer capture so drags survive fast moves and the dashboard iframe. (SHE-39, SHE-41, SHE-38)
+- **Integrated terminal** — the terminal now opens reliably against a laid-out container rather than waiting on the socket, so connection failures surface as readable messages instead of a blank box. The shell is a session leader with the PTY as its controlling TTY, making `Ctrl+C` interrupt foreground jobs. Full DS ANSI-16 palette and restyled tab bar. (SHE-47)
+- **Compile and status plumbing** — preview, dashboard, and editor handlers ignore watcher broadcasts for files other than the open one; dashboard compile errors reach the status bar; the dashboard loading veil ends when the iframe actually renders; and WebSocket disconnects are visible, escalating to "server unreachable" after repeated failures. (SHE-49, SHE-50, SHE-67, SHE-66)
+- **CDN-independent rendering and boot** — vega, vega-lite, vega-embed, and the monaco-yaml worker are vendored same-origin under `static/vendor/`. Studio boot is parallel: the tree, preview, and WebSocket no longer wait on (or fail with) Monaco's load. This also fixes monaco-yaml diagnostics, which were silently dead due to a worker bundle pinned below its peer range. (SHE-77, SHE-64)
+- **Host validation and write allow-list** — loopback-only `TrustedHostMiddleware` on every endpoint and mount closes a DNS-rebinding path that binding to 127.0.0.1 never addressed. `PUT /file` enforces the same `.yaml/.yml/.json` allow-list as create/rename/delete. (SHE-52)
+
+### Internal
+
+- Foundational docs (`docs/foundational/`) are now local-only and gitignored, alongside `docs/plans/`. Added `REVIEW.md`.
+- `pyrightconfig.json` pointed at `include: ["src"]` — a directory that never existed — so a bare `pyright` run analysed **zero** files and reported success. It now covers `shelves` and `tests` (0 → 136 files), the 483 accumulated errors in the test tree are burned down to zero, and CI runs a bare `pyright` so both trees are gated. Fixed six schema fields that passed their default positionally (`Field(None, …)` → `Field(default=None, …)`), which pyright read as required. (SHE-87)
+
 ## [0.4.0] - 2026-06-28
 
 ### Charts

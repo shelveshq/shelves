@@ -46,7 +46,10 @@ jobs:
         run: pip install -e ".[dev,studio]"
 
       - name: Pyright
-        run: pyright shelves
+        # Bare run — picks up "include" from pyrightconfig.json, which covers
+        # both shelves/ and tests/. Passing an explicit path here would
+        # override that and silently stop gating the test tree (SHE-87).
+        run: pyright
 
   js-test:
     # Pure sizing math for the browser-side compound sizer (compound_fit.js).

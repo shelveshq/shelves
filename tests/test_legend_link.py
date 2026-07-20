@@ -21,7 +21,7 @@ from shelves.compose.legend_link import (
     resolve_legend_links,
     suppress_in_sheet_legend,
 )
-from shelves.schema.field_types import VegaLiteType
+from shelves.schema.field_types import FieldTypeResolver, VegaLiteType
 from shelves.schema.layout_schema import LegendComponent
 from shelves.translator.layout_styles import LegendLink
 from tests.conftest import DATA_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
@@ -138,7 +138,7 @@ class TestLegendLinkHelpers:
             }
         }
         sheets = {"sales_chart": "simple_bar.yaml"}
-        resolvers = {"sales_chart": FakeResolver()}
+        resolvers: dict[str, FieldTypeResolver] = {"sales_chart": FakeResolver()}
         legends = [LegendComponent(source="simple_bar.yaml", field="country")]
 
         links, warns = resolve_legend_links(legends, sheets, vls, resolvers)
@@ -168,7 +168,7 @@ class TestLegendLinkHelpers:
             }
         }
         sheets = {"sales_chart": "labeled.yaml"}
-        resolvers = {"sales_chart": FakeResolver()}
+        resolvers: dict[str, FieldTypeResolver] = {"sales_chart": FakeResolver()}
         legends = [LegendComponent(source="labeled.yaml", field="country")]
 
         links, _ = resolve_legend_links(legends, sheets, vls, resolvers)
@@ -184,7 +184,7 @@ class TestLegendLinkHelpers:
         color_enc = {"field": "country", "type": "nominal"}
         vls = {"s": {"mark": "bar", "encoding": {"color": color_enc}}}
         sheets = {"s": "chart.yaml"}
-        resolvers = {"s": FakeResolver()}
+        resolvers: dict[str, FieldTypeResolver] = {"s": FakeResolver()}
         legends = [LegendComponent(source="chart.yaml", field="country", title="")]
 
         links, _ = resolve_legend_links(legends, sheets, vls, resolvers)
@@ -194,7 +194,7 @@ class TestLegendLinkHelpers:
     def test_resolve_links_warns_unlinked(self):
         vls = {"s": {"mark": "bar", "encoding": {"color": {"field": "country"}}}}
         sheets = {"s": "chart.yaml"}
-        resolvers = {"s": FakeResolver()}
+        resolvers: dict[str, FieldTypeResolver] = {"s": FakeResolver()}
 
         links, warns = resolve_legend_links([], sheets, vls, resolvers)
 
@@ -209,7 +209,7 @@ class TestLegendLinkHelpers:
         color_enc = {"field": "country", "type": "nominal"}
         vls = {"s": {"mark": "bar", "encoding": {"color": color_enc}}}
         sheets = {"s": "chart.yaml"}
-        resolvers = {"s": FakeResolver()}
+        resolvers: dict[str, FieldTypeResolver] = {"s": FakeResolver()}
 
         # Source matches no sheet:
         with pytest.raises(ValueError, match="no sheet"):

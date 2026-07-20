@@ -78,7 +78,7 @@ class MarkObject(BaseModel):
     type: MarkType
     style: Literal["solid", "dashed", "dotted"] | None = None
     point: bool | None = None
-    opacity: float | None = Field(None, ge=0.0, le=1.0)
+    opacity: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 # marks can be a string shorthand ("bar") or an object ({ type, style, ... })
@@ -130,7 +130,7 @@ class ShelfFilter(BaseModel):
     operator: FilterOperator
     value: str | int | float | None = None
     values: list[str | int | float] | None = None
-    range: list[str | int | float] | None = Field(None, min_length=2, max_length=2)
+    range: list[str | int | float] | None = Field(default=None, min_length=2, max_length=2)
 
     @model_validator(mode="after")
     def _validate_operator_and_values(self) -> ShelfFilter:
@@ -294,7 +294,7 @@ class KPIBlock(BaseModel):
     value: str
     format: str = Field(min_length=1)
     title: str | None = None
-    spacing: int | None = Field(None, ge=0)
+    spacing: int | None = Field(default=None, ge=0)
     comparison: KPIComparison | None = None
 
     @model_validator(mode="after")
@@ -324,7 +324,7 @@ class LayerEntry(BaseModel):
     color: ColorSpec | None = None
     detail: str | None = None
     size: str | int | float | None = None
-    opacity: float | None = Field(None, ge=0.0, le=1.0)
+    opacity: float | None = Field(default=None, ge=0.0, le=1.0)
     label: LabelSpec | None = None
 
 
@@ -345,7 +345,7 @@ class MeasureEntry(BaseModel):
     color: ColorSpec | None = None
     detail: str | None = None
     size: str | int | float | None = None
-    opacity: float | None = Field(None, ge=0.0, le=1.0)
+    opacity: float | None = Field(default=None, ge=0.0, le=1.0)
 
     # Phase 1a: layers overlaid on this measure
     layer: list[LayerEntry] | None = None

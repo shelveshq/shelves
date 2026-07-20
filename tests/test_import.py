@@ -69,11 +69,16 @@ class TestInferSchema:
         csv_file = tmp_path / "ints.csv"
         csv_file.write_text("id,name,count\n1,Widget,100\n2,Gadget,200\n")
         schema = infer_schema(csv_file)
-        assert schema["id"]["type"] == "measure"
-        assert schema["id"]["aggregation"] == "sum"
+        id_field = schema["id"]
+        assert id_field["type"] == "measure"
+        # aggregation is a NotRequired key — assert presence, then read it
+        assert "aggregation" in id_field
+        assert id_field["aggregation"] == "sum"
         assert schema["name"]["type"] == "nominal"
-        assert schema["count"]["type"] == "measure"
-        assert schema["count"]["aggregation"] == "sum"
+        count_field = schema["count"]
+        assert count_field["type"] == "measure"
+        assert "aggregation" in count_field
+        assert count_field["aggregation"] == "sum"
 
 
 # ─── Model YAML Generation ──────────────────────────────────────────
@@ -222,6 +227,7 @@ class TestImportCLI:
         parsed = yaml.safe_load(model_path.read_text())
         model = DataModel.model_validate(parsed)
         assert model.model == "import_sales"
+        assert model.source is not None
         assert model.source.type == "file"
         assert "Created model:" in result.stdout
 
