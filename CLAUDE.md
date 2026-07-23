@@ -11,6 +11,26 @@ Shelves is a declarative visual analytics platform that translates a Tableau-ins
 - Always pull/rebase latest main before starting new work or making changes on existing branches
 - Check for CHANGELOG.md or other merge-in-progress files before committing
 
+## Private Companion Repo
+
+Confidential material — foundational/strategy docs, the design-system mirror,
+per-ticket plans, the design source bundle, and `PLAN.md` — lives in the private
+repo **`shelveshq/shelves-internal`**, NOT in this public repo. It is cloned to
+`./.private/` (gitignored) and symlinked back to its expected paths
+(`docs/foundational`, `docs/design-system`, `docs/plans`, `PLAN.md`,
+`assets/Shelves Design System.zip`).
+
+After cloning this repo, run the bootstrap once (needs read access to the
+private repo):
+
+```bash
+./scripts/bootstrap-private.sh   # clones/updates .private and (re)links symlinks
+```
+
+Edit those files as normal; commit and push them **in `.private/`** (its own git
+repo). Never `git add -f` a symlinked path here — the paths are gitignored on
+purpose so nothing confidential lands in the public repo.
+
 ## Environment
 
 **Always use the project venv.** System Python will not work (wrong version, missing deps).

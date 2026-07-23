@@ -7,7 +7,6 @@ dist/
 build/
 .claude/
 .pytest_cache/
-docs/plans/
 /model
 .coverage
 /models/
@@ -19,11 +18,12 @@ docs/plans/
 /data/
 .DS_Store
 
-# Design system source bundle (not shipped)
+# Private companion repo (shelveshq/shelves-internal), cloned + symlinked in.
+# See scripts/bootstrap-private.sh. Paths below are symlinks into .private/ —
+# no trailing slash, so git ignores the symlink itself (a file, not a dir).
+/.private/
+/PLAN.md
 assets/Shelves Design System.zip
-
-# Design system mirror (local working copy from Claude Design; not published)
-docs/design-system/
-
-# Local-only docs: strategy/design reference material, not published
-docs/foundational/
+docs/design-system
+docs/foundational
+docs/plans
