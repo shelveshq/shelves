@@ -7,16 +7,86 @@
 </p>
 
 <p align="center">
-  Declarative visual analytics for semantic models.<br>
-  Write charts and dashboards in YAML, render to Vega-Lite.
+  <strong>The git-native chart grammar that lets your AI agent build governed dashboards on your semantic layer.</strong>
 </p>
 
-Shelves charts read from a **semantic model** — measures, dimensions, formats, and aggregations defined once and reused everywhere, so you never copy-paste field logic across dashboards. You can back that model two ways:
+<p align="center">
+  <a href="https://pypi.org/project/shelves-bi/"><img src="https://img.shields.io/pypi/v/shelves-bi?style=flat-square&color=B8531C&label=pypi" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/shelves-bi/"><img src="https://img.shields.io/pypi/pyversions/shelves-bi?style=flat-square&color=0B0B0A" alt="Supported Python versions"></a>
+  <a href="https://github.com/shelveshq/shelves/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/shelveshq/shelves/ci.yml?branch=main&style=flat-square&label=ci" alt="CI status"></a>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square" alt="Linted with Ruff"></a>
+  <a href="https://github.com/microsoft/pyright"><img src="https://img.shields.io/badge/types-pyright-0B0B0A?style=flat-square" alt="Checked with pyright"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-0B0B0A?style=flat-square" alt="License: Apache 2.0"></a>
+</p>
 
-- **Start with a flat file.** Point a model at a local CSV, Parquet, or JSON file and Shelves queries it directly with [DuckDB](https://duckdb.org). `shelves-import` can even generate the model for you. Zero infrastructure — go from a raw file to a chart in seconds.
-- **Grow into a semantic layer.** Point the same model at a [Cube.dev](https://cube.dev) instance when you want shared governed definitions across a team. Only the model's `source` block changes; your charts stay untouched.
+Shelves compiles a Tableau-style shelf grammar — rows, columns, marks, color — from typed YAML into Vega-Lite charts and HTML dashboards. Fields come from your semantic model, styling comes from your theme tokens, and the compile itself is plain deterministic code. Every chart, dashboard, and theme is a text file: diffed, reviewed, and reverted like the rest of your stack.
 
-The two paths use the identical model and chart schema, so a project can graduate from file to Cube without rewriting a single chart.
+What dbt did for SQL transformations, Shelves does for charts and dashboards.
+
+## Why
+
+Analytics is stuck between two bad options.
+
+**Traditional BI locks every chart inside a GUI.** Dashboards are opaque workbook state — unversionable, unreviewable, untestable. Theming is folklore. Every request goes through an analyst queue. The industry's answer was to bolt a chat box on top, but the chat's answers evaporate when the conversation ends. Nothing is left behind to review, reuse, or maintain.
+
+**Pointing a coding agent at your warehouse is worse at scale.** It works — once. By the hundredth dashboard there are a hundred definitions of revenue, a hundred color palettes, and zero review trail.
+
+Shelves puts a constrained intermediate representation between the prompt and the pixels:
+
+```
+prompt → YAML shelf grammar → (deterministic compiler) → chart
+```
+
+The grammar is small, typed, and validated, which makes it a far more reliable target for an LLM than raw Vega-Lite or React. Fields come only from the semantic layer's menu, so an agent can't hallucinate SQL or miscompute gross margin. Styling comes only from the theme layer, so it can't go off-brand.
+
+## How it works
+
+**1. Declare the model once.** Measures, dimensions, formats, and aggregations live in one place and get reused everywhere — so field logic is never copy-pasted between dashboards, and an agent has a closed menu of things it is allowed to reference.
+
+```yaml
+# models/orders.yaml
+model: orders
+label: Orders
+
+source:
+  type: file
+  path: orders.csv
+
+measures:
+  revenue:
+    column: Revenue
+    aggregation: sum
+    label: Revenue
+    format: "$,.0f"
+
+dimensions:
+  region:
+    column: Region
+    label: Region
+  order_date:
+    column: Order Date
+    type: temporal
+    label: Order Date
+    defaultGrain: month
+```
+
+**2. Write charts in shelves.** `cols` and `rows` are the x- and y-axis shelves; `marks` is how the data is drawn; `color`, `detail`, `size`, and `tooltip` are the remaining encoding channels. If you have used Tableau, you already know this grammar.
+
+```yaml
+# charts/revenue_by_region.yaml
+sheet: "Revenue by Region"
+data: orders
+
+cols: region
+rows: revenue
+marks: bar
+color: region
+sort:
+  field: revenue
+  order: descending
+```
+
+**3. Compile.** `shelves-render` turns that into a standalone HTML file. The pipeline is deterministic — same spec, same pixels, every time — which is what makes snapshot testing your dashboards in CI possible.
 
 ## Install
 
@@ -32,41 +102,12 @@ pip install 'shelves-bi[duckdb]'
 
 Requires Python 3.11+.
 
-## Quick start (flat file)
+## Quick start
 
 Generate a model from a CSV — string columns become dimensions, numeric columns become measures, dates become temporal dimensions:
 
 ```bash
 shelves-import sales.csv          # writes models/sales.yaml
-```
-
-The generated model points at your file:
-
-```yaml
-# models/sales.yaml
-model: sales
-label: Sales
-
-source:
-  type: file
-  path: sales.csv
-
-measures:
-  revenue:
-    column: Revenue
-    aggregation: sum
-    label: Revenue
-    format: "$,.0f"
-
-dimensions:
-  category:
-    column: Category
-    label: Category
-  order_date:
-    column: Order Date
-    type: temporal
-    label: Order Date
-    defaultGrain: month
 ```
 
 Write a chart that references the model by name, then render:
@@ -91,16 +132,14 @@ shelves-render charts/revenue_by_category.yaml --models-dir models/
 
 Output goes to `output/<sheet-name-slug>.html` by default. Use `--out` to override.
 
-## Connect to Cube
+## Two backends, one grammar
 
-When you're ready for a governed semantic layer, point the model's `source` at a Cube.dev instance instead. Set your credentials in a `.env` file or as environment variables:
+Shelves reads field types, formats, and sources from a semantic model that you can back two ways:
 
-```bash
-CUBE_API_URL=http://localhost:4000
-CUBE_API_TOKEN=your-cube-api-token
-```
+- **Start with a flat file.** Point a model at a local CSV, Parquet, or JSON file and Shelves queries it directly with [DuckDB](https://duckdb.org). Zero infrastructure — raw file to chart in seconds.
+- **Grow into a semantic layer.** Point the same model at a [Cube.dev](https://cube.dev) instance when you want shared governed definitions across a team.
 
-Only the `source` block changes — measures, dimensions, labels, and formats are declared the same way as the file model above:
+Only the model's `source` block changes:
 
 ```yaml
 # models/orders.yaml
@@ -118,8 +157,8 @@ measures:
     aggregation: sum
 
 dimensions:
-  category:
-    label: Category
+  region:
+    label: Region
   order_date:
     type: temporal
     label: Order Date
@@ -128,23 +167,42 @@ dimensions:
       month: "%b %Y"
 ```
 
-Your existing charts keep working unchanged.
+Set `CUBE_API_URL` and `CUBE_API_TOKEN` in a `.env` file or as environment variables. Your existing charts keep working unchanged — a project can graduate from file to Cube without rewriting a single chart.
 
-## Project structure
+## The agent workflow
 
-A typical Shelves project looks like this:
+The reason the grammar is a file format and not a GUI:
 
+1. An analyst assigns a ticket to a coding agent — *"add weekly revenue by region to the sales dashboard."*
+2. The agent reads `models/orders.yaml`. It can only reference fields declared there.
+3. It writes nine lines of YAML. Validation passes, with typed, correctable errors if it doesn't.
+4. The preview renders on-brand, because theming is tokens rather than choices.
+5. A reviewable PR lands:
+
+```diff
++ # charts/weekly_revenue_by_region.yaml
++ sheet: "Weekly Revenue by Region"
++ data: orders
++
++ cols: order_date.week
++ rows: revenue
++ marks: line
++ color: region
++ tooltip: [order_date.week, region, revenue]
 ```
-my-project/
-  models/
-    sales.yaml           # semantic model definitions (file or cube source)
-  charts/
-    revenue_by_category.yaml
-    sales_over_time.yaml
-  dashboards/
-    overview.yaml
-  .env                   # CUBE_API_URL / CUBE_API_TOKEN (only for the Cube path)
+
+```diff
+  # dashboards/sales.yaml
+  root:
+    orientation: vertical
+    contains:
+      - sheet: "revenue_by_region.yaml"
++     - sheet: "weekly_revenue_by_region.yaml"
 ```
+
+Your teammates review the diff before they see the chart. That's the point.
+
+Shelves is agent-agnostic — it is a target for whichever coding agent you already pay for, not a bundled chat.
 
 ## Dashboards
 
@@ -162,11 +220,13 @@ root:
       preset: title
     - horizontal:
         contains:
-          - sheet: "charts/revenue_by_category.yaml"
+          - sheet: "revenue_by_category.yaml"
             width: "60%"
-          - sheet: "charts/sales_over_time.yaml"
+          - sheet: "sales_over_time.yaml"
             width: "40%"
 ```
+
+Sheet paths resolve relative to `--chart-dir` when it is given, and relative to the dashboard file otherwise.
 
 ```bash
 # Dashboard (charts and models resolved from directories)
@@ -174,7 +234,45 @@ shelves-render dashboards/overview.yaml --chart-dir charts/ --models-dir models/
 
 # Dev server with live reload
 shelves-dev charts/revenue_by_category.yaml --models-dir models/
+
+# Shelves Studio — local editor with live preview, file tree, and an
+# integrated terminal for running your agent against the specs
+shelves-studio
 ```
+
+## Project structure
+
+```
+my-project/
+  models/
+    sales.yaml           # semantic model definitions (file or cube source)
+  charts/
+    revenue_by_category.yaml
+    sales_over_time.yaml
+  dashboards/
+    overview.yaml
+  themes/
+    theme.yaml           # design tokens -> Vega-Lite config
+  .env                   # CUBE_API_URL / CUBE_API_TOKEN (only for the Cube path)
+```
+
+## What works today
+
+- **Charts** — bars, lines, areas, scatter, heatmaps, pies, KPIs; multi-measure stacked panels; dual-axis layers; faceting; filters; sort; data labels. All snapshot-tested.
+- **Dashboards** — a nested-container layout DSL compiled to HTML through a constraint solver.
+- **Semantic models** — flat files via DuckDB and Cube.dev, plus `shelves-import` to bootstrap a model from a CSV.
+- **Theming** — design tokens compiled into Vega-Lite config; dark mode and multi-brand are token-set swaps.
+- **Shelves Studio** — a local editor with Monaco, live preview, a file tree, and an integrated terminal.
+
+## What doesn't, yet
+
+Worth knowing before you adopt it:
+
+- **No interactivity.** Cross-filtering, drill-down, and parameter controls are not built. A Shelves dashboard is currently a static report.
+- **No tables or pivots.** The most-used visualization in real BI is missing.
+- **No composability.** Templates, includes, and variables don't exist in the grammar yet, so large projects will repeat themselves.
+
+Next up: an MCP server exposing the pipeline (list metrics, validate, compile, render) so any agent can drive it, and a public eval suite benchmarking prompt→DSL against prompt→raw-Vega-Lite across frontier models.
 
 ## Python API
 
