@@ -63,11 +63,11 @@ root:
     - horizontal:
         gap: 16
         contains:
-          - sheet: charts/revenue_by_country.yaml
+          - sheet: revenue_by_country.yaml
             width: "60%"
             style: card
             padding: 12
-          - sheet: charts/weekly_trend.yaml
+          - sheet: weekly_trend.yaml
             style: card
             padding: 12
 ```
@@ -76,13 +76,37 @@ root:
 
 ```bash
 # Render to HTML
-shelves-render dashboards/sales_overview.yaml
+shelves-render dashboards/sales_overview.yaml --chart-dir charts/
 
 # With a custom theme
-shelves-render dashboards/sales_overview.yaml --theme my_theme.yaml
+shelves-render dashboards/sales_overview.yaml --chart-dir charts/ --theme my_theme.yaml
 ```
 
 The output is a self-contained HTML file with all charts embedded.
+
+### Chart paths
+
+A `sheet:` value is resolved against a **base directory**:
+
+- `--chart-dir` when you pass it, or
+- **the directory containing the dashboard file** when you don't.
+
+The path is then joined onto that base, with no implicit `charts/` prefix ever
+added. So with charts in `charts/` and the dashboard in `dashboards/`, as above,
+you pass `--chart-dir charts/` and write the bare filename:
+
+```yaml
+- sheet: revenue_by_country.yaml     # ✅ resolves to charts/revenue_by_country.yaml
+- sheet: charts/revenue_by_country.yaml   # ❌ resolves to charts/charts/revenue_by_country.yaml
+```
+
+Without `--chart-dir`, the same bare filename resolves to
+`dashboards/revenue_by_country.yaml` — which is correct only if the chart sits
+next to the dashboard file. The examples throughout this guide use bare
+filenames and assume `--chart-dir` is set.
+
+The same rule applies to a `legend:` link, which takes the same path as the
+`sheet:` it matches.
 
 ---
 
@@ -240,13 +264,13 @@ Setting a cross-axis size emits a warning and has no effect. To center or inset 
 root:
   orientation: vertical
   contains:
-    - sheet: charts/kpi.yaml
+    - sheet: kpi.yaml
       height: 120        # main-axis size — a 120px-tall band
       # `width` here would be ignored; the card fills the column width
     - horizontal:
         height: 300      # main-axis size of this row within the column
         contains:
-          - sheet: charts/a.yaml
+          - sheet: a.yaml
             width: 400   # main-axis size — 400px wide within the row
             # `height` here would be ignored; the chart fills the row height
 ```
@@ -443,8 +467,9 @@ An image `src` (the value after `image:`) can be one of three things:
 **1. A path relative to the assets directory.** Put image files anywhere under
 your assets directory — **including subfolders** — and reference them by the path
 *inside* that directory. Don't include the `assets/` folder name itself; just
-like a `sheet:` is named relative to the charts directory, an `image:` is named
-relative to the assets directory:
+like a `sheet:` is named relative to its base directory (see
+[Chart paths](#chart-paths)), an `image:` is named relative to the assets
+directory:
 
 | File on disk (under the assets dir) | `src` to write |
 |---|---|
@@ -489,7 +514,8 @@ same path you would give a `sheet:`) and names the **field** whose scale it show
 ```
 
 The `legend:` value is the **same path you give the matching `sheet:`** — resolved
-relative to the dashboard file, with no implicit `charts/` prefix.
+against the same base directory, with no implicit `charts/` prefix. See
+[Chart paths](#chart-paths).
 
 | Property | Required | Default | Description |
 |---|---|---|---|
@@ -818,16 +844,16 @@ styles:
 
 components:
   kpi_revenue:
-    sheet: charts/kpi_revenue.yaml
+    sheet: kpi_revenue.yaml
     style: card
   kpi_orders:
-    sheet: charts/kpi_orders.yaml
+    sheet: kpi_orders.yaml
     style: card
   kpi_arpu:
-    sheet: charts/kpi_arpu.yaml
+    sheet: kpi_arpu.yaml
     style: card
   kpi_customers:
-    sheet: charts/kpi_customers.yaml
+    sheet: kpi_customers.yaml
     style: card
 
 root:
@@ -869,11 +895,11 @@ root:
     - horizontal:
         gap: 16
         contains:
-          - sheet: charts/revenue_by_country.yaml
+          - sheet: revenue_by_country.yaml
             width: "60%"
             style: card
             padding: 12
-          - sheet: charts/orders_trend.yaml
+          - sheet: orders_trend.yaml
             style: card
             padding: 12
 ```
@@ -933,15 +959,15 @@ root:
           - horizontal:
               gap: 16
               contains:
-                - sheet: charts/revenue_trend.yaml
+                - sheet: revenue_trend.yaml
                   width: "65%"
                   style: card
                   padding: 12
-                - sheet: charts/revenue_by_region.yaml
+                - sheet: revenue_by_region.yaml
                   style: card
                   padding: 12
 
-          - sheet: charts/order_details.yaml
+          - sheet: order_details.yaml
             style: card
             padding: 12
 ```
@@ -966,11 +992,11 @@ components:
     preset: title
 
   kpi_revenue:
-    sheet: charts/kpi_revenue.yaml
+    sheet: kpi_revenue.yaml
     style: card
 
   kpi_orders:
-    sheet: charts/kpi_orders.yaml
+    sheet: kpi_orders.yaml
     style: card
 
   kpi_row:
@@ -978,9 +1004,9 @@ components:
       height: 140
       gap: 16
       contains:
-        - sheet: charts/kpi_revenue.yaml
+        - sheet: kpi_revenue.yaml
           style: card
-        - sheet: charts/kpi_orders.yaml
+        - sheet: kpi_orders.yaml
           style: card
 
 root:
@@ -993,11 +1019,11 @@ root:
     - horizontal:
         gap: 16
         contains:
-          - sheet: charts/revenue.yaml
+          - sheet: revenue.yaml
             width: "60%"
             style: card
             padding: 12
-          - sheet: charts/orders.yaml
+          - sheet: orders.yaml
             style: card
             padding: 12
 ```
