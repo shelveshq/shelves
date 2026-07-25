@@ -1,0 +1,29 @@
+model: parity_file
+label: Parity Orders (file)
+description: Shared parity dataset, flat-file source via DuckDB
+
+source:
+  type: file
+  path: data/parity_orders.csv
+
+dimensions:
+  region:
+    column: region
+    label: Region
+  fiscal_year:
+    column: fiscal_year
+    label: Fiscal Year
+  order_date:
+    column: order_date
+    type: temporal
+    label: Order Date
+    defaultGrain: month
+    format:
+      month: "%b %Y"
+
+measures:
+  revenue:
+    column: revenue
+    label: Revenue
+    aggregation: sum
+    format: "$,.0f"

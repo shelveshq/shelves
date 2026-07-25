@@ -64,6 +64,18 @@ class RangeBounds(BaseModel):
         return self
 
 
+def _fmt(value: Any) -> str:
+    """Render a value for an error message — ISO for dates, repr otherwise.
+
+    Without this a date reads `datetime.date(2030, 1, 1)` beside bounds that
+    read `2024-01-01`. `shelves.data.domains.check_value_in_domain` uses the
+    same helper so domain and range errors read alike.
+    """
+    if isinstance(value, dt.date):
+        return value.isoformat()
+    return repr(value)
+
+
 def _comparable(lo: Any, hi: Any) -> bool:
     """True when two bounds can be ordered without a type error."""
     numeric = (int, float)
@@ -206,13 +218,13 @@ class _ParameterBase(BaseModel):
             )
             if not in_bounds:
                 raise ValueError(
-                    f"default {self.default!r} is outside the range "
-                    f"min: {first.min}, max: {first.max}"
+                    f"default {_fmt(self.default)} is outside the range "
+                    f"min: {_fmt(first.min)}, max: {_fmt(first.max)}"
                 )
             return self
 
         if self.default not in self.values:
-            raise ValueError(f"default {self.default!r} is not in values {self.values!r}")
+            raise ValueError(f"default {_fmt(self.default)} is not in values {self.values!r}")
         return self
 
 
@@ -274,7 +286,7 @@ class FieldParameter(_ParameterBase):
             return self
 
         if self.default not in names:
-            raise ValueError(f"default {self.default!r} is not in values {names!r}")
+            raise ValueError(f"default {_fmt(self.default)} is not in values {names!r}")
         return self
 
 
@@ -305,7 +317,7 @@ def validate_value(param: _ParameterBase, value: Any) -> None:
     if isinstance(first, FieldRef):
         names = [v.field for v in param.values if isinstance(v, FieldRef)]
         if isinstance(param, FieldParameter) and None not in names and value not in names:
-            raise ValueError(f"{value!r} is not in values {names!r}")
+            raise ValueError(f"{_fmt(value)} is not in values {names!r}")
         return
 
     if isinstance(first, RangeBounds):
@@ -314,11 +326,13 @@ def validate_value(param: _ParameterBase, value: Any) -> None:
             or first.min <= value <= first.max  # type: ignore[operator]
         )
         if not in_bounds:
-            raise ValueError(f"{value!r} is outside the range min: {first.min}, max: {first.max}")
+            raise ValueError(
+                f"{_fmt(value)} is outside the range min: {_fmt(first.min)}, max: {_fmt(first.max)}"
+            )
         return
 
     if value not in param.values:
-        raise ValueError(f"{value!r} is not in values {param.values!r}")
+        raise ValueError(f"{_fmt(value)} is not in values {param.values!r}")
 
 
 ParametersBlock = dict[str, ParameterDef]

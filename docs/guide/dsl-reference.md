@@ -466,6 +466,62 @@ different things. A `field` parameter always needs field references; there is
 no way to name a field without naming its model. Field names may carry a
 temporal grain suffix (`field: order_date.month`).
 
+### Domains from a field
+
+When a `string`, `number`, or `date` parameter's `values` is a single field
+reference, Shelves resolves the real domain from your data **when the chart
+compiles** — not in the browser. The resolved domain is baked into the output,
+so it works from a `file://` page and is unaffected by value truncation.
+
+```yaml
+parameters:
+  region:
+    type: string
+    values:
+      - model: orders
+        field: region     # → the distinct regions in the data
+    default: EMEA
+
+  as_of:
+    type: date
+    values:
+      - model: orders
+        field: order_date.month   # → the min and max month in the data
+    default: 2024-01-01
+```
+
+| `type` | What is resolved |
+|---|---|
+| `string` | the distinct values, sorted |
+| `number` | the minimum and maximum |
+| `date` | the earliest and latest date |
+
+This works identically against all three data backends — inline JSON, a file
+source via DuckDB, and Cube.dev.
+
+**A domain field must be a dimension.** Pointing at a measure is an error: a
+measure's range depends on how a chart aggregates it, and the backends do not
+agree on what that means. Use an explicit `min`/`max` range for a measure-shaped
+parameter.
+
+**Grain suffixes work.** `field: order_date.month` resolves distinct *months*,
+not distinct days.
+
+**`default` must be inside the resolved domain.** A default that is not one of
+the distinct values, or falls outside the min/max, is a compile error naming the
+parameter and showing the valid values. `default: null` is exempt — null means
+*unset*.
+
+**More than 500 distinct values is an error.** A picker with that many options
+is not usable, and the query is not cheap. List the values you want explicitly:
+
+```yaml
+values:
+  - EMEA
+  - APAC
+  - NA
+```
+
 ### Where parameters can be referenced
 
 | Position | Form | Accepts |
@@ -1321,6 +1377,9 @@ The `comparison` block is optional. When present, a comparison line is rendered 
 - **Parameters in `sort.top`** — top-N is not yet part of the DSL.
 - **Cascading parameters** — one parameter's `values` cannot depend on another parameter's current value.
 - **Relative dates** — `date` parameters take absolute bounds; "last 30 days" style presets are not yet supported.
+- **Measure-sourced parameter domains** — a `values:` field reference must point at a dimension. Use an explicit `min`/`max` range for a measure.
+- **Domain caching** — a field-reference domain is queried fresh on every compile. There is no cache and no invalidation.
+- **Searchable high-cardinality domains** — fields with more than 500 distinct values must be listed explicitly; there is no server-backed search-as-you-type picker.
 
 See the DSL version history below for what shipped in each version.
 

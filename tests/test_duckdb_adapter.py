@@ -11,7 +11,10 @@ import pytest
 from shelves.data.duckdb_adapter import (
     DuckDBAdapter,
     DuckDBQueryError,
+    build_domain_bounds_sql,
+    build_domain_values_sql,
     build_sql,
+    domain_expression,
     resolve_measure_expressions,
 )
 from shelves.models.loader import clear_model_cache, load_model
@@ -509,3 +512,116 @@ def test_file_adapter_registered():
 
     adapter = get_adapter("file")
     assert isinstance(adapter, DuckDBAdapter)
+
+
+# ─── Domain SQL (SHE-90) ─────────────────────────────────────────────
+
+
+@pytest.fixture
+def parity_file_model():
+    return load_model("parity_file", models_dir=MODELS_DIR)
+
+
+@pytest.fixture
+def parity_file_resolver(parity_file_model):
+    return ModelResolver(parity_file_model)
+
+
+@pytest.fixture
+def file_orders_model():
+    return load_model("file_orders", models_dir=MODELS_DIR)
+
+
+@pytest.fixture
+def file_orders_resolver(file_orders_model):
+    return ModelResolver(file_orders_model)
+
+
+class TestDomainSQL:
+    def test_values_sql(self, parity_file_model, parity_file_resolver):
+        sql = build_domain_values_sql(
+            "/abs/parity_orders.csv",
+            parity_file_model,
+            "region",
+            parity_file_resolver,
+            limit=501,
+        )
+        assert sql == (
+            'SELECT DISTINCT "region" AS "value"\n'
+            "FROM read_csv_auto('/abs/parity_orders.csv')\n"
+            'WHERE "region" IS NOT NULL\n'
+            "LIMIT 501"
+        )
+
+    def test_values_sql_applies_grain(self, parity_file_model, parity_file_resolver):
+        sql = build_domain_values_sql(
+            "/abs/parity_orders.csv",
+            parity_file_model,
+            "order_date.month",
+            parity_file_resolver,
+            limit=501,
+        )
+        assert "DATE_TRUNC('month', \"order_date\")" in sql
+
+    def test_bounds_sql(self, parity_file_model, parity_file_resolver):
+        sql = build_domain_bounds_sql(
+            "/abs/parity_orders.csv",
+            parity_file_model,
+            "order_date.month",
+            parity_file_resolver,
+        )
+        assert sql == (
+            'SELECT MIN(DATE_TRUNC(\'month\', "order_date")) AS "min", '
+            'MAX(DATE_TRUNC(\'month\', "order_date")) AS "max"\n'
+            "FROM read_csv_auto('/abs/parity_orders.csv')"
+        )
+
+    def test_calculation_dimension_uses_calculation(self, file_orders_model, file_orders_resolver):
+        sql = build_domain_values_sql(
+            "/abs/orders.csv",
+            file_orders_model,
+            "fiscal_year",
+            file_orders_resolver,
+            limit=501,
+        )
+        assert "EXTRACT(YEAR FROM order_date)" in sql
+        assert '"fiscal_year"' not in sql
+
+    def test_domain_expression_rejects_a_measure(self, parity_file_model, parity_file_resolver):
+        with pytest.raises(DuckDBQueryError, match="not a dimension"):
+            domain_expression(parity_file_model, "revenue", parity_file_resolver)
+
+
+class TestDomainFetch:
+    @pytest.fixture
+    def adapter(self):
+        return DuckDBAdapter(base_dir=FIXTURES_DIR)
+
+    def test_fetch_domain_values_returns_raw(
+        self, adapter, parity_file_model, parity_file_resolver
+    ):
+        values = adapter.fetch_domain_values(
+            parity_file_model, "region", parity_file_resolver, limit=501
+        )
+        # Raw: no sorting or coercion promised by the adapter, only DISTINCT.
+        assert sorted(values) == ["APAC", "EMEA", "NA"]
+
+    def test_fetch_domain_values_honors_limit(
+        self, adapter, parity_file_model, parity_file_resolver
+    ):
+        values = adapter.fetch_domain_values(
+            parity_file_model, "region", parity_file_resolver, limit=2
+        )
+        assert len(values) == 2
+
+    def test_fetch_domain_bounds(self, adapter, parity_file_model, parity_file_resolver):
+        lo, hi = adapter.fetch_domain_bounds(
+            parity_file_model, "order_date.month", parity_file_resolver
+        )
+        assert str(lo).startswith("2024-01-01")
+        assert str(hi).startswith("2024-03-01")
+
+    def test_fetch_domain_bounds_numeric(self, adapter, parity_file_model, parity_file_resolver):
+        assert adapter.fetch_domain_bounds(
+            parity_file_model, "fiscal_year", parity_file_resolver
+        ) == (2023, 2024)

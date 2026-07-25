@@ -11,3 +11,12 @@ class NoDataSourceError(ShelvesError, ValueError):
     Also a ValueError for backward compatibility with callers that predate the
     ShelvesError hierarchy.
     """
+
+
+class ParameterDomainError(ShelvesError, ValueError):
+    """Raised when a parameter's field-reference `values:` cannot be resolved
+    to a domain, or when a value falls outside a resolved domain.
+
+    Also a ValueError, matching NoDataSourceError, so surfaces that already
+    catch ValueError around parameter loading keep working.
+    """

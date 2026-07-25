@@ -17,11 +17,14 @@ from __future__ import annotations
 import copy
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from shelves.params.positions import classify
 from shelves.params.refs import INTERP_RE, interp_refs, unescape_dollars, whole_ref
 from shelves.params.schema import ParametersBlock, validate_value
+
+if TYPE_CHECKING:
+    from shelves.data.domains import Domain
 
 DiagnosticCode = Literal["undeclared_ref", "forbidden_position", "type_mismatch"]
 
@@ -70,8 +73,20 @@ class ParameterSet:
         self,
         declared: ParametersBlock,
         overrides: dict[str, Any] | None = None,
+        domains: dict[str, Domain] | None = None,
     ) -> None:
+        """
+        `domains` comes from `shelves.data.domains.resolve_parameter_domains`.
+        None means "not resolved" — every call site that predates SHE-90 keeps
+        working, and an override against a field-reference domain goes
+        unchecked exactly as it did before.
+        """
+        # Imported here, not at module level: shelves/data/ imports from
+        # shelves/params/, so a top-level import would close the cycle.
+        from shelves.data.domains import check_value_in_domain
+
         self.declared = declared
+        self.domains = domains or {}
         values: dict[str, Any] = {name: p.default for name, p in declared.items()}
 
         for key, value in (overrides or {}).items():
@@ -84,6 +99,9 @@ class ParameterSet:
                 validate_value(declared[key], value)
             except ValueError as e:
                 raise ValueError(f"parameters.{key}: {e}") from e
+            # check_value_in_domain already prefixes "parameters.<key>: ".
+            if key in self.domains:
+                check_value_in_domain(key, value, self.domains[key])
             values[key] = value
 
         self.values = values

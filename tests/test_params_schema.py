@@ -26,6 +26,7 @@ from shelves.params.schema import (
     ParametersFile,
     RangeBounds,
     StringParameter,
+    validate_value,
 )
 from tests.conftest import MODELS_DIR, params_fixture
 
@@ -88,7 +89,9 @@ class TestFileFormat:
     def test_date_range_bounds_parse(self):
         """YAML turns unquoted ISO dates into datetime.date — bounds accept it."""
         params = load_parameters(params_fixture())
-        bounds = params["as_of"].values[0]
+        values = params["as_of"].values
+        assert values is not None
+        bounds = values[0]
         assert isinstance(bounds, RangeBounds)
         assert bounds.min == dt.date(2024, 1, 1)
         assert bounds.max == dt.date(2026, 12, 31)
@@ -373,3 +376,43 @@ class TestFieldNameValidation:
     def test_valid_fields_pass_validation(self):
         params = load_parameters(params_fixture(), models_dir=MODELS_DIR, validate_fields=True)
         assert "metric" in params
+
+
+# ─── Error-message formatting (SHE-90) ────────────────────────────
+
+
+class TestValueFormatting:
+    """A date renders as ISO, not `datetime.date(...)`, beside ISO bounds."""
+
+    def _as_of(self) -> DateParameter:
+        param = load_parameters(params_fixture())["as_of"]
+        assert isinstance(param, DateParameter)
+        return param
+
+    def test_date_override_error_reads_iso(self):
+        with pytest.raises(ValueError) as exc:
+            validate_value(self._as_of(), dt.date(2030, 1, 1))
+        assert str(exc.value) == (
+            "2030-01-01 is outside the range min: 2024-01-01, max: 2026-12-31"
+        )
+
+    def test_string_override_error_keeps_repr(self):
+        param = load_parameters(params_fixture())["status"]
+        with pytest.raises(ValueError, match="'archived' is not in values"):
+            validate_value(param, "archived")
+
+    def test_date_default_error_reads_iso(self):
+        with pytest.raises(ValidationError, match=r"default 2030-01-01 is outside the range"):
+            ParametersFile.model_validate(
+                {
+                    "parameters": {
+                        "p": {
+                            "type": "date",
+                            # dt.date bounds, as unquoted YAML dates produce —
+                            # _comparable only orders date-against-date.
+                            "values": [{"min": dt.date(2024, 1, 1), "max": dt.date(2026, 12, 31)}],
+                            "default": dt.date(2030, 1, 1),
+                        }
+                    }
+                }
+            )

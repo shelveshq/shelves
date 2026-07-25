@@ -13,6 +13,7 @@ import re
 import pytest
 import yaml
 
+from shelves.data.domains import Domain
 from shelves.params.loader import load_parameters
 from shelves.params.positions import classify
 from shelves.params.refs import interp_refs, unescape_dollars, whole_ref
@@ -511,3 +512,50 @@ cols: country
 rows: revenue
 marks: bar
 """)
+
+
+# ─── Domain-checked overrides (SHE-90) ────────────────────────────
+
+
+class TestParameterSetDomains:
+    REGION_DOMAIN = Domain(
+        kind="values",
+        param_type="string",
+        source="orders.region",
+        values=["APAC", "EMEA"],
+    )
+
+    def _declared(self):
+        return load_parameters(params_fixture())
+
+    def test_domains_default_to_empty(self):
+        assert ParameterSet(self._declared()).domains == {}
+
+    def test_override_within_domain_accepted(self):
+        ps = ParameterSet(
+            self._declared(),
+            overrides={"region": "EMEA"},
+            domains={"region": self.REGION_DOMAIN},
+        )
+        assert ps.values["region"] == "EMEA"
+
+    def test_override_outside_domain_rejected(self):
+        with pytest.raises(ValueError, match=r"parameters\.region: "):
+            ParameterSet(
+                self._declared(),
+                overrides={"region": "LATAM"},
+                domains={"region": self.REGION_DOMAIN},
+            )
+
+    def test_domain_check_skipped_when_unresolved(self):
+        """Pins the SHE-91 seam: no domains passed means no domain check."""
+        ps = ParameterSet(self._declared(), overrides={"region": "LATAM"}, domains=None)
+        assert ps.values["region"] == "LATAM"
+
+    def test_literal_values_unaffected_by_domains(self):
+        ps = ParameterSet(
+            self._declared(),
+            overrides={"status": "closed"},
+            domains={"region": self.REGION_DOMAIN},
+        )
+        assert ps.values["status"] == "closed"

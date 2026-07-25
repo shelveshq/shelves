@@ -1,0 +1,25 @@
+model: parity_inline
+label: Parity Orders (inline)
+description: Shared parity dataset, inline JSON source
+
+source:
+  type: inline
+  path: data/parity_orders.json
+
+dimensions:
+  region:
+    label: Region
+  fiscal_year:
+    label: Fiscal Year
+  order_date:
+    type: temporal
+    label: Order Date
+    defaultGrain: month
+    format:
+      month: "%b %Y"
+
+measures:
+  revenue:
+    label: Revenue
+    aggregation: sum
+    format: "$,.0f"

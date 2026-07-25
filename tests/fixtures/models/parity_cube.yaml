@@ -1,0 +1,25 @@
+model: parity_cube
+label: Parity Orders (cube)
+description: Shared parity dataset, Cube.dev source
+
+source:
+  type: cube
+  cube: orders
+
+dimensions:
+  region:
+    label: Region
+  fiscal_year:
+    label: Fiscal Year
+  order_date:
+    type: temporal
+    label: Order Date
+    defaultGrain: month
+    format:
+      month: "%b %Y"
+
+measures:
+  revenue:
+    label: Revenue
+    aggregation: sum
+    format: "$,.0f"
