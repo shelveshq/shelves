@@ -393,6 +393,15 @@ class DashboardSpec(BaseModel):
         if "root" not in data:
             raise ValueError("Missing required field: 'root'")
 
+        # SHE-89: parameters are a project-level entity, not dashboard DSL.
+        # Reject before the in-place mutations below so the message is clear.
+        if "parameters" in data:
+            raise ValueError(
+                "'parameters' is not a dashboard property — parameters are "
+                "declared once for the project in models/parameters.yaml and "
+                "referenced here with $name."
+            )
+
         root_data = data.get("root", {})
         if not isinstance(root_data, dict):
             raise ValueError("'root' must be a dict")

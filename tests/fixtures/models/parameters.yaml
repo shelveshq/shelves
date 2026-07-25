@@ -1,0 +1,69 @@
+parameters:
+  metric:
+    type: field
+    values:
+      - model: orders
+        field: revenue
+      - model: orders
+        field: cost
+      - model: orders
+        field: arpu
+    default: revenue
+    label: Metric
+
+  region:
+    type: string
+    values:
+      - model: orders
+        field: region
+    default: EMEA
+
+  status:
+    type: string
+    values:
+      - open
+      - closed
+      - pending
+    default: open
+
+  top_n:
+    type: number
+    values:
+      - min: 5
+        max: 50
+    default: 10
+
+  as_of:
+    type: date
+    values:
+      - min: 2024-01-01
+        max: 2026-12-31
+    default: null
+
+  lo:
+    type: number
+    values:
+      - min: 0
+        max: 100
+    default: 10
+
+  hi:
+    type: number
+    values:
+      - min: 0
+        max: 100
+    default: 90
+
+  maybe_region:
+    type: string
+    values:
+      - model: orders
+        field: region
+    default: null
+
+  week_grain:
+    type: string
+    values:
+      - model: orders
+        field: week.month
+    default: null

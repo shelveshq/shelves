@@ -1,0 +1,12 @@
+sheet: "Revenue by Country"
+data: orders
+
+cols: country
+rows: revenue
+marks: bar
+filters:
+  - field: margin_pct
+    operator: between
+    range:
+      - $lo
+      - $hi

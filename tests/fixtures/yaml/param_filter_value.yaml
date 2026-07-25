@@ -1,0 +1,10 @@
+sheet: "Revenue by Country"
+data: orders
+
+cols: country
+rows: revenue
+marks: bar
+filters:
+  - field: region
+    operator: eq
+    value: $region

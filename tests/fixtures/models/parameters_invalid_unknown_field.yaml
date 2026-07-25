@@ -1,0 +1,9 @@
+parameters:
+  metric:
+    type: field
+    values:
+      - model: orders
+        field: revenue
+      - model: orders
+        field: profitt
+    default: revenue

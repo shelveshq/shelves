@@ -1,0 +1,7 @@
+parameters:
+  metric:
+    type: field
+    values:
+      - model: nope
+        field: revenue
+    default: revenue

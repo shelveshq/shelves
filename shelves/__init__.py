@@ -20,6 +20,8 @@ Typical pipeline:
 from shelves.compose.dashboard import compose_dashboard
 from shelves.data.bind import bind_data, resolve_data
 from shelves.errors import ShelvesError
+from shelves.params.loader import load_parameters
+from shelves.params.substitute import ParameterSet, substitute_parameters
 from shelves.pipeline import compile_chart, resolve_model_data
 from shelves.render.to_html import render_html
 from shelves.schema.chart_schema import DSL_VERSION, ChartSpec, parse_chart
@@ -32,10 +34,12 @@ __all__ = [
     "DSL_VERSION",
     "ChartSpec",
     "DashboardSpec",
+    "ParameterSet",
     "ShelvesError",
     "bind_data",
     "compile_chart",
     "compose_dashboard",
+    "load_parameters",
     "load_theme",
     "merge_theme",
     "parse_chart",
@@ -43,6 +47,7 @@ __all__ = [
     "render_html",
     "resolve_data",
     "resolve_model_data",
+    "substitute_parameters",
     "translate_chart",
     "translate_dashboard",
 ]
