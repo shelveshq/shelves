@@ -1,16 +1,9 @@
 """
 Parameter Domain Resolution
 
-A parameter whose `values:` is a single `{model, field}` entry gets its domain
-from the data — the distinct values of that field for a `string` parameter, its
-min/max for `number` and `date`. SHE-89 parsed and stored the reference; this
-module dereferences it, at compile time, through the data layer.
-
-**The parity guarantee.** All three backends (inline JSON rows, DuckDB over a
-flat file, Cube.dev) return RAW values. One normalizer here — `_normalize` —
-turns them into the same Python objects. That is what makes "one parameter
-declaration, three backends, identical domain" true by construction rather than
-by coincidence. Never normalize inside an adapter.
+Resolves field-reference `values:` entries to real domains across all three
+backends (inline, DuckDB, Cube). One normalizer — `_normalize` — so backends
+converge on the same Python objects.
 """
 
 from __future__ import annotations
@@ -18,7 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,16 +52,7 @@ _EMPTY_MESSAGE = (
 
 @dataclass(frozen=True)
 class Domain:
-    """A parameter's value space, resolved from data at compile time.
-
-    `kind == "values"` → `values` is a sorted, de-duplicated, null-free list and
-    `min`/`max` are None.
-    `kind == "bounds"` → `min`/`max` are set and `values` is None.
-
-    `source` is a display string ("orders.region") used only in error messages.
-    It is NOT the dotted field grammar — there is no `model.field` syntax in
-    Shelves (see shelves/models/CLAUDE.md).
-    """
+    """A parameter's value space, resolved from data at compile time."""
 
     kind: DomainKind
     param_type: LiteralParamType
@@ -78,28 +62,12 @@ class Domain:
     max: Any = None
 
 
-# ─── Normalizers — the single point of convergence ────────────────
-
 _ISO_PREFIX_RE = re.compile(r"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?")
 
 
 def _to_date(value: Any) -> dt.date:
-    """Coerce a backend temporal value to a datetime.date.
-
-    Handles every shape the three backends produce:
-      datetime.datetime(2024,1,1,0,0)  → date(2024,1,1)
-      datetime.date(2024,1,1)          → date(2024,1,1)
-      "2024-01-01"                     → date(2024,1,1)
-      "2024-01-01T00:00:00.000"        → date(2024,1,1)   (Cube)
-      "2024-01-01T00:00:00"            → date(2024,1,1)   (DuckDB, serialized)
-      "2024-01"                        → date(2024,1,1)
-      "2024"                           → date(2024,1,1)
-
-    `datetime.date.fromisoformat` rejects the last two, so the leading-ISO regex
-    does the parsing and missing components default to 01.
-    """
-    # datetime is a subclass of date — check it FIRST or the time component
-    # silently survives.
+    """Coerce a backend temporal value to a datetime.date."""
+    # datetime is a subclass of date — check FIRST.
     if isinstance(value, dt.datetime):
         return value.date()
     if isinstance(value, dt.date):
@@ -112,11 +80,7 @@ def _to_date(value: Any) -> dt.date:
 
 
 def _truncate(value: Any, grain: str | None) -> dt.date:
-    """Truncate a date to the start of its grain.
-
-    The inline backend's stand-in for DuckDB's DATE_TRUNC and Cube's
-    `timeDimensions[].granularity`. Weeks start MONDAY, matching both.
-    """
+    """Truncate a date to the start of its grain (weeks start Monday)."""
     date = _to_date(value)
 
     if grain is None or grain == "day":
@@ -134,11 +98,7 @@ def _truncate(value: Any, grain: str | None) -> dt.date:
 
 
 def _normalize(value: Any, param_type: LiteralParamType, is_temporal: bool) -> Any:
-    """Turn one raw backend value into the canonical Python value.
-
-    THE parity point — every backend's output passes through here, so all three
-    converge on the same objects.
-    """
+    """Turn one raw backend value into the canonical Python value."""
     if is_temporal or param_type == "date":
         if param_type == "number":
             raise ParameterDomainError(
@@ -148,8 +108,6 @@ def _normalize(value: Any, param_type: LiteralParamType, is_temporal: bool) -> A
         return _to_date(value).isoformat()
 
     if param_type == "number":
-        # isinstance(True, int) is True and float(True) is 1.0 — guard bool
-        # explicitly, as RangeBounds._comparable does for the same reason.
         if isinstance(value, bool):
             raise ParameterDomainError(f"{value!r} is a boolean, not a number")
         try:
@@ -159,13 +117,9 @@ def _normalize(value: Any, param_type: LiteralParamType, is_temporal: bool) -> A
                 f"{value!r} is not a number; a `number` parameter's domain field "
                 "must hold numeric values"
             ) from e
-        # 2023 and 2023.0 must not read differently on different backends.
         return int(number) if number.is_integer() else number
 
     return value if isinstance(value, str) else str(value)
-
-
-# ─── Backends ─────────────────────────────────────────────────────
 
 
 def _inline_domain(
@@ -176,17 +130,7 @@ def _inline_domain(
     kind: DomainKind,
     data_base_dir: Path | None,
 ) -> list[Any] | tuple[Any, Any]:
-    """The inline (JSON-rows) backend.
-
-    Inline models are NOT in the adapter registry — `resolve_model_data`
-    special-cases InlineSource (shelves/pipeline.py) and this mirrors that.
-    Registering an "inline" adapter would change `resolve_data`'s
-    NoDataSourceError behavior for inline models.
-
-    Inline is also the only backend without truncation for free: DuckDB has
-    DATE_TRUNC, Cube has timeDimensions[].granularity, and inline rows are raw
-    JSON — so the grain is applied here in Python.
-    """
+    """Resolve a domain from inline JSON rows."""
     assert isinstance(model.source, InlineSource)
 
     path = Path(model.source.path)
@@ -200,8 +144,6 @@ def _inline_domain(
     base = resolver.resolve_base_field(field_ref)
     grain = resolver.resolve_grain(field_ref)
     dim = model.dimensions.get(base)
-    # Inline JSON keys are DSL field names; `column` is honored defensively for
-    # models that set one anyway.
     column = dim.column if dim is not None and dim.column else base
 
     raw = [row.get(column) for row in rows]
@@ -210,26 +152,15 @@ def _inline_domain(
         raw = [_truncate(v, grain) for v in raw]
 
     if kind == "values":
-        # De-duplication happens in resolve_field_domain, alongside the other
-        # two backends' results.
         return raw
     return (min(raw), max(raw)) if raw else (None, None)
 
 
 def _domain_adapter(source_type: str, data_base_dir: Path | None) -> DataSourceAdapter:
-    """Get the adapter for a source type, DuckDB-aware.
-
-    The registered "file" adapter is a singleton pinned to `Path.cwd()`, so it
-    ignores `data_base_dir`. A fresh DuckDBAdapter is constructed instead —
-    using the registry instance here would make file-backed domains resolve
-    only when the process happens to run from the right directory.
-    """
+    # Fresh DuckDBAdapter so data_base_dir is honored (the registry singleton uses cwd).
     if source_type == "file":
         return DuckDBAdapter(base_dir=data_base_dir)
     return get_adapter(source_type)
-
-
-# ─── Public API ───────────────────────────────────────────────────
 
 
 def resolve_field_domain(
@@ -239,19 +170,12 @@ def resolve_field_domain(
     models_dir: Path | str | None = None,
     data_base_dir: Path | None = None,
 ) -> Domain:
-    """Resolve ONE `{model, field}` reference to a Domain.
-
-    Raises UNPREFIXED ParameterDomainError and adapter errors — the caller adds
-    the `parameters.<name>: ` prefix, because only it knows the name.
-    """
-    assert ref.field is not None, "SHE-89 guarantees a field on string/number/date"
+    """Resolve one `{model, field}` reference to a Domain."""
+    assert ref.field is not None
 
     model = load_model(ref.model, models_dir=models_dir)
     resolver = ModelResolver(model)
     source = f"{ref.model}.{ref.field}"
-
-    # Pass the field reference WHOLE — the dot is a grain suffix, not model
-    # qualification, and ModelResolver is the only thing allowed to read it.
     try:
         field_type = resolver.resolve_type(ref.field)
     except ValueError as e:
@@ -287,11 +211,8 @@ def resolve_field_domain(
             else adapter.fetch_domain_bounds(model, ref.field, resolver)
         )
 
-    # ── ONE normalizer, all backends — the parity guarantee ──
     if kind == "values":
         assert isinstance(raw, list)
-        # sorted(set(...)) both de-duplicates (inline rows are raw) and orders
-        # in Python, because no backend's collation is trusted.
         values = sorted({_normalize(v, param_type, is_temporal) for v in raw if v is not None})
         if not values:
             raise ParameterDomainError(_EMPTY_MESSAGE.format(source=source))
@@ -320,32 +241,10 @@ def resolve_parameter_domains(
     data_base_dir: Path | None = None,
     validate_defaults: bool = True,
 ) -> dict[str, Domain]:
-    """Resolve every field-reference `values:` in `parameters` to a real domain.
+    """Resolve every field-reference `values:` entry to a real domain.
 
-    Only `string` / `number` / `date` parameters whose `values:` is a single
-    FieldRef are resolved. Literal lists, ranges, omitted `values:`, and every
-    `type: field` parameter are skipped — they need no data.
-
-    `models_dir` and `data_base_dir` MUST be the same values the caller passes
-    to `compile_dashboard_charts`, so compilation and domain resolution can
-    never read different model universes.
-
-    Args:
-        parameters: The block from `load_parameters(...)`.
-        models_dir: Model manifest directory.
-        data_base_dir: Base directory for relative inline/file source paths.
-        validate_defaults: When True, each resolved parameter's `default` is
-            checked against its domain. Turn off only for tooling that wants
-            the domains without enforcing declarations.
-
-    Returns:
-        {parameter_name: Domain} — only for parameters that HAVE a domain. A
-        parameter absent from this dict is unconstrained or literally
-        constrained; that is not an error.
-
-    Raises:
-        ParameterDomainError: any resolution or validation failure. Every
-            message is prefixed `parameters.<name>: `.
+    Returns {name: Domain} only for parameters whose `values:` is a single
+    FieldRef. Literal lists, ranges, and `type: field` are skipped.
     """
     out: dict[str, Domain] = {}
     memo: dict[tuple[str, str, str], Domain] = {}
@@ -354,10 +253,6 @@ def resolve_parameter_domains(
         entries = param.values or []
 
         if isinstance(param, FieldParameter):
-            # `type: field` never touches data — its values are field NAMES,
-            # checked against the manifest by load_parameters(validate_fields).
-            # The one case SHE-89 deferred is a bare {model: X} entry, whose
-            # default it could not check without a models_dir.
             if len(entries) == 1 and isinstance(entries[0], FieldRef) and entries[0].field is None:
                 with _attributed(name):
                     _check_default_is_a_field(param, entries[0].model, models_dir=models_dir)
@@ -367,7 +262,7 @@ def resolve_parameter_domains(
             continue
 
         ref = entries[0]
-        assert ref.field is not None  # SHE-89 guarantees this on literal types
+        assert ref.field is not None
 
         key = (ref.model, ref.field, param.type)
         domain = memo.get(key)
@@ -392,20 +287,10 @@ def resolve_parameter_domains(
 def check_value_in_domain(
     param_name: str, value: Any, domain: Domain, *, label: str = "default"
 ) -> None:
-    """Raise ParameterDomainError if `value` is outside `domain`.
-
-    Used for the declaration-time `default` check, and reused for `--param`
-    overrides (SHE-91) so both reject exactly the same things. `label` is the
-    noun the message uses for the offending value — the declaration check leaves
-    it at "default"; `ParameterSet` passes "value", because an override is not a
-    default.
-    """
+    """Raise ParameterDomainError if `value` is outside `domain`."""
     if value is None:
-        return  # null means unset
+        return
 
-    # Normalizing is REQUIRED, not cosmetic: a YAML `default: 2024-02-01`
-    # arrives as a datetime.date while the domain holds ISO strings, and
-    # comparing the two raises TypeError.
     normalized = _normalize(value, domain.param_type, domain.param_type == "date")
 
     if domain.kind == "values":
@@ -428,17 +313,9 @@ def check_value_in_domain(
     )
 
 
-# ─── Private helpers ──────────────────────────────────────────────
-
-
 @contextmanager
-def _attributed(name: str) -> Iterator[None]:
-    """Prefix any resolution failure with the parameter it came from.
-
-    `resolve_field_domain` and the adapters raise unprefixed — they do not know
-    the parameter name — so a Cube or DuckDB typed error would otherwise reach
-    the author un-attributed.
-    """
+def _attributed(name: str) -> Generator[None]:
+    """Prefix resolution failures with the parameter name."""
     try:
         yield
     except (ParameterDomainError, ShelvesError, ValueError) as e:
@@ -451,9 +328,6 @@ def _check_default_is_a_field(
     *,
     models_dir: Path | str | None,
 ) -> None:
-    """A bare `{model: X}` entry means "any field in that model" — so the
-    default must name one. A manifest read, never a query.
-    """
     model = load_model(model_name, models_dir=models_dir)
     if param.default in model.measures or param.default in model.dimensions:
         return

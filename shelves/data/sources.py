@@ -34,13 +34,7 @@ class DataSourceAdapter(Protocol):
         *,
         limit: int,
     ) -> list[Any]:
-        """Distinct values of `field_ref`, at most `limit` of them.
-
-        Returns RAW backend values — no sorting, no de-duplication guarantees
-        beyond the backend's own DISTINCT/GROUP BY, no type coercion. All of
-        that happens once in shelves/data/domains.py so the backends cannot
-        drift apart.
-        """
+        """Distinct values of `field_ref`, at most `limit`, as raw backend values."""
         ...
 
     def fetch_domain_bounds(
@@ -49,10 +43,7 @@ class DataSourceAdapter(Protocol):
         field_ref: str,
         resolver: FieldTypeResolver,
     ) -> tuple[Any, Any]:
-        """(min, max) of `field_ref`, as raw backend values.
-
-        (None, None) when the source has no rows.
-        """
+        """(min, max) of `field_ref` as raw backend values; (None, None) if empty."""
         ...
 
 

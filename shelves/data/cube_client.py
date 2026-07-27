@@ -171,13 +171,7 @@ def build_cube_domain_query(
     limit: int | None = None,
     order: Literal["asc", "desc"] | None = None,
 ) -> dict[str, Any]:
-    """Build a single-member Cube query for domain resolution (SHE-90).
-
-    A dimensions-only (or timeDimensions-only) query is Cube's GROUP BY, so the
-    rows come back already distinct. `order` keys the BASE member, never
-    `<member>.<grain>` — Cube orders by the dimension, the granularity lives in
-    timeDimensions.
-    """
+    """Build a single-member Cube query for domain resolution."""
     base = resolver.resolve_base_field(field_ref)
     grain = resolver.resolve_grain(field_ref)
     member = f"{cube_name}.{base}"
@@ -198,14 +192,7 @@ def build_cube_domain_query(
 
 
 def domain_response_key(field_ref: str, resolver: FieldTypeResolver) -> str:
-    """The key a domain row carries AFTER _strip_prefix.
-
-    "category"         → "category"
-    "order_date.month" → "order_date.month"
-
-    Cube keys a granular result `<cube>.<dim>.<grain>` and `_strip_prefix`
-    removes only the cube name.
-    """
+    """The key a domain row carries after _strip_prefix."""
     base = resolver.resolve_base_field(field_ref)
     grain = resolver.resolve_grain(field_ref)
     return f"{base}.{grain}" if grain is not None else base
@@ -314,11 +301,7 @@ def _post_query(
     config: CubeConfig | None,
     transport: HTTPTransport | None,
 ) -> list[dict[str, Any]]:
-    """POST one query, apply the status-code error mapping, strip cube prefixes.
-
-    Shared by chart fetching and domain resolution (SHE-90) so both get the
-    identical auth / timeout / 5xx / 4xx behavior.
-    """
+    """POST one query, apply the status-code error mapping, strip cube prefixes."""
     if config is None:
         config = CubeConfig.from_env()
 
@@ -355,11 +338,7 @@ def fetch_domain_values_from_cube_model(
     config: CubeConfig | None = None,
     transport: HTTPTransport | None = None,
 ) -> list[Any]:
-    """Distinct values of a dimension, at most `limit` of them.
-
-    Returns RAW Cube values — sorting, de-duplication and type coercion all
-    happen once in shelves/data/domains.py.
-    """
+    """Distinct values of a dimension, at most `limit` of them."""
     assert isinstance(model.source, CubeSource), "domain resolution requires a CubeSource"
     query = build_cube_domain_query(model.source.cube, field_ref, resolver, limit=limit)
     rows = _post_query(query, config, transport)
@@ -383,12 +362,7 @@ def fetch_domain_bounds_from_cube_model(
     config: CubeConfig | None = None,
     transport: HTTPTransport | None = None,
 ) -> tuple[Any, Any]:
-    """(min, max) of a dimension, as two ordered limit-1 queries.
-
-    Cube has no MIN/MAX over an arbitrary member, and enumerating the whole
-    dimension to reduce it in Python would defeat the point of native bounds.
-    Two tiny round trips is the cheap, correct translation.
-    """
+    """(min, max) of a dimension via two ordered limit-1 queries."""
     assert isinstance(model.source, CubeSource), "domain resolution requires a CubeSource"
     cube_name = model.source.cube
     key = domain_response_key(field_ref, resolver)

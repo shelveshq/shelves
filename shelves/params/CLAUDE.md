@@ -61,15 +61,8 @@ substitution pass runs before Pydantic and leaves an ordinary chart behind.
 - **`values:` is always a list.** Entry kind is dispatched by key presence —
   `model` → `FieldRef`, `min`+`max` → `RangeBounds`, scalar → literal. A list
   must be homogeneous, and a range must be the only entry.
-- **`validate_value` (schema.py) enforces literal and range constraints only.**
-  A field-reference domain is checked by
-  `shelves.data.domains.check_value_in_domain`, which needs the resolved
-  `Domain`. Two functions, two constraint families — do not merge them.
-- **`type: field` never touches data.** Its `values:` are field *names*, checked
-  against the model manifest by `load_parameters(validate_fields=True)`. The one
-  exception is a bare `{model: X}` entry ("any field in that model"), whose
-  `default` is checked against the manifest by `resolve_parameter_domains` —
-  still a manifest read, still no query.
+- **`validate_value` (schema.py) and `check_value_in_domain` (domains.py) are separate.** Literal/range constraints vs. field-reference domains — do not merge.
+- **`type: field` never touches data.** Its `values:` are field names, checked against the manifest.
 
 ## Gotchas
 

@@ -1,13 +1,4 @@
-"""
-Parameter Domain Resolution Tests (SHE-90)
-
-A field-reference `values:` entry is dereferenced at COMPILE TIME, through the
-data layer, into a real domain — distinct values for `string`, `{min, max}` for
-`number`/`date`. The parity story is the design: all three backends return raw
-values and one normalizer in `shelves/data/domains.py` turns them into the same
-Python objects, so "one fixture, three backends, identical result" is true by
-construction.
-"""
+"""Parameter domain resolution tests (SHE-90)."""
 
 from __future__ import annotations
 
@@ -50,13 +41,6 @@ def _clear_cache():
 def cube_env(monkeypatch):
     monkeypatch.setenv("CUBE_API_URL", CUBE_URL)
     monkeypatch.setenv("CUBE_API_TOKEN", "test-token")
-
-
-# ─── generated-project helpers ────────────────────────────────────
-#
-# Fixtures that need bespoke data (501 distinct values, nulls, an empty
-# dataset) are generated into tmp_path — a 501-row file does not belong in
-# the committed fixture set.
 
 
 def _write_params(tmp_path: Path, text: str):
@@ -110,8 +94,6 @@ def _write_file_model(
     (tmp_path / data_name).write_text(csv_text)
 
 
-# ─── the ONE parity parameter declaration ─────────────────────────
-
 PARITY_PARAMS = """
 parameters:
   region:
@@ -142,13 +124,6 @@ def _parity_params(tmp_path: Path, model: str):
 
 
 def _cube_parity_responses() -> list[httpx.Response]:
-    """Five responses in declaration order: region values, as_of asc/desc, fy asc/desc.
-
-    The region rows are deliberately UNSORTED and the temporal values
-    deliberately carry a `T00:00:00.000` suffix — this list fails the parity
-    assertion unless Python-side sorting (D4) and temporal normalization (D5)
-    both happen.
-    """
     return [
         httpx.Response(
             200,
@@ -198,9 +173,6 @@ EXPECTED = {
         max=2024,
     ),
 }
-
-
-# ─── _to_date / _truncate / _normalize ────────────────────────────
 
 
 class TestToDate:
@@ -302,9 +274,6 @@ class TestNormalize:
         assert _normalize(7, "string", False) == "7"
 
 
-# ─── adapter parity ───────────────────────────────────────────────
-
-
 class TestAdapterParity:
     def _inline(self, tmp_path):
         return resolve_parameter_domains(
@@ -352,9 +321,6 @@ class TestAdapterParity:
         assert domains["as_of"].source == "parity_inline.order_date.month"
 
 
-# ─── grain suffixes ───────────────────────────────────────────────
-
-
 class TestGrainSuffix:
     def test_grain_suffix_resolves_months(self):
         """`week.month` reaches ModelResolver whole — two weeks collapse to one month."""
@@ -385,9 +351,6 @@ parameters:
         assert domains["months"].values == ["2024-01-01", "2024-02-01", "2024-03-01"]
 
 
-# ─── the whole existing fixture ───────────────────────────────────
-
-
 class TestResolveAll:
     def test_fixture_parameters_resolve(self):
         domains = resolve_parameter_domains(
@@ -398,9 +361,6 @@ class TestResolveAll:
         assert set(domains) == {"region", "maybe_region", "week_grain"}
         assert domains["region"].values == ["APAC", "EMEA", "NA"]
         assert domains["maybe_region"].values == ["APAC", "EMEA", "NA"]
-
-
-# ─── skip rules: what never touches data ──────────────────────────
 
 
 class TestNoDataAccess:
@@ -518,9 +478,6 @@ parameters:
         assert domains["a"].values == ["EMEA"]
         assert domains["b"].values == ["EMEA"]
         assert route.call_count == 1
-
-
-# ─── edge cases ───────────────────────────────────────────────────
 
 
 class TestDomainEdgeCases:
@@ -752,9 +709,6 @@ parameters:
         )
         domains = resolve_parameter_domains(params, models_dir=tmp_path, data_base_dir=tmp_path)
         assert len(domains["big"].values or []) == MAX_DOMAIN_CARDINALITY
-
-
-# ─── errors ───────────────────────────────────────────────────────
 
 
 class TestDomainErrors:
@@ -1099,9 +1053,6 @@ parameters:
         assert isinstance(exc.value.__cause__, CubeServerError)
 
 
-# ─── validate_defaults toggle + check_value_in_domain ─────────────
-
-
 class TestValidateDefaultsToggle:
     def test_defaults_not_checked_when_disabled(self, tmp_path):
         params = _write_params(
@@ -1153,9 +1104,6 @@ class TestCheckValueInDomain:
     def test_out_of_bounds_raises(self):
         with pytest.raises(ParameterDomainError, match="is outside the domain"):
             check_value_in_domain("p", dt.date(2023, 6, 1), self.BOUNDS)
-
-
-# ─── data_base_dir=None ───────────────────────────────────────────
 
 
 class TestDataBaseDir:

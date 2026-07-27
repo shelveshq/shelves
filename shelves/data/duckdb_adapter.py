@@ -220,13 +220,7 @@ def domain_expression(
     field_ref: str,
     resolver: FieldTypeResolver,
 ) -> str:
-    """SQL expression for a field's domain source. Dimensions only.
-
-    Mirrors the dimension branch of build_sql — calculation wins over column,
-    column falls back to the field name, a grain wraps the result in
-    DATE_TRUNC. It deliberately does NOT go through resolve_measure_expressions:
-    a domain is never an aggregate (SHE-90 D1/D2).
-    """
+    """SQL expression for a dimension's domain source."""
     base = resolver.resolve_base_field(field_ref)
     grain = resolver.resolve_grain(field_ref)
     dim = model.dimensions.get(base)
@@ -251,11 +245,7 @@ def build_domain_values_sql(
     *,
     limit: int,
 ) -> str:
-    """Distinct values of a dimension, capped at `limit`.
-
-    No ORDER BY — ordering is Python's job (SHE-90 D4), and a LIMIT'd result is
-    only ever used when it is complete.
-    """
+    """Distinct values of a dimension, capped at `limit`."""
     expr = domain_expression(model, field_ref, resolver)
     return (
         f'SELECT DISTINCT {expr} AS "value"\n'
@@ -271,7 +261,7 @@ def build_domain_bounds_sql(
     field_ref: str,
     resolver: FieldTypeResolver,
 ) -> str:
-    """Native min/max of a dimension — never a distinct scan reduced in Python."""
+    """Native min/max of a dimension."""
     expr = domain_expression(model, field_ref, resolver)
     return f'SELECT MIN({expr}) AS "min", MAX({expr}) AS "max"\nFROM {_from_clause(file_path)}'
 
@@ -360,11 +350,7 @@ class DuckDBAdapter:
         return file_path
 
     def _execute(self, sql: str) -> list[dict[str, Any]]:
-        """Run one statement against an in-memory DuckDB and serialize the rows.
-
-        Shared by chart fetching and domain resolution so both get the identical
-        import guard, error wrapping and _serialize_value pass.
-        """
+        """Run one statement against an in-memory DuckDB and serialize the rows."""
         try:
             import duckdb
         except ImportError:
