@@ -14,10 +14,35 @@ substitution pass runs before Pydantic and leaves an ordinary chart behind.
 - `refs.py` — `$name` (whole-scalar only) and `${name}` recognition; `$$` escape
 - `positions.py` — the **allow-list** of paths where a reference is legal
 - `substitute.py` — `ParameterSet` (declarations + resolved values) and the walk
+- `coerce.py` — raw string → declared-type coercion for overrides
+  (`parse_param_flags`, `coerce_override`, `describe_values`). Coercion NEVER
+  validates; `ParameterSet` owns that
+- `resolve.py` — `load_parameter_set()`, the **single builder every surface
+  calls**. Loads the file, resolves SHE-90 domains, coerces overrides,
+  constructs the `ParameterSet`
 - Domain resolution lives OUTSIDE this package, in `shelves/data/domains.py` — it needs a model resolver and a live data connection, which is a data-layer concern. `schema.py` stores a `FieldRef` and never dereferences it.
 
 ## Key Rules
 
+- **Surfaces never construct a `ParameterSet` by hand.** The render CLI, dev
+  CLI, and both Studio compile paths call
+  `shelves.params.resolve.load_parameter_set`. That is what makes the four
+  surfaces behave identically — parity by construction, not by four call sites
+  that happen to agree. It is also the only call site of
+  `shelves.data.domains.resolve_parameter_domains`.
+- **`models_dir` and `data_base_dir` travel together.** A surface passes
+  `load_parameter_set` the same pair it passes `resolve_model_data` /
+  `compile_dashboard_charts`. Splitting them validates a value against one
+  dataset and charts rows from another.
+- **The pipeline never reads a parameters file.**
+  `compile_chart(parameters=None)` means `ParameterSet.empty()`, not "go find
+  `<models_dir>/parameters.yaml`". Auto-loading would silently change the
+  meaning of every existing chart compiled with a `models_dir` that happens to
+  contain one.
+- **Coercion is driven by the declared `type`, never by the string's content.**
+  `--param status=10` stays the string `"10"` because `status` is
+  `type: string`. An override naming an undeclared parameter is passed through
+  coercion untouched so `ParameterSet` can own that one error message.
 - **The allow-list is exhaustive.** `classify()` returns `None` for unlisted
   paths and `None` means forbidden. When a new DSL field lands, parameters are
   rejected there until someone adds it to `positions.py` deliberately. Never

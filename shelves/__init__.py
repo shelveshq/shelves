@@ -22,6 +22,7 @@ from shelves.data.bind import bind_data, resolve_data
 from shelves.data.domains import Domain, resolve_parameter_domains
 from shelves.errors import ShelvesError
 from shelves.params.loader import load_parameters
+from shelves.params.resolve import load_parameter_set
 from shelves.params.substitute import ParameterSet, substitute_parameters
 from shelves.pipeline import compile_chart, resolve_model_data
 from shelves.render.to_html import render_html
@@ -41,6 +42,7 @@ __all__ = [
     "bind_data",
     "compile_chart",
     "compose_dashboard",
+    "load_parameter_set",
     "load_parameters",
     "load_theme",
     "merge_theme",

@@ -1,0 +1,11 @@
+dashboard: "Parameter Dashboard"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: param_field_swap.yaml
+      name: swap_a
+      height: "50%"
+    - sheet: param_field_swap.yaml
+      name: swap_b
+      height: "50%"

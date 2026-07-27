@@ -19,18 +19,21 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 
 import yaml as yaml_lib
 from dotenv import load_dotenv
 
 from shelves.data.bind import resolve_data
+from shelves.params.coerce import parse_param_flags
+from shelves.params.resolve import load_parameter_set
 from shelves.render.to_html import render_html
 from shelves.theme.merge import load_theme
 
 
-def main():
-    load_dotenv()
+def build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser for shelves-render."""
     parser = argparse.ArgumentParser(description="Render a chart or dashboard YAML to HTML")
     parser.add_argument("yaml_path", help="Path to chart or dashboard YAML file")
     parser.add_argument("--data", help="Path to JSON data file (array of row objects)")
@@ -45,7 +48,7 @@ def main():
     )
     parser.add_argument(
         "--data-dir",
-        help="Base directory for resolving inline data source paths in dashboards (default: CWD)",
+        help="Base directory for resolving inline data source paths (default: CWD)",
     )
     parser.add_argument(
         "--models-dir",
@@ -55,16 +58,51 @@ def main():
         "--assets-dir",
         help="Directory of image assets referenced by dashboards (default: ./assets)",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--parameters-file",
+        help="Path to parameters.yaml (default: <models-dir>/parameters.yaml)",
+    )
+    parser.add_argument(
+        "--param",
+        action="append",
+        # argparse's append action defaults to None, which would make
+        # parse_param_flags(args.param) a TypeError when no flag is passed.
+        default=[],
+        metavar="KEY=VALUE",
+        help="Set a parameter value (repeatable), e.g. --param region=EMEA",
+    )
+    return parser
+
+
+def main():
+    load_dotenv()
+    args = build_parser().parse_args()
+
+    data_dir = Path(args.data_dir) if args.data_dir else None
+
+    # Built once, before anything is written: a bad --param should fail before
+    # an output file exists. --no-data means touch no data source, so it also
+    # skips field-reference domain resolution.
+    try:
+        parameters = load_parameter_set(
+            Path(args.parameters_file) if args.parameters_file else None,
+            models_dir=Path(args.models_dir) if args.models_dir else None,
+            data_base_dir=data_dir,
+            overrides=parse_param_flags(args.param),
+            resolve_domains=not args.no_data,
+        )
+    except ValueError as e:  # ParameterDomainError included
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(2)
 
     # Detect dashboard vs chart YAML
     yaml_string = Path(args.yaml_path).read_text()
     raw = yaml_lib.safe_load(yaml_string)
 
     if isinstance(raw, dict) and "dashboard" in raw:
-        _render_dashboard(args, raw)
+        _render_dashboard(args, raw, parameters)
     else:
-        _render_chart(args, yaml_string)
+        _render_chart(args, yaml_string, parameters)
 
 
 def _asset_url_prefix(assets_dir: Path, output_dir: Path) -> str:
@@ -78,7 +116,7 @@ def _asset_url_prefix(assets_dir: Path, output_dir: Path) -> str:
     return rel if rel.endswith("/") else rel + "/"
 
 
-def _render_dashboard(args, raw):
+def _render_dashboard(args, raw, parameters=None):
     """Render a dashboard YAML file."""
     from shelves.compose.dashboard import compose_dashboard
 
@@ -99,6 +137,7 @@ def _render_dashboard(args, raw):
         models_dir=Path(args.models_dir) if args.models_dir else None,
         no_theme=args.no_theme,
         asset_url_prefix=asset_url_prefix,
+        parameters=parameters,
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,11 +145,12 @@ def _render_dashboard(args, raw):
     print(f"Rendered: {out_path}")
 
 
-def _render_chart(args, yaml_string):
+def _render_chart(args, yaml_string, parameters=None):
     """Render a chart YAML file."""
     from shelves.pipeline import compile_chart, resolve_model_data
 
     models_dir = Path(args.models_dir) if args.models_dir else None
+    data_dir = Path(args.data_dir) if args.data_dir else None
     theme_path = Path(args.theme) if args.theme else None
 
     vl_spec, spec = compile_chart(
@@ -118,6 +158,7 @@ def _render_chart(args, yaml_string):
         theme_path=theme_path,
         no_theme=args.no_theme,
         models_dir=models_dir,
+        parameters=parameters,
     )
 
     if args.no_data:
@@ -126,7 +167,10 @@ def _render_chart(args, yaml_string):
         rows = json.loads(Path(args.data).read_text())
         vl_spec = resolve_data(vl_spec, spec, rows=rows)
     else:
-        vl_spec = resolve_model_data(vl_spec, spec, models_dir=models_dir)
+        # data_base_dir matters here, not just on the dashboard branch: domain
+        # resolution reads --data-dir, so a chart resolving rows from the CWD
+        # would validate a parameter against one dataset and chart another.
+        vl_spec = resolve_model_data(vl_spec, spec, models_dir=models_dir, data_base_dir=data_dir)
 
     html = render_html(vl_spec, title=spec.sheet)
 

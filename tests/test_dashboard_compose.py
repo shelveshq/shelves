@@ -13,7 +13,7 @@ import pytest
 
 from shelves.compose.dashboard import compose_dashboard
 from shelves.theme.merge import load_theme
-from tests.conftest import DATA_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
+from tests.conftest import DATA_DIR, FIXTURES_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
 
 THEMES_DIR = Path(__file__).parent / "fixtures" / "themes"
 
@@ -301,7 +301,7 @@ class TestDashboardComposeWarnings:
         result = asyncio.run(
             run_dashboard_pipeline(
                 yaml_body,
-                project_dir=DATA_DIR,
+                project_dir=FIXTURES_DIR,
                 charts_dir=YAML_DIR,
                 theme_path=None,
                 models_dir=MODELS_DIR,
@@ -408,6 +408,8 @@ class TestCLI:
                 "tests/fixtures/yaml",
                 "--models-dir",
                 "tests/fixtures/models",
+                "--data-dir",
+                "tests/fixtures",
             ],
             capture_output=True,
             text=True,
@@ -433,6 +435,8 @@ class TestCLI:
                 "tests/fixtures/data/orders.json",
                 "--models-dir",
                 "tests/fixtures/models",
+                "--data-dir",
+                "tests/fixtures",
             ],
             capture_output=True,
             text=True,

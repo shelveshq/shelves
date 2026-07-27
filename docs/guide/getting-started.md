@@ -190,6 +190,57 @@ shelves-render dashboards/sales_overview.yaml --chart-dir charts/ --models-dir m
 
 Each chart resolves its own data from its model's configured source. See the [Dashboards guide](./dashboards.md) for the full Layout DSL reference.
 
+## Parameters
+
+A parameter is a named value declared once for the project and referenced from
+any chart with `$name`. Put them in `models/parameters.yaml`, beside your model
+manifests:
+
+```yaml
+# models/parameters.yaml
+parameters:
+  metric:
+    type: field
+    values:
+      - model: orders
+        field: revenue
+      - model: orders
+        field: cost
+    default: revenue
+    label: Metric
+```
+
+Reference it from a chart:
+
+```yaml
+# charts/metric_by_country.yaml
+sheet: "Metric by Country"
+data: orders
+
+cols: country
+rows: $metric
+marks: bar
+```
+
+Render it with the default, then with an override:
+
+```bash
+shelves-render charts/metric_by_country.yaml --models-dir models/
+shelves-render charts/metric_by_country.yaml --models-dir models/ --param metric=cost
+```
+
+`--param` works the same way on `shelves-dev`, and on dashboards — the value
+applies to every sheet:
+
+```bash
+shelves-render dashboards/sales.yaml --chart-dir charts/ --models-dir models/ --param metric=cost
+```
+
+If your parameters file lives somewhere other than `models/parameters.yaml`,
+point at it with `--parameters-file`. See the
+[DSL reference](dsl-reference.md#parameters) for the full declaration grammar
+and the list of positions where `$name` may appear.
+
 ## Dev server
 
 Live reload while editing charts:

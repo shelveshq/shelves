@@ -22,6 +22,7 @@ import argparse
 import json
 import mimetypes
 import os
+import sys
 import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -33,6 +34,9 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 from shelves.data.bind import resolve_data
+from shelves.params.coerce import parse_param_flags
+from shelves.params.resolve import load_parameter_set
+from shelves.params.substitute import ParameterSet
 from shelves.render.to_html import render_html
 from shelves.theme.merge import load_theme
 
@@ -73,18 +77,29 @@ def _build(
     chart_dir: Path | None = None,
     data_dir: Path | None = None,
     models_dir: Path | None = None,
+    parameters_path: Path | None = None,
+    param_overrides: dict[str, str] | None = None,
 ):
     """Re-run the full pipeline and update state."""
     try:
         yaml_string = yaml_path.read_text()
         raw = yaml_lib.safe_load(yaml_string)
 
+        parameters = load_parameter_set(
+            parameters_path,
+            models_dir=models_dir,
+            data_base_dir=data_dir,
+            overrides=param_overrides or {},
+        )
+
         if isinstance(raw, dict) and "dashboard" in raw:
             html = _build_dashboard(
-                yaml_path, no_theme, theme_path, chart_dir, data_dir, models_dir
+                yaml_path, no_theme, theme_path, chart_dir, data_dir, models_dir, parameters
             )
         else:
-            html = _build_chart(yaml_string, data_path, no_theme, theme_path)
+            html = _build_chart(
+                yaml_string, data_path, no_theme, theme_path, models_dir, data_dir, parameters
+            )
 
         # Inject auto-reload script before </body>
         html = html.replace("</body>", f"{_RELOAD_SCRIPT}</body>")
@@ -105,7 +120,13 @@ def _build(
 
 
 def _build_chart(
-    yaml_string: str, data_path: Path | None, no_theme: bool, theme_path: Path | None
+    yaml_string: str,
+    data_path: Path | None,
+    no_theme: bool,
+    theme_path: Path | None,
+    models_dir: Path | None = None,
+    data_dir: Path | None = None,
+    parameters: ParameterSet | None = None,
 ) -> str:
     """Build a single chart and return HTML."""
     from shelves.pipeline import compile_chart, resolve_model_data
@@ -114,13 +135,15 @@ def _build_chart(
         yaml_string,
         theme_path=theme_path,
         no_theme=no_theme,
+        models_dir=models_dir,
+        parameters=parameters,
     )
 
     if data_path:
         rows = json.loads(data_path.read_text())
         vl_spec = resolve_data(vl_spec, spec, rows=rows)
     else:
-        vl_spec = resolve_model_data(vl_spec, spec)
+        vl_spec = resolve_model_data(vl_spec, spec, models_dir=models_dir, data_base_dir=data_dir)
 
     # Dev preview: large chart for easy visual inspection
     vl_spec.setdefault("width", 1400)
@@ -136,6 +159,7 @@ def _build_dashboard(
     chart_dir: Path | None,
     data_dir: Path | None,
     models_dir: Path | None,
+    parameters: ParameterSet | None = None,
 ) -> str:
     """Build a dashboard and return HTML."""
     from shelves.compose.dashboard import compose_dashboard
@@ -149,6 +173,7 @@ def _build_dashboard(
         data_dir=data_dir,
         models_dir=models_dir,
         no_theme=no_theme,
+        parameters=parameters,
     )
 
 
@@ -163,6 +188,8 @@ class _YAMLWatcher(FileSystemEventHandler):
         chart_dir=None,
         data_dir=None,
         models_dir=None,
+        parameters_path=None,
+        param_overrides=None,
     ):
         self._yaml_path = yaml_path
         self._data_path = data_path
@@ -172,6 +199,8 @@ class _YAMLWatcher(FileSystemEventHandler):
         self._chart_dir = chart_dir
         self._data_dir = data_dir
         self._models_dir = models_dir
+        self._parameters_path = parameters_path
+        self._param_overrides = param_overrides
 
     def on_modified(self, event):
         if Path(os.fsdecode(event.src_path)).resolve() == self._yaml_path.resolve():
@@ -184,6 +213,8 @@ class _YAMLWatcher(FileSystemEventHandler):
                 self._chart_dir,
                 self._data_dir,
                 self._models_dir,
+                self._parameters_path,
+                self._param_overrides,
             )
 
 
@@ -242,7 +273,8 @@ def _make_handler(state: _State, assets_dir: Path | None = None):
     return Handler
 
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser for shelves-dev."""
     parser = argparse.ArgumentParser(
         description="Live-preview dev server for chart and dashboard YAML"
     )
@@ -258,17 +290,34 @@ def main():
     )
     parser.add_argument(
         "--data-dir",
-        help="Base directory for resolving inline data source paths in dashboards (default: CWD)",
+        help="Base directory for resolving inline data source paths (default: CWD)",
     )
     parser.add_argument(
         "--models-dir",
-        help="Directory containing model YAML files for dashboards",
+        help="Directory containing model YAML files",
     )
     parser.add_argument(
         "--assets-dir",
         help="Directory of image assets referenced by dashboards (default: ./assets)",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--parameters-file",
+        help="Path to parameters.yaml (default: <models-dir>/parameters.yaml)",
+    )
+    parser.add_argument(
+        "--param",
+        action="append",
+        # argparse's append action defaults to None, which would make
+        # parse_param_flags(args.param) a TypeError when no flag is passed.
+        default=[],
+        metavar="KEY=VALUE",
+        help="Set a parameter value (repeatable), e.g. --param region=EMEA",
+    )
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
 
     yaml_path = Path(args.yaml_path).resolve()
     data_path = Path(args.data).resolve() if args.data else None
@@ -277,6 +326,13 @@ def main():
     data_dir = Path(args.data_dir).resolve() if args.data_dir else None
     models_dir = Path(args.models_dir).resolve() if args.models_dir else None
     assets_dir = Path(args.assets_dir).resolve() if args.assets_dir else Path("assets").resolve()
+    parameters_path = Path(args.parameters_file).resolve() if args.parameters_file else None
+
+    try:
+        param_overrides = parse_param_flags(args.param)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(2)
 
     if not yaml_path.exists():
         print(f"Error: {yaml_path} not found")
@@ -307,12 +363,34 @@ def main():
         else:
             print("  Data:     Cube.dev (from CUBE_API_URL)")
     print(f"  Theme:    {'None' if args.no_theme else (theme_path or 'Default')}")
-    _build(yaml_path, data_path, args.no_theme, theme_path, state, chart_dir, data_dir, models_dir)
+    if param_overrides:
+        print(f"  Params:   {', '.join(f'{k}={v}' for k, v in param_overrides.items())}")
+    _build(
+        yaml_path,
+        data_path,
+        args.no_theme,
+        theme_path,
+        state,
+        chart_dir,
+        data_dir,
+        models_dir,
+        parameters_path,
+        param_overrides,
+    )
 
     # File watcher
     observer = Observer()
     handler = _YAMLWatcher(
-        yaml_path, data_path, args.no_theme, theme_path, state, chart_dir, data_dir, models_dir
+        yaml_path,
+        data_path,
+        args.no_theme,
+        theme_path,
+        state,
+        chart_dir,
+        data_dir,
+        models_dir,
+        parameters_path,
+        param_overrides,
     )
     observer.schedule(handler, str(yaml_path.parent), recursive=False)
     observer.start()

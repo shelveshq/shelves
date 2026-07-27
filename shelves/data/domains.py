@@ -389,11 +389,16 @@ def resolve_parameter_domains(
     return out
 
 
-def check_value_in_domain(param_name: str, value: Any, domain: Domain) -> None:
+def check_value_in_domain(
+    param_name: str, value: Any, domain: Domain, *, label: str = "default"
+) -> None:
     """Raise ParameterDomainError if `value` is outside `domain`.
 
     Used for the declaration-time `default` check, and reused for `--param`
-    overrides (SHE-91) so both reject exactly the same things.
+    overrides (SHE-91) so both reject exactly the same things. `label` is the
+    noun the message uses for the offending value — the declaration check leaves
+    it at "default"; `ParameterSet` passes "value", because an override is not a
+    default.
     """
     if value is None:
         return  # null means unset
@@ -410,7 +415,7 @@ def check_value_in_domain(param_name: str, value: Any, domain: Domain) -> None:
         shown = values[:10]
         lead = "Valid values" if len(values) <= 10 else "Valid values include"
         raise ParameterDomainError(
-            f"parameters.{param_name}: default {_fmt(value)} is not in the domain "
+            f"parameters.{param_name}: {label} {_fmt(value)} is not in the domain "
             f"of {domain.source!r}. {lead}: "
             f"{', '.join(str(v) for v in shown)} ({len(values)} total)."
         )
@@ -418,7 +423,7 @@ def check_value_in_domain(param_name: str, value: Any, domain: Domain) -> None:
     if domain.min <= normalized <= domain.max:
         return
     raise ParameterDomainError(
-        f"parameters.{param_name}: default {_fmt(value)} is outside the domain of "
+        f"parameters.{param_name}: {label} {_fmt(value)} is outside the domain of "
         f"{domain.source!r} (min: {domain.min}, max: {domain.max})."
     )
 

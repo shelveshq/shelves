@@ -417,6 +417,47 @@ The default is `models/parameters.yaml`, alongside your model manifests. Point
 elsewhere with `--parameters-file`. A project with no parameters file simply
 has no parameters.
 
+### Setting a value
+
+Every parameter has a `default`, so a project renders with zero input. To use a
+different value, pass `--param`:
+
+```bash
+shelves-render dashboards/sales.yaml --param region=EMEA --param metric=cost
+shelves-dev charts/revenue.yaml --param top_n=25
+```
+
+`--param` is repeatable — one flag per parameter. Values are read according to
+the parameter's declared `type`: a `number` parameter gets a number, a `date`
+parameter gets a date (ISO format, `2025-06-01`), and `string` and `field`
+parameters get the text as written. A value that doesn't fit the type, falls
+outside `values`, or names a parameter you haven't declared is an error that
+tells you the valid space:
+
+```
+parameters.top_n: 'abc' is not a number. Give a number between 5 and 50.
+```
+
+When `values` is a [field reference](#domains-from-a-field), the value is
+checked against the domain resolved from your data, and the error lists what is
+actually there:
+
+```
+parameters.region: value 'LATAM' is not in the domain of 'orders.region'.
+Valid values: APAC, EMEA, NA (3 total).
+```
+
+Pass `null` to clear a value:
+
+```bash
+shelves-render charts/revenue.yaml --param region=null
+```
+
+A filter whose value is null is dropped, so the chart renders unfiltered.
+(A `field` parameter rejects null — a shelf cannot be empty. And because `null`
+is the clearing token, a `string` parameter cannot be set to the literal text
+"null".)
+
 ### Declaration
 
 | Key | Required | Meaning |
@@ -1373,7 +1414,7 @@ The `comparison` block is optional. When present, a comparison line is rendered 
 - **Data labels on `line`, `area`, and `arc`/pie marks** — a `label` on these
   mark types is silently ignored for now. Bars, points/circles/squares, and
   ticks are supported. Line/area end-of-series labels are planned separately.
-- **Parameter controls** — parameters resolve at compile time. Interactive widgets that change a parameter in the browser are not yet available; a rendered HTML file has its parameter values baked in.
+- **Parameter controls** — parameters resolve at compile time, from the declared `default` or `--param`. Interactive widgets that change a parameter in the browser are not yet available; a rendered HTML file has its parameter values baked in.
 - **Parameters in `sort.top`** — top-N is not yet part of the DSL.
 - **Cascading parameters** — one parameter's `values` cannot depend on another parameter's current value.
 - **Relative dates** — `date` parameters take absolute bounds; "last 30 days" style presets are not yet supported.

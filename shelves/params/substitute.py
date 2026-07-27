@@ -100,8 +100,9 @@ class ParameterSet:
             except ValueError as e:
                 raise ValueError(f"parameters.{key}: {e}") from e
             # check_value_in_domain already prefixes "parameters.<key>: ".
+            # label="value": this is an override, not a declaration's default.
             if key in self.domains:
-                check_value_in_domain(key, value, self.domains[key])
+                check_value_in_domain(key, value, self.domains[key], label="value")
             values[key] = value
 
         self.values = values

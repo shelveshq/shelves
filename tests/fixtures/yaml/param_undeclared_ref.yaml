@@ -1,0 +1,6 @@
+sheet: "Metric by Country"
+data: orders
+
+cols: country
+rows: $nope
+marks: bar

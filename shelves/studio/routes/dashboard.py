@@ -44,8 +44,14 @@ async def compile_dashboard_yaml(request: Request) -> JSONResponse:
     charts_dir: Path = request.app.state.charts_dir
     theme_path: Path | None = request.app.state.theme_path
     models_dir: Path = request.app.state.models_dir
+    parameters_path: Path | None = request.app.state.parameters_path
     result = await run_dashboard_pipeline(
-        yaml_body, project_dir, charts_dir, theme_path, models_dir=models_dir
+        yaml_body,
+        project_dir,
+        charts_dir,
+        theme_path,
+        models_dir=models_dir,
+        parameters_path=parameters_path,
     )
     return JSONResponse(result)
 
@@ -56,6 +62,7 @@ async def run_dashboard_pipeline(
     charts_dir: Path,
     theme_path: Path | None,
     models_dir: Path | None = None,
+    parameters_path: Path | None = None,
 ) -> dict:
     """Run the dashboard compilation pipeline and return a result dict."""
     from shelves.schema.layout_schema import parse_dashboard
@@ -93,6 +100,23 @@ async def run_dashboard_pipeline(
     # halves of a compile can never read different model directories.
     effective_models_dir = models_dir if models_dir and models_dir.exists() else None
 
+    from shelves.params.resolve import load_parameter_set
+
+    try:
+        parameters = load_parameter_set(
+            parameters_path,
+            models_dir=effective_models_dir,
+            data_base_dir=project_dir,
+        )
+    except ValueError as e:
+        return {
+            "html": None,
+            "errors": [str(e)],
+            "warnings": [],
+            "component_tree": component_tree,
+            "canvas": {"width": spec.canvas.width, "height": spec.canvas.height},
+        }
+
     # Compile each referenced chart via the shared per-sheet loop (the same one
     # compose_dashboard uses — Studio is a surface, not a second compiler).
     # fail_fast=False: a missing/broken chart becomes a warning and an empty
@@ -107,6 +131,7 @@ async def run_dashboard_pipeline(
         data_base_dir=project_dir,
         fail_fast=False,
         restrict_links=True,
+        parameters=parameters,
     )
 
     # SHE-27: link legends to sheet scales + suppress in-sheet legends via the

@@ -21,6 +21,7 @@ from pathlib import Path
 
 from shelves.compose.legend_link import resolve_legend_links
 from shelves.diagnostics import capture_warnings
+from shelves.params.substitute import ParameterSet
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.schema.layout_schema import (
     LegendComponent,
@@ -42,6 +43,7 @@ def compose_dashboard(
     models_dir: Path | str | None = None,
     no_theme: bool = False,
     asset_url_prefix: str = "assets/",
+    parameters: ParameterSet | None = None,
 ) -> str:
     """Compose a complete dashboard from a dashboard YAML file.
 
@@ -57,6 +59,9 @@ def compose_dashboard(
         asset_url_prefix: URL prefix prepended to relative image srcs (default
             "assets/"). The render CLI passes a path computed relative to the
             output HTML's location.
+        parameters: Resolved project parameters, threaded to every sheet's
+            compile. Built ONCE by the caller so all sheets in the dashboard
+            see identical values.
 
     Returns:
         Complete HTML string for the dashboard.
@@ -90,6 +95,7 @@ def compose_dashboard(
         data_base_dir=resolved_data_dir,
         no_theme=no_theme,
         fail_fast=True,
+        parameters=parameters,
     )
     for msg in chart_warnings:
         warnings.warn(msg, stacklevel=2)
@@ -120,6 +126,7 @@ def compile_dashboard_charts(
     no_theme: bool = False,
     fail_fast: bool = False,
     restrict_links: bool = False,
+    parameters: ParameterSet | None = None,
 ) -> tuple[dict[str, dict], dict[str, FieldTypeResolver], list[str]]:
     """Compile every sheet's chart through the shared pipeline.
 
@@ -195,6 +202,7 @@ def compile_dashboard_charts(
                     theme=theme,
                     no_theme=no_theme,
                     models_dir=models_dir,
+                    parameters=parameters,
                 )
                 try:
                     vl = resolve_model_data(

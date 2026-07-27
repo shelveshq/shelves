@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from shelves.params.substitute import ParameterSet
 from shelves.schema.chart_schema import ChartSpec, parse_chart
 from shelves.theme.merge import load_theme, merge_theme
 from shelves.theme.theme_schema import ThemeSpec
@@ -23,6 +24,7 @@ def compile_chart(
     theme: ThemeSpec | None = None,
     no_theme: bool = False,
     models_dir: Path | str | None = None,
+    parameters: ParameterSet | None = None,
 ) -> tuple[dict, ChartSpec]:
     """
     Core chart pipeline: parse → translate → theme merge.
@@ -41,6 +43,8 @@ def compile_chart(
         theme: Pre-loaded ThemeSpec. Takes priority over theme_path.
         no_theme: If True, skip theme merging entirely.
         models_dir: Directory containing model YAML files.
+        parameters: Resolved project parameters. None means no parameters
+            declared — a spec containing `$refs` fails with undeclared-ref.
 
     Returns:
         Tuple of (vega_lite_spec_dict, parsed_chart_spec).
@@ -49,8 +53,10 @@ def compile_chart(
         pydantic.ValidationError: If the YAML is not a valid chart spec.
         yaml.YAMLError: If the YAML string is malformed.
         FileNotFoundError: If theme_path doesn't exist.
+        ValueError: a `$ref` is undeclared, sits in a forbidden position, or has
+            the wrong type for its slot.
     """
-    spec = parse_chart(yaml_text)
+    spec = parse_chart(yaml_text, parameters=parameters)
 
     if not no_theme and theme is None:
         theme = load_theme(theme_path)

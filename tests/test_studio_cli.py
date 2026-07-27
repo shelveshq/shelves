@@ -415,6 +415,7 @@ marks: bar
             import shutil
 
             shutil.copytree(PROJECT_DIR / "models", tmp_path / "models")
+            (tmp_path / "models" / "parameters.yaml").unlink()
             app = create_app(project_dir=tmp_path)
             client = TestClient(app)
             response = client.post("/compile", content=self._VALID_YAML)
