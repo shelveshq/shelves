@@ -210,6 +210,7 @@ def compile_dashboard_charts(
                         chart_spec,
                         models_dir=models_dir,
                         data_base_dir=data_base_dir,
+                        parameters=parameters,
                     )
                 except Exception as de:
                     warnings_out.append(f"Data resolution skipped for '{name}': {de}")

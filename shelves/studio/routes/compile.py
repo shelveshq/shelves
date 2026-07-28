@@ -189,6 +189,7 @@ async def compile_yaml(request: Request) -> JSONResponse:
                 spec,
                 models_dir=models_dir,
                 data_base_dir=request.app.state.project_dir,
+                parameters=parameters,
             )
     except Exception as e:
         warnings.append(f"Data resolution skipped: {e}")

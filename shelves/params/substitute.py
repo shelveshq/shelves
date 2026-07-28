@@ -20,7 +20,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 from shelves.params.positions import classify
-from shelves.params.refs import INTERP_RE, interp_refs, unescape_dollars, whole_ref
+from shelves.params.refs import (
+    INTERP_RE,
+    interp_refs,
+    unescape_dollars,
+    whole_ref,
+)
 from shelves.params.schema import ParametersBlock, validate_value
 
 if TYPE_CHECKING:
@@ -242,6 +247,48 @@ class _Walker:
             path,
             name,
         )
+
+
+def substitute_calculation(
+    calc: str,
+    parameters: ParameterSet,
+    *,
+    context: str,
+) -> str:
+    """Replace `$name` parameter references in a SQL calculation string.
+
+    Unlike the chart-YAML walk, this raises immediately on problems —
+    a bad reference in SQL is a hard error, not a collected diagnostic.
+    """
+    if "${" not in calc:
+        return calc
+
+    declared = parameters.declared
+
+    for m in INTERP_RE.finditer(calc):
+        if m.start() > 0 and calc[m.start() - 1] == "$":
+            continue
+        name = m.group(1)
+        if name not in declared:
+            declared_names = ", ".join(sorted(declared)) or "(none)"
+            raise ValueError(
+                f'"${{{name}}}" in calculation of {context} is not a declared '
+                f"parameter. Declared: {declared_names}."
+            )
+        value = parameters.values[name]
+        if value is None:
+            raise ValueError(
+                f"Parameter '{name}' resolves to null, which cannot be "
+                f"substituted into a SQL calculation."
+            )
+
+    def _replace(match: re.Match[str]) -> str:
+        if match.start() > 0 and calc[match.start() - 1] == "$":
+            return match.group(0)
+        return str(parameters.values[match.group(1)])
+
+    result = INTERP_RE.sub(_replace, calc)
+    return unescape_dollars(result)
 
 
 # ─── helpers ──────────────────────────────────────────────────

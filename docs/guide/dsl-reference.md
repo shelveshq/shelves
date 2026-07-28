@@ -570,6 +570,7 @@ values:
 | Field slots — `rows`, `cols`, `color`, `detail`, `size`, `facet.*`, `sort.field`, `tooltip`, `label.field`, `kpi.value`, measure and layer entries | `$name` | `field` parameters |
 | Filter values — `value`, `values[…]`, `range[…]` | `$name` | `string`, `number`, `date` |
 | Title text — `sheet`, `description`, `axis.x.title`, `axis.y.title`, `kpi.title` | `${name}` | all types |
+| Model manifest `calculation` fields (measures and dimensions) | `${name}` | all types (file/DuckDB sources only) |
 
 A bare `$name` is recognized only when it is the **entire** value. To embed a
 parameter in a longer string use `${name}`. Write `$$` for a literal `$`.
@@ -577,6 +578,41 @@ parameter in a longer string use `${name}`. Write `$$` for a literal `$`.
 Parameters may **not** appear in mark types, style or theme values, or layout
 structure. There is no expression language — calculations belong in the
 semantic model.
+
+### Parameterized calculations
+
+Parameters can appear inside `calculation` fields in model manifests, using the
+`${name}` interpolation form — the same syntax used for parameter references
+inside any string. This lets a single calculated measure serve multiple
+granularities without duplicating definitions:
+
+```yaml
+# models/parameters.yaml
+parameters:
+  grain:
+    type: string
+    values: [day, week, month, quarter, year]
+    default: month
+
+# models/kpi.yaml
+measures:
+  sales_current:
+    calculation: >-
+      SUM("revenue") FILTER (WHERE "Order Date"
+      >= DATE_TRUNC('${grain}', CURRENT_DATE))
+    label: Sales (Current Period)
+```
+
+Override at render time with `--param grain=week`.
+
+Substitution runs at query time, not at model load time, so the cached model
+stays parameter-free. `{{ ref }}` cross-references and `${param}` references
+coexist without interference — `{{ ref }}` is resolved after `${param}`.
+
+**Cube.dev asymmetry:** Cube measures are defined server-side and cannot be
+parameterized this way. If a Cube-source model contains `${name}` in a
+calculation, the compile raises an error. Only file-backed (DuckDB) sources
+support parameterized calculations.
 
 ### Null means unset
 
@@ -1418,6 +1454,7 @@ The `comparison` block is optional. When present, a comparison line is rendered 
 - **Parameters in `sort.top`** — top-N is not yet part of the DSL.
 - **Cascading parameters** — one parameter's `values` cannot depend on another parameter's current value.
 - **Relative dates** — `date` parameters take absolute bounds; "last 30 days" style presets are not yet supported.
+- **Parameterized calculations on Cube sources** — Cube.dev measures are defined server-side. `${param}` in a `calculation` field is supported on file/DuckDB sources only; Cube-source models with parameterized calculations raise an error.
 - **Measure-sourced parameter domains** — a `values:` field reference must point at a dimension. Use an explicit `min`/`max` range for a measure.
 - **Domain caching** — a field-reference domain is queried fresh on every compile. There is no cache and no invalidation.
 - **Searchable high-cardinality domains** — fields with more than 500 distinct values must be listed explicitly; there is no server-backed search-as-you-type picker.

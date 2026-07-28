@@ -236,6 +236,10 @@ applies to every sheet:
 shelves-render dashboards/sales.yaml --chart-dir charts/ --models-dir models/ --param metric=cost
 ```
 
+Parameters can also appear inside `calculation` fields in model manifests
+(file-backed sources only), letting a single calculated measure serve multiple
+granularities. See [Parameterized calculations](dsl-reference.md#parameterized-calculations).
+
 If your parameters file lives somewhere other than `models/parameters.yaml`,
 point at it with `--parameters-file`. See the
 [DSL reference](dsl-reference.md#parameters) for the full declaration grammar

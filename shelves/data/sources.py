@@ -7,11 +7,14 @@ New adapters register themselves at import time.
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from shelves.models.schema import DataModel
 from shelves.schema.chart_schema import ChartSpec
 from shelves.schema.field_types import FieldTypeResolver
+
+if TYPE_CHECKING:
+    from shelves.params.substitute import ParameterSet
 
 
 class DataSourceAdapter(Protocol):
@@ -22,6 +25,8 @@ class DataSourceAdapter(Protocol):
         model: DataModel,
         chart_spec: ChartSpec,
         resolver: FieldTypeResolver,
+        *,
+        parameters: ParameterSet | None = ...,
     ) -> list[dict[str, Any]]:
         """Fetch rows from the data source."""
         ...
@@ -77,6 +82,8 @@ class CubeDataSourceAdapter:
         model: DataModel,
         chart_spec: ChartSpec,
         resolver: FieldTypeResolver,
+        *,
+        parameters: ParameterSet | None = None,
     ) -> list[dict[str, Any]]:
         from shelves.data.cube_client import fetch_from_cube_model
 

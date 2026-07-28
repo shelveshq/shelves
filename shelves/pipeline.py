@@ -76,6 +76,7 @@ def resolve_model_data(
     *,
     models_dir: Path | str | None = None,
     data_base_dir: Path | None = None,
+    parameters: ParameterSet | None = None,
 ) -> dict:
     """
     Resolve data from the chart's model source.
@@ -111,4 +112,4 @@ def resolve_model_data(
             return resolve_data(vl_spec, spec, rows=rows)
         return vl_spec
     else:
-        return resolve_data(vl_spec, spec, models_dir=models_dir)
+        return resolve_data(vl_spec, spec, models_dir=models_dir, parameters=parameters)

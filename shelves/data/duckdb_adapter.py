@@ -18,7 +18,7 @@ import datetime
 import re
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shelves.data.fields import collect_chart_fields
 from shelves.errors import ShelvesError
@@ -29,6 +29,9 @@ from shelves.models.schema import (
 )
 from shelves.schema.chart_schema import ChartSpec, ShelfFilter
 from shelves.schema.field_types import FieldTypeResolver
+
+if TYPE_CHECKING:
+    from shelves.params.substitute import ParameterSet
 
 
 class DuckDBQueryError(ShelvesError):
@@ -81,7 +84,11 @@ def _serialize_value(v: Any) -> Any:
     return v
 
 
-def resolve_measure_expressions(model: DataModel) -> dict[str, str]:
+def resolve_measure_expressions(
+    model: DataModel,
+    *,
+    parameters: ParameterSet | None = None,
+) -> dict[str, str]:
     """
     Resolve all measure definitions in a model to SQL expressions.
 
@@ -121,7 +128,11 @@ def resolve_measure_expressions(model: DataModel) -> dict[str, str]:
                     "calculation."
                 )
             resolved = measure.calculation
-            for ref in CALC_REF_RE.findall(measure.calculation):
+            if parameters is not None:
+                from shelves.params.substitute import substitute_calculation
+
+                resolved = substitute_calculation(resolved, parameters, context=f"measure '{name}'")
+            for ref in CALC_REF_RE.findall(resolved):
                 resolved = re.sub(
                     r"\{\{\s*" + re.escape(ref) + r"\s*\}\}",
                     f"({exprs[ref]})",
@@ -137,10 +148,12 @@ def build_sql(
     model: DataModel,
     chart_spec: ChartSpec,
     resolver: FieldTypeResolver,
+    *,
+    parameters: ParameterSet | None = None,
 ) -> str:
     """Build a SQL SELECT statement for the fields a chart needs."""
     fields = collect_chart_fields(chart_spec)
-    measure_exprs = resolve_measure_expressions(model)
+    measure_exprs = resolve_measure_expressions(model, parameters=parameters)
 
     select_parts: list[str] = []
     group_by_parts: list[str] = []
@@ -185,6 +198,12 @@ def build_sql(
 
             if dim_def is not None and dim_def.calculation is not None:
                 dim_sql = dim_def.calculation
+                if parameters is not None:
+                    from shelves.params.substitute import substitute_calculation
+
+                    dim_sql = substitute_calculation(
+                        dim_sql, parameters, context=f"dimension '{base}'"
+                    )
             else:
                 col = dim_def.column if dim_def is not None and dim_def.column is not None else base
                 col_quoted = _quote_identifier(col)
@@ -382,9 +401,13 @@ class DuckDBAdapter:
         model: DataModel,
         chart_spec: ChartSpec,
         resolver: FieldTypeResolver,
+        *,
+        parameters: ParameterSet | None = None,
     ) -> list[dict[str, Any]]:
         file_path = self._source_file(model)
-        return self._execute(build_sql(file_path, model, chart_spec, resolver))
+        return self._execute(
+            build_sql(file_path, model, chart_spec, resolver, parameters=parameters)
+        )
 
     def fetch_domain_values(
         self,

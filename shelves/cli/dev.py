@@ -143,7 +143,9 @@ def _build_chart(
         rows = json.loads(data_path.read_text())
         vl_spec = resolve_data(vl_spec, spec, rows=rows)
     else:
-        vl_spec = resolve_model_data(vl_spec, spec, models_dir=models_dir, data_base_dir=data_dir)
+        vl_spec = resolve_model_data(
+            vl_spec, spec, models_dir=models_dir, data_base_dir=data_dir, parameters=parameters
+        )
 
     # Dev preview: large chart for easy visual inspection
     vl_spec.setdefault("width", 1400)

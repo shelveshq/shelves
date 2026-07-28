@@ -1,0 +1,5 @@
+sheet: "Sales by Region"
+data: parameterized_calc
+cols: region
+rows: sales_current
+marks: bar

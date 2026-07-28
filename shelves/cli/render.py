@@ -170,7 +170,9 @@ def _render_chart(args, yaml_string, parameters=None):
         # data_base_dir matters here, not just on the dashboard branch: domain
         # resolution reads --data-dir, so a chart resolving rows from the CWD
         # would validate a parameter against one dataset and chart another.
-        vl_spec = resolve_model_data(vl_spec, spec, models_dir=models_dir, data_base_dir=data_dir)
+        vl_spec = resolve_model_data(
+            vl_spec, spec, models_dir=models_dir, data_base_dir=data_dir, parameters=parameters
+        )
 
     html = render_html(vl_spec, title=spec.sheet)
 

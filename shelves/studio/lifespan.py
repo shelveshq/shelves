@@ -207,6 +207,7 @@ async def compile_file_and_broadcast(
                     spec,
                     models_dir=models_dir,
                     data_base_dir=project_dir,
+                    parameters=parameters,
                 )
         except Exception as e:
             warnings.append(f"Data resolution skipped: {e}")

@@ -345,7 +345,7 @@ marks: bar
 
         fake_rows = [{"category": "Tech", "net_sales": 100}]
 
-        def mock_resolve(spec, chart_spec, models_dir=None):
+        def mock_resolve(spec, chart_spec, models_dir=None, **kwargs):
             import copy
 
             result = copy.deepcopy(spec)
