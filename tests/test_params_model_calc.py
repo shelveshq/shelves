@@ -33,9 +33,9 @@ def _clear_cache():
 
 def _ps(grain: str = "month", period: str = "year") -> ParameterSet:
     """Build a ParameterSet with grain + period params for testing."""
-    from shelves.params.schema import StringParameter
+    from shelves.params.schema import ParametersBlock, StringParameter
 
-    block = {
+    block: ParametersBlock = {
         "grain": StringParameter(
             type="string",
             default="month",
@@ -138,9 +138,9 @@ class TestSubstituteCalculation:
             substitute_calculation(calc, _ps(), context="measure 'x'")
 
     def test_null_param_raises(self):
-        from shelves.params.schema import StringParameter
+        from shelves.params.schema import ParametersBlock, StringParameter
 
-        block = {
+        block: ParametersBlock = {
             "nullable": StringParameter(type="string", default=None, label="N"),
         }
         ps = ParameterSet(block)
