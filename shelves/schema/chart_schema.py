@@ -22,7 +22,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-from shelves.params.substitute import ParameterSet, substitute_parameters
+from shelves.params.substitute import ParameterReferenceError, ParameterSet, substitute_parameters
 
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
@@ -500,6 +500,6 @@ def parse_chart(
 
     result = substitute_parameters(raw, parameters or ParameterSet.empty())
     if result.errors:
-        raise ValueError("\n".join(d.message for d in result.errors))
+        raise ParameterReferenceError(result.errors)
 
     return ChartSpec.model_validate(result.data)

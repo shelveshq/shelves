@@ -90,6 +90,7 @@ def _build(
             models_dir=models_dir,
             data_base_dir=data_dir,
             overrides=param_overrides or {},
+            resolve_domains=data_path is None,
         )
 
         if isinstance(raw, dict) and "dashboard" in raw:
@@ -329,6 +330,9 @@ def main():
     models_dir = Path(args.models_dir).resolve() if args.models_dir else None
     assets_dir = Path(args.assets_dir).resolve() if args.assets_dir else Path("assets").resolve()
     parameters_path = Path(args.parameters_file).resolve() if args.parameters_file else None
+
+    if args.parameters_file and parameters_path and not parameters_path.exists():
+        print(f"Warning: parameters file not found: {args.parameters_file}", file=sys.stderr)
 
     try:
         param_overrides = parse_param_flags(args.param)

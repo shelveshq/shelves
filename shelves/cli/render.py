@@ -80,6 +80,9 @@ def main():
 
     data_dir = Path(args.data_dir) if args.data_dir else None
 
+    if args.parameters_file and not Path(args.parameters_file).exists():
+        print(f"Warning: parameters file not found: {args.parameters_file}", file=sys.stderr)
+
     # Built once, before anything is written: a bad --param should fail before
     # an output file exists. --no-data means touch no data source, so it also
     # skips field-reference domain resolution.
@@ -89,7 +92,7 @@ def main():
             models_dir=Path(args.models_dir) if args.models_dir else None,
             data_base_dir=data_dir,
             overrides=parse_param_flags(args.param),
-            resolve_domains=not args.no_data,
+            resolve_domains=not args.no_data and not args.data,
         )
     except ValueError as e:  # ParameterDomainError included
         print(f"Error: {e}", file=sys.stderr)

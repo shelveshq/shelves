@@ -17,7 +17,7 @@ from shelves.data.domains import Domain
 from shelves.params.loader import load_parameters
 from shelves.params.positions import classify
 from shelves.params.refs import interp_refs, unescape_dollars, whole_ref
-from shelves.params.substitute import ParameterSet, substitute_parameters
+from shelves.params.substitute import ParameterReferenceError, ParameterSet, substitute_parameters
 from shelves.schema.chart_schema import parse_chart
 from tests.conftest import load_yaml, params_fixture
 
@@ -467,7 +467,7 @@ marks: bar
         assert result.data["rows"] == "$nope"
 
     def test_e17_parse_chart_raises(self):
-        with pytest.raises(ValueError, match="not a declared parameter"):
+        with pytest.raises(ParameterReferenceError, match="not a declared parameter") as exc:
             parse_chart("""
 sheet: "T"
 data: orders
@@ -475,6 +475,8 @@ cols: country
 rows: $nope
 marks: bar
 """)
+        assert len(exc.value.diagnostics) == 1
+        assert exc.value.diagnostics[0].code == "undeclared_ref"
 
     def test_undeclared_ref_in_interpolation(self):
         result = _sub("""

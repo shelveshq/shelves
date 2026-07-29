@@ -49,6 +49,14 @@ _FORBIDDEN_MESSAGE = (
 )
 
 
+class ParameterReferenceError(ValueError):
+    """Raised when parameter references in a chart spec have errors."""
+
+    def __init__(self, diagnostics: list[Diagnostic]) -> None:
+        self.diagnostics = diagnostics
+        super().__init__("\n".join(d.message for d in diagnostics))
+
+
 @dataclass(frozen=True)
 class Diagnostic:
     code: DiagnosticCode

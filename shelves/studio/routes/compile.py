@@ -98,6 +98,7 @@ async def compile_yaml(request: Request) -> JSONResponse:
     import yaml as _yaml
 
     from shelves.params.resolve import load_parameter_set
+    from shelves.params.substitute import ParameterReferenceError as _ParameterReferenceError
     from shelves.pipeline import compile_chart, resolve_model_data
 
     yaml_body = (await request.body()).decode("utf-8")
@@ -148,6 +149,27 @@ async def compile_yaml(request: Request) -> JSONResponse:
             {
                 "vega_lite_spec": None,
                 "errors": _format_validation_errors(e, yaml_body),
+                "warnings": [],
+                "model": None,
+            }
+        )
+    except _ParameterReferenceError as e:
+        return JSONResponse(
+            {
+                "vega_lite_spec": None,
+                "errors": [
+                    {
+                        "loc": [d.path],
+                        "display_loc": [d.path],
+                        "msg": d.message,
+                        "friendly_msg": d.message,
+                        "source": "parameter",
+                        "type": d.code,
+                        "line": None,
+                        "col": None,
+                    }
+                    for d in e.diagnostics
+                ],
                 "warnings": [],
                 "model": None,
             }

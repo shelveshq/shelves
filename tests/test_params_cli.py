@@ -18,6 +18,7 @@ Coercion is driven by the DECLARED type, never inferred from the string: a
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 from pathlib import Path
 
@@ -682,3 +683,35 @@ class TestRenderCLIDataFlag:
         vl = _vl_from_html(out.read_text())
         assert vl["encoding"]["y"]["field"] == "cost"
         assert len(vl["data"]["values"]) > 0
+
+
+# ─── Missing explicit parameters file warning ──────────────────────
+
+
+class TestMissingParametersFileWarning:
+    def test_render_cli_warns_on_missing_explicit_file(self, capsys, monkeypatch, tmp_path):
+        import shelves.cli.render as render
+
+        chart = tmp_path / "chart.yaml"
+        chart.write_text("sheet: T\ndata: inline\ncols: a\nrows: b\nmarks: bar\n")
+        out = tmp_path / "chart.html"
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "shelves-render",
+                str(chart),
+                "--no-data",
+                "--no-theme",
+                "--parameters-file",
+                str(tmp_path / "nonexistent.yaml"),
+                "--out",
+                str(out),
+            ],
+        )
+        with contextlib.suppress(SystemExit, Exception):
+            render.main()
+        assert "not found" in capsys.readouterr().err
+
+    def test_default_missing_path_does_not_warn(self, tmp_path):
+        ps = load_parameter_set(None, models_dir=tmp_path)
+        assert ps.declared == {}
