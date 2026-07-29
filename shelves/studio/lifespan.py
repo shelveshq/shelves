@@ -61,6 +61,10 @@ async def handle_fs_event(
         await manager.broadcast({"type": "theme_changed", "path": rel})
         return
 
+    if parameters_path is not None and abs_path.resolve() == parameters_path.resolve():
+        await manager.broadcast({"type": "parameters_changed", "path": rel})
+        return
+
     if should_compile(abs_path) and event != "deleted":
         await compile_file_and_broadcast(
             abs_path,

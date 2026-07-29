@@ -15,6 +15,7 @@ run ahead of this one and consume its own refs first.
 from __future__ import annotations
 
 import copy
+import datetime as dt
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -249,6 +250,21 @@ class _Walker:
         )
 
 
+def _safe_sql_literal(value: Any) -> str:
+    """Escape a parameter value for safe splicing into a SQL calculation.
+
+    The SQL template controls quoting (e.g. DATE_TRUNC('${grain}', col)),
+    so we escape dangerous characters rather than adding wrapper quotes.
+    """
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, dt.date):
+        return value.isoformat()
+    if value is None:
+        return "NULL"
+    return str(value).replace("'", "''")
+
+
 def substitute_calculation(
     calc: str,
     parameters: ParameterSet,
@@ -285,7 +301,7 @@ def substitute_calculation(
     def _replace(match: re.Match[str]) -> str:
         if match.start() > 0 and calc[match.start() - 1] == "$":
             return match.group(0)
-        return str(parameters.values[match.group(1)])
+        return _safe_sql_literal(parameters.values[match.group(1)])
 
     result = INTERP_RE.sub(_replace, calc)
     return unescape_dollars(result)

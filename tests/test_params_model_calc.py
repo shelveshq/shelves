@@ -149,6 +149,63 @@ class TestSubstituteCalculation:
             substitute_calculation(calc, ps, context="measure 'x'")
 
 
+# ─── SQL literal safety ──────────────────────────────────────────────
+
+
+class TestSafeSqlLiteral:
+    def test_string_value_passes_through(self):
+        from shelves.params.schema import ParametersBlock, StringParameter
+
+        block: ParametersBlock = {
+            "region": StringParameter(type="string", default="EMEA", label="Region"),
+        }
+        ps = ParameterSet(block)
+        result = substitute_calculation("WHERE region = '${region}'", ps, context="measure 'x'")
+        assert result == "WHERE region = 'EMEA'"
+
+    def test_string_with_single_quotes_escaped(self):
+        from shelves.params.schema import ParametersBlock, StringParameter
+
+        block: ParametersBlock = {
+            "name": StringParameter(type="string", default="O'Brien", label="Name"),
+        }
+        ps = ParameterSet(block)
+        result = substitute_calculation("WHERE name = '${name}'", ps, context="dim 'x'")
+        assert result == "WHERE name = 'O''Brien'"
+
+    def test_malicious_sql_is_escaped(self):
+        from shelves.params.schema import ParametersBlock, StringParameter
+
+        block: ParametersBlock = {
+            "val": StringParameter(type="string", default="x", label="V"),
+        }
+        ps = ParameterSet(block, overrides={"val": "'; DROP TABLE t; --"})
+        result = substitute_calculation("WHERE col = '${val}'", ps, context="measure 'x'")
+        assert result == "WHERE col = '''; DROP TABLE t; --'"
+
+    def test_number_value_not_quoted(self):
+        from shelves.params.schema import NumberParameter, ParametersBlock
+
+        block: ParametersBlock = {
+            "top_n": NumberParameter(type="number", default=10, label="Top N"),
+        }
+        ps = ParameterSet(block)
+        result = substitute_calculation("LIMIT ${top_n}", ps, context="measure 'x'")
+        assert result == "LIMIT 10"
+
+    def test_date_value_iso_format(self):
+        import datetime as dt
+
+        from shelves.params.schema import DateParameter, ParametersBlock
+
+        block: ParametersBlock = {
+            "as_of": DateParameter(type="date", default=dt.date(2025, 1, 15), label="As Of"),
+        }
+        ps = ParameterSet(block)
+        result = substitute_calculation("WHERE d >= '${as_of}'", ps, context="measure 'x'")
+        assert result == "WHERE d >= '2025-01-15'"
+
+
 # ─── DuckDB adapter integration ─────────────────────────────────────
 
 
