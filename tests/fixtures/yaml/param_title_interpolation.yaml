@@ -1,0 +1,7 @@
+sheet: "Revenue — ${region}"
+description: "Filtered to ${region}, top ${top_n}"
+data: orders
+
+cols: country
+rows: revenue
+marks: bar

@@ -358,6 +358,304 @@ filters:
 
 ---
 
+## Parameters
+
+Parameters are named values declared once for a whole project and referenced
+from any chart with `$name`. They live in their own file beside the semantic
+models — a chart never declares a parameter, it only references one.
+
+```yaml
+# models/parameters.yaml
+parameters:
+  metric:
+    type: field
+    values:
+      - model: orders
+        field: revenue
+      - model: orders
+        field: cost
+      - model: orders
+        field: arpu
+    default: revenue
+    label: Metric
+
+  region:
+    type: string
+    values:
+      - model: orders
+        field: region
+    default: EMEA
+
+  top_n:
+    type: number
+    values:
+      - min: 5
+        max: 50
+    default: 10
+```
+
+```yaml
+# charts/sales.yaml
+sheet: "Metric by Country"
+data: orders
+cols: country
+rows: $metric
+marks: bar
+filters:
+  - field: region
+    operator: eq
+    value: $region
+```
+
+Parameters resolve at compile time — the reference is replaced before the chart
+is built, so a parameterized spec compiles to exactly the same Vega-Lite as the
+equivalent hand-written one.
+
+### File location
+
+The default is `models/parameters.yaml`, alongside your model manifests. Point
+elsewhere with `--parameters-file`. A project with no parameters file simply
+has no parameters.
+
+### Setting a value
+
+Every parameter has a `default`, so a project renders with zero input. To use a
+different value, pass `--param`:
+
+```bash
+shelves-render dashboards/sales.yaml --param region=EMEA --param metric=cost
+shelves-dev charts/revenue.yaml --param top_n=25
+```
+
+`--param` is repeatable — one flag per parameter. Values are read according to
+the parameter's declared `type`: a `number` parameter gets a number, a `date`
+parameter gets a date (ISO format, `2025-06-01`), and `string` and `field`
+parameters get the text as written. A value that doesn't fit the type, falls
+outside `values`, or names a parameter you haven't declared is an error that
+tells you the valid space:
+
+```
+parameters.top_n: 'abc' is not a number. Give a number between 5 and 50.
+```
+
+When `values` is a [field reference](#domains-from-a-field), the value is
+checked against the domain resolved from your data, and the error lists what is
+actually there:
+
+```
+parameters.region: value 'LATAM' is not in the domain of 'orders.region'.
+Valid values: APAC, EMEA, NA (3 total).
+```
+
+Pass `null` to clear a value:
+
+```bash
+shelves-render charts/revenue.yaml --param region=null
+```
+
+A filter whose value is null is dropped, so the chart renders unfiltered.
+(A `field` parameter rejects null — a shelf cannot be empty. And because `null`
+is the clearing token, a `string` parameter cannot be set to the literal text
+"null".)
+
+### Declaration
+
+| Key | Required | Meaning |
+|---|---|---|
+| `type` | yes | `string`, `number`, `date`, or `field` |
+| `values` | see below | Constraint on the value space |
+| `default` | yes | Every parameter must render with zero input |
+| `label` | no | Display name; falls back to the model's label |
+
+`type: field` holds a **field name** — it is the measure/dimension swapper. The
+other three hold literal values.
+
+### The `values` key
+
+`values` is always a **list**. Each entry is one of three things:
+
+```yaml
+values:
+  - open              # a literal value
+  - closed
+
+values:
+  - model: orders     # a field reference
+    field: region
+
+values:
+  - min: 5            # a range
+    max: 50
+```
+
+Because the parameters file stands on its own, every field reference names its
+model — there is no ambient model to fall back on.
+
+What the list means depends on `type`:
+
+| Entries | Meaning | Valid on |
+|---|---|---|
+| literal values | the allowed values, enumerated | `string`, `number`, `date` |
+| exactly one field reference | the domain comes from that field — its distinct values for `string`, its min/max for `number` and `date` | `string`, `number`, `date` |
+| one or more field references | the allowed field names | `field` |
+| one `model` with no `field` | any field in that model | `field` |
+| exactly one range | continuous bounds | `number`, `date` |
+| omitted | unconstrained | `string`, `number`, `date` |
+
+Don't mix entry kinds in one list — literals, field references, and ranges mean
+different things. A `field` parameter always needs field references; there is
+no way to name a field without naming its model. Field names may carry a
+temporal grain suffix (`field: order_date.month`).
+
+### Domains from a field
+
+When a `string`, `number`, or `date` parameter's `values` is a single field
+reference, Shelves resolves the real domain from your data **when the chart
+compiles** — not in the browser. The resolved domain is baked into the output,
+so it works from a `file://` page and is unaffected by value truncation.
+
+```yaml
+parameters:
+  region:
+    type: string
+    values:
+      - model: orders
+        field: region     # → the distinct regions in the data
+    default: EMEA
+
+  as_of:
+    type: date
+    values:
+      - model: orders
+        field: order_date.month   # → the min and max month in the data
+    default: 2024-01-01
+```
+
+| `type` | What is resolved |
+|---|---|
+| `string` | the distinct values, sorted |
+| `number` | the minimum and maximum |
+| `date` | the earliest and latest date |
+
+This works identically against all three data backends — inline JSON, a file
+source via DuckDB, and Cube.dev.
+
+**A domain field must be a dimension.** Pointing at a measure is an error: a
+measure's range depends on how a chart aggregates it, and the backends do not
+agree on what that means. Use an explicit `min`/`max` range for a measure-shaped
+parameter.
+
+**Grain suffixes work.** `field: order_date.month` resolves distinct *months*,
+not distinct days.
+
+**`default` must be inside the resolved domain.** A default that is not one of
+the distinct values, or falls outside the min/max, is a compile error naming the
+parameter and showing the valid values. `default: null` is exempt — null means
+*unset*.
+
+**More than 500 distinct values is an error.** A picker with that many options
+is not usable, and the query is not cheap. List the values you want explicitly:
+
+```yaml
+values:
+  - EMEA
+  - APAC
+  - NA
+```
+
+### Where parameters can be referenced
+
+| Position | Form | Accepts |
+|---|---|---|
+| Field slots — `rows`, `cols`, `color`, `detail`, `size`, `facet.*`, `sort.field`, `tooltip`, `label.field`, `kpi.value`, measure and layer entries | `$name` | `field` parameters |
+| Filter values — `value`, `values[…]`, `range[…]` | `$name` | `string`, `number`, `date` |
+| Title text — `sheet`, `description`, `axis.x.title`, `axis.y.title`, `kpi.title` | `${name}` | all types |
+| Model manifest `calculation` fields (measures and dimensions) | `${name}` | all types (file/DuckDB sources only) |
+
+A bare `$name` is recognized only when it is the **entire** value. To embed a
+parameter in a longer string use `${name}`. Write `$$` for a literal `$`.
+
+Parameters may **not** appear in mark types, style or theme values, or layout
+structure. There is no expression language — calculations belong in the
+semantic model.
+
+### Parameterized calculations
+
+Parameters can appear inside `calculation` fields in model manifests, using the
+`${name}` interpolation form — the same syntax used for parameter references
+inside any string. This lets a single calculated measure serve multiple
+granularities without duplicating definitions:
+
+```yaml
+# models/parameters.yaml
+parameters:
+  grain:
+    type: string
+    values: [day, week, month, quarter, year]
+    default: month
+
+# models/kpi.yaml
+measures:
+  sales_current:
+    calculation: >-
+      SUM("revenue") FILTER (WHERE "Order Date"
+      >= DATE_TRUNC('${grain}', CURRENT_DATE))
+    label: Sales (Current Period)
+```
+
+Override at render time with `--param grain=week`.
+
+Substitution runs at query time, not at model load time, so the cached model
+stays parameter-free. `{{ ref }}` cross-references and `${param}` references
+coexist without interference — `{{ ref }}` is resolved after `${param}`.
+
+**Cube.dev asymmetry:** Cube measures are defined server-side and cannot be
+parameterized this way. If a Cube-source model contains `${name}` in a
+calculation, the compile raises an error. Only file-backed (DuckDB) sources
+support parameterized calculations.
+
+### Null means unset
+
+`default: null` is allowed on `string`, `number`, and `date`. A filter whose
+value resolves to null is **dropped entirely**, so the chart renders
+unfiltered:
+
+```yaml
+# models/parameters.yaml
+parameters:
+  region:
+    type: string
+    values:
+      - model: orders
+        field: region
+    default: null
+```
+
+```yaml
+# chart — no filter is applied
+filters:
+  - field: region
+    operator: eq
+    value: $region
+```
+
+`type: field` requires a non-null default — a shelf cannot be empty.
+
+### Parameterizing a range
+
+There is no range-valued parameter. Use two scalars:
+
+```yaml
+filters:
+  - field: margin_pct
+    operator: between
+    range:
+      - $lo
+      - $hi
+```
+
+---
+
 ## Sort
 
 Sort modifies the encoding on a target channel. When `channel` is omitted, it
@@ -1152,6 +1450,14 @@ The `comparison` block is optional. When present, a comparison line is rendered 
 - **Data labels on `line`, `area`, and `arc`/pie marks** — a `label` on these
   mark types is silently ignored for now. Bars, points/circles/squares, and
   ticks are supported. Line/area end-of-series labels are planned separately.
+- **Parameter controls** — parameters resolve at compile time, from the declared `default` or `--param`. Interactive widgets that change a parameter in the browser are not yet available; a rendered HTML file has its parameter values baked in.
+- **Parameters in `sort.top`** — top-N is not yet part of the DSL.
+- **Cascading parameters** — one parameter's `values` cannot depend on another parameter's current value.
+- **Relative dates** — `date` parameters take absolute bounds; "last 30 days" style presets are not yet supported.
+- **Parameterized calculations on Cube sources** — Cube.dev measures are defined server-side. `${param}` in a `calculation` field is supported on file/DuckDB sources only; Cube-source models with parameterized calculations raise an error.
+- **Measure-sourced parameter domains** — a `values:` field reference must point at a dimension. Use an explicit `min`/`max` range for a measure.
+- **Domain caching** — a field-reference domain is queried fresh on every compile. There is no cache and no invalidation.
+- **Searchable high-cardinality domains** — fields with more than 500 distinct values must be listed explicitly; there is no server-backed search-as-you-type picker.
 
 See the DSL version history below for what shipped in each version.
 
@@ -1161,7 +1467,8 @@ See the DSL version history below for what shipped in each version.
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.9.0** | Current | Axis channel toggles: `AxisChannelConfig` gains `ruler` (→ VL `axis.domain`), `ticks` (→ `axis.ticks`), `labels` (→ `axis.labels`). Each axis channel also accepts a bare bool (`x: false` removes the axis). The x-off/y-on grid default moved from a hardcoded encoding injection to the theme (`axisX`/`axisY`), making grid/ruler/tick defaults themeable. |
+| **0.10.0** | Current | Project-level parameters: a `models/parameters.yaml` file declaring `string`/`number`/`date`/`field` parameters, referenced from charts with `$name` in field slots and filter values, and `${name}` in title text. Resolved before parsing, so a parameterized spec compiles identically to the hand-written equivalent. |
+| **0.9.0** | Previous | Axis channel toggles: `AxisChannelConfig` gains `ruler` (→ VL `axis.domain`), `ticks` (→ `axis.ticks`), `labels` (→ `axis.labels`). Each axis channel also accepts a bare bool (`x: false` removes the axis). The x-off/y-on grid default moved from a hardcoded encoding injection to the theme (`axisX`/`axisY`), making grid/ruler/tick defaults themeable. |
 | **0.8.0** | Previous | **Breaking:** label grammar — `LabelConfig.position` replaced by `horizontal`/`vertical`; `color` now accepts `"match"`. |
 | **0.7.0** | Previous | Labels: `label` property on charts (`true`, `false`, or config object). Two-axis position model (`vertical` + `horizontal`). Three-level cascade (chart → entry → layer). Label intents emitted in `usermeta` for compile-then-patch rendering. |
 | **0.6.0** | Previous | KPI block schema: new `kpi` top-level property with `value`, `format`, `title`, `spacing`, and `comparison` sub-block. Replaces placeholder `KPIConfig`. |

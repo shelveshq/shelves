@@ -1,0 +1,15 @@
+sheet: "Revenue by Country"
+data: orders
+
+cols: country
+rows: revenue
+marks: bar
+filters:
+  - field: region
+    operator: eq
+    value: $maybe_region
+  - field: country
+    operator: in
+    values:
+      - US
+      - UK

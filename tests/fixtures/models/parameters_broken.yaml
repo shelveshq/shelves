@@ -1,0 +1,7 @@
+parameters:
+  metric:
+    type: field
+    values:
+      - revenue
+      - cost
+    default: revenue

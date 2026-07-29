@@ -14,23 +14,28 @@ import re
 from pathlib import Path
 
 from shelves.studio.routes.dashboard import run_dashboard_pipeline
-from tests.conftest import DATA_DIR, MODELS_DIR, YAML_DIR
+from tests.conftest import FIXTURES_DIR, MODELS_DIR, YAML_DIR
 
 
 def _run(coro):
     return asyncio.run(coro)
 
 
-def _pipeline(yaml_body: str) -> dict:
-    """Run the dashboard pipeline against the shared chart/model fixtures."""
+def _pipeline(yaml_body: str, parameters_path: Path | None = None) -> dict:
+    """Run the dashboard pipeline against the shared chart/model fixtures.
+
+    `parameters_path` defaults to `<models_dir>/parameters.yaml`; pass a
+    non-existent path to run against a project that declares no parameters.
+    """
 
     async def _test():
         return await run_dashboard_pipeline(
             yaml_body,
-            project_dir=DATA_DIR,  # inline data (orders.json/csv) lives here
+            project_dir=FIXTURES_DIR,
             charts_dir=YAML_DIR,  # simple_bar.yaml / scatter.yaml / dual_axis.yaml
             theme_path=None,
             models_dir=MODELS_DIR,  # orders.yaml model → field labels/types
+            parameters_path=parameters_path,
         )
 
     return _run(_test())
@@ -164,7 +169,7 @@ class TestStudioMissingChart:
             async def _test(body=yaml_body):
                 return await run_dashboard_pipeline(
                     body,
-                    project_dir=tmp_path,
+                    project_dir=FIXTURES_DIR,
                     charts_dir=charts,
                     theme_path=None,
                     models_dir=MODELS_DIR,
@@ -392,7 +397,8 @@ class TestStudioDashboardLegends:
             "      field: country\n"
             "      width: 180\n"
         )
-        result = _pipeline(yaml_body)
+        # The monkeypatch breaks load_model, so skip parameter resolution.
+        result = _pipeline(yaml_body, parameters_path=FIXTURES_DIR / "no_such_parameters.yaml")
         # Does not crash; no unhandled 500 surfaced as an error:
         assert result["html"] is not None
         assert result["errors"] == []

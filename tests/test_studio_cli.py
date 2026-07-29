@@ -345,7 +345,7 @@ marks: bar
 
         fake_rows = [{"category": "Tech", "net_sales": 100}]
 
-        def mock_resolve(spec, chart_spec, models_dir=None):
+        def mock_resolve(spec, chart_spec, models_dir=None, **kwargs):
             import copy
 
             result = copy.deepcopy(spec)
@@ -415,6 +415,7 @@ marks: bar
             import shutil
 
             shutil.copytree(PROJECT_DIR / "models", tmp_path / "models")
+            (tmp_path / "models" / "parameters.yaml").unlink()
             app = create_app(project_dir=tmp_path)
             client = TestClient(app)
             response = client.post("/compile", content=self._VALID_YAML)

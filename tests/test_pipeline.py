@@ -11,7 +11,7 @@ from pathlib import Path
 import pydantic
 import pytest
 
-from tests.conftest import MODELS_DIR, load_yaml
+from tests.conftest import FIXTURES_DIR, MODELS_DIR, load_yaml, params_fixture
 
 THEMES_DIR = Path(__file__).parent / "fixtures" / "themes"
 CUSTOM_THEME_PATH = THEMES_DIR / "custom_brand.yaml"
@@ -68,6 +68,95 @@ class TestCompileChart:
 
         assert isinstance(spec, ChartSpec)
         assert spec.sheet == "Revenue by Country"
+
+
+class TestCompileChartParameters:
+    """SHE-91: `compile_chart` threads a ParameterSet, and NEVER loads one."""
+
+    def test_override_reaches_encoding(self):
+        from shelves.params.resolve import load_parameter_set
+        from shelves.pipeline import compile_chart
+
+        params = load_parameter_set(
+            params_fixture(),
+            models_dir=MODELS_DIR,
+            data_base_dir=FIXTURES_DIR,
+            overrides={"metric": "cost"},
+        )
+        vl, spec = compile_chart(
+            load_yaml("param_field_swap.yaml"),
+            no_theme=True,
+            models_dir=MODELS_DIR,
+            parameters=params,
+        )
+
+        # Label and format come from orders.yaml's `cost` measure — proof the
+        # swap happened BEFORE parsing, not after.
+        assert vl["encoding"]["y"]["field"] == "cost"
+        assert vl["encoding"]["y"]["title"] == "Cost"
+        assert spec.sheet == "Metric by Country"
+
+    def test_reference_output_matches_every_surface(self):
+        """The full no-theme spec the four-surface parity tests compare against."""
+        from shelves.params.resolve import load_parameter_set
+        from shelves.pipeline import compile_chart
+
+        params = load_parameter_set(
+            params_fixture(),
+            models_dir=MODELS_DIR,
+            data_base_dir=FIXTURES_DIR,
+            overrides={"metric": "cost"},
+        )
+        vl, _spec = compile_chart(
+            load_yaml("param_field_swap.yaml"),
+            no_theme=True,
+            models_dir=MODELS_DIR,
+            parameters=params,
+        )
+
+        assert vl == {
+            "mark": "bar",
+            "encoding": {
+                "x": {
+                    "field": "country",
+                    "type": "nominal",
+                    "title": "Country",
+                    "sort": ["US", "UK", "FR", "DE", "JP"],
+                },
+                "y": {
+                    "field": "cost",
+                    "type": "quantitative",
+                    "title": "Cost",
+                    "axis": {"format": "$,.0f"},
+                },
+            },
+            "$schema": "https://vega.github.io/schema/vega-lite/v6.json",
+            "title": "Metric by Country",
+        }
+
+    def test_omitted_parameters_is_empty_set(self):
+        from shelves.params.substitute import ParameterSet
+        from shelves.pipeline import compile_chart
+
+        vl_a, _ = compile_chart(load_yaml("simple_bar.yaml"), models_dir=MODELS_DIR)
+        vl_b, _ = compile_chart(
+            load_yaml("simple_bar.yaml"),
+            models_dir=MODELS_DIR,
+            parameters=ParameterSet.empty(),
+        )
+        assert vl_a == vl_b
+
+    def test_models_dir_containing_parameters_file_is_not_auto_loaded(self):
+        """The backward-compatibility rule: compile_chart does no parameter I/O.
+
+        MODELS_DIR contains a parameters.yaml declaring `metric`. If compile_chart
+        auto-loaded it, this reference would resolve — silently changing the
+        meaning of every existing test that passes models_dir=MODELS_DIR.
+        """
+        from shelves.pipeline import compile_chart
+
+        with pytest.raises(ValueError, match=r"Declared in models/parameters\.yaml: \(none\)"):
+            compile_chart(load_yaml("param_field_swap.yaml"), models_dir=MODELS_DIR)
 
 
 class TestCompileChartInlineData:

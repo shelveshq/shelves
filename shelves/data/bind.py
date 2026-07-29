@@ -16,8 +16,13 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from shelves.schema.chart_schema import ChartSpec
+
+if TYPE_CHECKING:
+    from shelves.models.schema import DataModel
+    from shelves.params.substitute import ParameterSet
 
 
 def bind_data(spec: dict, values: list[dict]) -> dict:
@@ -32,6 +37,8 @@ def resolve_data(
     chart_spec: ChartSpec,
     rows: list[dict] | None = None,
     models_dir: str | Path | None = None,
+    *,
+    parameters: ParameterSet | None = None,
 ) -> dict:
     """
     Attach data to a Vega-Lite spec, using inline rows or Cube.dev.
@@ -65,6 +72,9 @@ def resolve_data(
     resolver = ModelResolver(model)
 
     if model.source:
+        if parameters is not None and model.source.type == "cube":
+            _check_no_param_in_cube_calcs(model)
+
         from shelves.data.sources import get_adapter
 
         try:
@@ -78,7 +88,7 @@ def resolve_data(
                 "Pass --data or register an adapter for this source type."
             ) from None
         else:
-            fetched = adapter.fetch(model, chart_spec, resolver)
+            fetched = adapter.fetch(model, chart_spec, resolver, parameters=parameters)
             return bind_data(spec, fetched)
 
     from shelves.data.errors import NoDataSourceError
@@ -87,3 +97,20 @@ def resolve_data(
         f"No data provided for model '{chart_spec.data}'. "
         "Pass --data or configure a supported source in the model."
     )
+
+
+def _check_no_param_in_cube_calcs(model: DataModel) -> None:
+    from shelves.params.refs import INTERP_RE
+
+    for measure in model.measures.values():
+        if measure.calculation and INTERP_RE.search(measure.calculation):
+            raise ValueError(
+                f"Parameterized calculations are only supported on file sources "
+                f"(DuckDB). Model '{model.model}' uses a cube source."
+            )
+    for dim in model.dimensions.values():
+        if dim.calculation and INTERP_RE.search(dim.calculation):
+            raise ValueError(
+                f"Parameterized calculations are only supported on file sources "
+                f"(DuckDB). Model '{model.model}' uses a cube source."
+            )

@@ -19,7 +19,11 @@ from shelves.data.cube_client import (
     CubeServerError,
     CubeTimeoutError,
     _strip_prefix,
+    build_cube_domain_query,
     build_cube_query,
+    domain_response_key,
+    fetch_domain_bounds_from_cube_model,
+    fetch_domain_values_from_cube_model,
     fetch_from_cube_model,
 )
 from shelves.models.loader import clear_model_cache, load_model
@@ -416,3 +420,141 @@ class TestHTTPErrorClassification:
         with pytest.raises(CubeQueryError) as exc_info:
             fetch_from_cube_model(cube_model, spec, cube_resolver, config=config)
         assert len(str(exc_info.value)) <= 600
+
+
+# ─── Domain queries (SHE-90) ─────────────────────────────────────────
+
+
+class TestDomainQuery:
+    def test_values_query(self, cube_resolver):
+        q = build_cube_domain_query("orders", "category", cube_resolver, limit=501)
+        assert q == {
+            "measures": [],
+            "dimensions": ["orders.category"],
+            "limit": 501,
+        }
+
+    def test_values_query_with_grain(self, cube_resolver):
+        q = build_cube_domain_query("orders", "order_date.month", cube_resolver, limit=501)
+        assert q == {
+            "measures": [],
+            "dimensions": [],
+            "timeDimensions": [{"dimension": "orders.order_date", "granularity": "month"}],
+            "limit": 501,
+        }
+
+    def test_bounds_query_orders_and_limits(self, cube_resolver):
+        q = build_cube_domain_query(
+            "orders", "order_date.month", cube_resolver, limit=1, order="asc"
+        )
+        assert q["limit"] == 1
+        # The base member, NOT "orders.order_date.month" — granularity lives in
+        # timeDimensions, Cube orders by the dimension itself.
+        assert q["order"] == {"orders.order_date": "asc"}
+
+    def test_no_limit_or_order_keys_when_unset(self, cube_resolver):
+        q = build_cube_domain_query("orders", "category", cube_resolver)
+        assert "limit" not in q
+        assert "order" not in q
+
+
+class TestDomainResponseKey:
+    def test_plain_dimension(self, cube_resolver):
+        assert domain_response_key("category", cube_resolver) == "category"
+
+    def test_granular_dimension(self, cube_resolver):
+        assert domain_response_key("order_date.month", cube_resolver) == "order_date.month"
+
+    def test_default_grain_applies(self, cube_resolver):
+        # order_date has defaultGrain: month, so a bare ref is still granular.
+        assert domain_response_key("order_date", cube_resolver) == "order_date.month"
+
+
+class TestDomainFetchFromCube:
+    CUBE_URL = "http://localhost:4000"
+
+    @pytest.fixture
+    def config(self):
+        return CubeConfig(api_url=self.CUBE_URL, api_token="test-token")
+
+    @respx.mock
+    def test_fetch_domain_values(self, config, cube_model, cube_resolver):
+        respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"orders.category": "Technology"},
+                        {"orders.category": "Furniture"},
+                    ]
+                },
+            )
+        )
+        values = fetch_domain_values_from_cube_model(
+            cube_model, "category", cube_resolver, limit=501, config=config
+        )
+        # Raw and unsorted — normalization is domains.py's job.
+        assert values == ["Technology", "Furniture"]
+
+    @respx.mock
+    def test_fetch_domain_values_sends_limit(self, config, cube_model, cube_resolver):
+        route = respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            return_value=httpx.Response(200, json={"data": [{"orders.category": "Tech"}]})
+        )
+        fetch_domain_values_from_cube_model(
+            cube_model, "category", cube_resolver, limit=501, config=config
+        )
+        sent = json.loads(route.calls[0].request.content)
+        assert sent["query"]["limit"] == 501
+
+    @respx.mock
+    def test_fetch_domain_values_missing_key_raises(self, config, cube_model, cube_resolver):
+        respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            return_value=httpx.Response(200, json={"data": [{"orders.segment": "SMB"}]})
+        )
+        with pytest.raises(CubeQueryError, match="category"):
+            fetch_domain_values_from_cube_model(
+                cube_model, "category", cube_resolver, limit=501, config=config
+            )
+
+    @respx.mock
+    def test_fetch_domain_bounds_is_two_ordered_queries(self, config, cube_model, cube_resolver):
+        route = respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            side_effect=[
+                httpx.Response(
+                    200, json={"data": [{"orders.order_date.month": "2024-01-01T00:00:00.000"}]}
+                ),
+                httpx.Response(
+                    200, json={"data": [{"orders.order_date.month": "2024-03-01T00:00:00.000"}]}
+                ),
+            ]
+        )
+        lo, hi = fetch_domain_bounds_from_cube_model(
+            cube_model, "order_date.month", cube_resolver, config=config
+        )
+        assert (lo, hi) == ("2024-01-01T00:00:00.000", "2024-03-01T00:00:00.000")
+        assert route.call_count == 2
+        first = json.loads(route.calls[0].request.content)["query"]
+        second = json.loads(route.calls[1].request.content)["query"]
+        assert first["order"] == {"orders.order_date": "asc"}
+        assert second["order"] == {"orders.order_date": "desc"}
+        assert first["limit"] == second["limit"] == 1
+
+    @respx.mock
+    def test_fetch_domain_bounds_empty(self, config, cube_model, cube_resolver):
+        respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            return_value=httpx.Response(200, json={"data": []})
+        )
+        assert fetch_domain_bounds_from_cube_model(
+            cube_model, "category", cube_resolver, config=config
+        ) == (None, None)
+
+    @respx.mock
+    def test_domain_fetch_reuses_error_mapping(self, config, cube_model, cube_resolver):
+        respx.post(f"{self.CUBE_URL}/cubejs-api/v1/load").mock(
+            return_value=httpx.Response(503, text="down")
+        )
+        with pytest.raises(CubeServerError):
+            fetch_domain_values_from_cube_model(
+                cube_model, "category", cube_resolver, limit=501, config=config
+            )

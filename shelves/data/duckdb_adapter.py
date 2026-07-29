@@ -18,7 +18,7 @@ import datetime
 import re
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shelves.data.fields import collect_chart_fields
 from shelves.errors import ShelvesError
@@ -29,6 +29,9 @@ from shelves.models.schema import (
 )
 from shelves.schema.chart_schema import ChartSpec, ShelfFilter
 from shelves.schema.field_types import FieldTypeResolver
+
+if TYPE_CHECKING:
+    from shelves.params.substitute import ParameterSet
 
 
 class DuckDBQueryError(ShelvesError):
@@ -81,7 +84,11 @@ def _serialize_value(v: Any) -> Any:
     return v
 
 
-def resolve_measure_expressions(model: DataModel) -> dict[str, str]:
+def resolve_measure_expressions(
+    model: DataModel,
+    *,
+    parameters: ParameterSet | None = None,
+) -> dict[str, str]:
     """
     Resolve all measure definitions in a model to SQL expressions.
 
@@ -121,7 +128,11 @@ def resolve_measure_expressions(model: DataModel) -> dict[str, str]:
                     "calculation."
                 )
             resolved = measure.calculation
-            for ref in CALC_REF_RE.findall(measure.calculation):
+            if parameters is not None:
+                from shelves.params.substitute import substitute_calculation
+
+                resolved = substitute_calculation(resolved, parameters, context=f"measure '{name}'")
+            for ref in CALC_REF_RE.findall(resolved):
                 resolved = re.sub(
                     r"\{\{\s*" + re.escape(ref) + r"\s*\}\}",
                     f"({exprs[ref]})",
@@ -137,10 +148,12 @@ def build_sql(
     model: DataModel,
     chart_spec: ChartSpec,
     resolver: FieldTypeResolver,
+    *,
+    parameters: ParameterSet | None = None,
 ) -> str:
     """Build a SQL SELECT statement for the fields a chart needs."""
     fields = collect_chart_fields(chart_spec)
-    measure_exprs = resolve_measure_expressions(model)
+    measure_exprs = resolve_measure_expressions(model, parameters=parameters)
 
     select_parts: list[str] = []
     group_by_parts: list[str] = []
@@ -185,6 +198,12 @@ def build_sql(
 
             if dim_def is not None and dim_def.calculation is not None:
                 dim_sql = dim_def.calculation
+                if parameters is not None:
+                    from shelves.params.substitute import substitute_calculation
+
+                    dim_sql = substitute_calculation(
+                        dim_sql, parameters, context=f"dimension '{base}'"
+                    )
             else:
                 col = dim_def.column if dim_def is not None and dim_def.column is not None else base
                 col_quoted = _quote_identifier(col)
@@ -197,9 +216,7 @@ def build_sql(
             if _select(base, dim_sql):
                 group_by_parts.append(dim_sql)
 
-    reader = _file_reader_fn(file_path)
-    escaped_path = file_path.replace("'", "''")
-    from_clause = f"{reader}('{escaped_path}')"
+    from_clause = _from_clause(file_path)
 
     where_clause = ""
     if chart_spec.filters:
@@ -215,6 +232,63 @@ def build_sql(
 
     sql = f"{select_keyword} {', '.join(select_parts)}\nFROM {from_clause}"
     return f"{sql}{where_clause}{group_by_clause}"
+
+
+def domain_expression(
+    model: DataModel,
+    field_ref: str,
+    resolver: FieldTypeResolver,
+) -> str:
+    """SQL expression for a dimension's domain source."""
+    base = resolver.resolve_base_field(field_ref)
+    grain = resolver.resolve_grain(field_ref)
+    dim = model.dimensions.get(base)
+
+    if dim is None:
+        raise DuckDBQueryError(
+            f"Cannot resolve a domain for '{base}': it is not a dimension of model '{model.model}'."
+        )
+
+    expr = dim.calculation if dim.calculation is not None else _quote_identifier(dim.column or base)
+
+    if grain is not None:
+        expr = f"DATE_TRUNC('{grain}', {expr})"
+    return expr
+
+
+def build_domain_values_sql(
+    file_path: str,
+    model: DataModel,
+    field_ref: str,
+    resolver: FieldTypeResolver,
+    *,
+    limit: int,
+) -> str:
+    """Distinct values of a dimension, capped at `limit`."""
+    expr = domain_expression(model, field_ref, resolver)
+    return (
+        f'SELECT DISTINCT {expr} AS "value"\n'
+        f"FROM {_from_clause(file_path)}\n"
+        f"WHERE {expr} IS NOT NULL\n"
+        f"LIMIT {limit}"
+    )
+
+
+def build_domain_bounds_sql(
+    file_path: str,
+    model: DataModel,
+    field_ref: str,
+    resolver: FieldTypeResolver,
+) -> str:
+    """Native min/max of a dimension."""
+    expr = domain_expression(model, field_ref, resolver)
+    return f'SELECT MIN({expr}) AS "min", MAX({expr}) AS "max"\nFROM {_from_clause(file_path)}'
+
+
+def _from_clause(file_path: str) -> str:
+    reader = _file_reader_fn(file_path)
+    escaped_path = file_path.replace("'", "''")
+    return f"{reader}('{escaped_path}')"
 
 
 def _build_filter_conditions(
@@ -280,20 +354,8 @@ class DuckDBAdapter:
             return str(p)
         return str((self._base_dir / p).resolve())
 
-    def fetch(
-        self,
-        model: DataModel,
-        chart_spec: ChartSpec,
-        resolver: FieldTypeResolver,
-    ) -> list[dict[str, Any]]:
-        try:
-            import duckdb
-        except ImportError:
-            raise ImportError(
-                "duckdb is required for file source queries. "
-                "Install with: pip install 'shelves-bi[duckdb]'"
-            ) from None
-
+    def _source_file(self, model: DataModel) -> str:
+        """Validate the model's source and resolve it to an existing file path."""
         if not isinstance(model.source, FileSource):
             raise DuckDBQueryError(
                 f"DuckDBAdapter requires a FileSource, got {type(model.source).__name__}"
@@ -304,7 +366,17 @@ class DuckDBAdapter:
         if not Path(file_path).exists():
             raise DuckDBQueryError(f"Data file not found: {file_path}")
 
-        sql = build_sql(file_path, model, chart_spec, resolver)
+        return file_path
+
+    def _execute(self, sql: str) -> list[dict[str, Any]]:
+        """Run one statement against an in-memory DuckDB and serialize the rows."""
+        try:
+            import duckdb
+        except ImportError:
+            raise ImportError(
+                "duckdb is required for file source queries. "
+                "Install with: pip install 'shelves-bi[duckdb]'"
+            ) from None
 
         try:
             conn = duckdb.connect(":memory:")
@@ -323,3 +395,40 @@ class DuckDBAdapter:
             {col: _serialize_value(val) for col, val in zip(columns, row, strict=True)}
             for row in raw_rows
         ]
+
+    def fetch(
+        self,
+        model: DataModel,
+        chart_spec: ChartSpec,
+        resolver: FieldTypeResolver,
+        *,
+        parameters: ParameterSet | None = None,
+    ) -> list[dict[str, Any]]:
+        file_path = self._source_file(model)
+        return self._execute(
+            build_sql(file_path, model, chart_spec, resolver, parameters=parameters)
+        )
+
+    def fetch_domain_values(
+        self,
+        model: DataModel,
+        field_ref: str,
+        resolver: FieldTypeResolver,
+        *,
+        limit: int,
+    ) -> list[Any]:
+        file_path = self._source_file(model)
+        rows = self._execute(
+            build_domain_values_sql(file_path, model, field_ref, resolver, limit=limit)
+        )
+        return [row["value"] for row in rows]
+
+    def fetch_domain_bounds(
+        self,
+        model: DataModel,
+        field_ref: str,
+        resolver: FieldTypeResolver,
+    ) -> tuple[Any, Any]:
+        file_path = self._source_file(model)
+        rows = self._execute(build_domain_bounds_sql(file_path, model, field_ref, resolver))
+        return (rows[0]["min"], rows[0]["max"]) if rows else (None, None)

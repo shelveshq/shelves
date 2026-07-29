@@ -1,0 +1,53 @@
+model: parameterized_calc
+label: Parameterized Calculations
+description: Model with $param references in calculations for SHE-94 tests
+
+source:
+  type: file
+  path: tests/fixtures/data/orders.csv
+
+dimensions:
+  region:
+    column: region
+    label: Region
+  country:
+    column: country
+    label: Country
+  order_date:
+    column: "Order Date"
+    type: temporal
+    label: Order Date
+    defaultGrain: month
+    format:
+      month: "%b %Y"
+  order_period:
+    calculation: "DATE_TRUNC('${grain}', \"Order Date\")"
+    label: Order Period
+
+measures:
+  revenue:
+    column: revenue
+    aggregation: sum
+    label: Revenue
+    format: "$,.0f"
+  cost:
+    column: cost
+    aggregation: sum
+    label: Cost
+    format: "$,.0f"
+  sales_current:
+    calculation: "SUM(\"revenue\") FILTER (WHERE \"Order Date\" >= DATE_TRUNC('${grain}', CURRENT_DATE))"
+    label: Sales (Current Period)
+    format: "$,.0f"
+  sales_prior:
+    calculation: "SUM(\"revenue\") FILTER (WHERE \"Order Date\" >= DATE_TRUNC('${grain}', CURRENT_DATE) - INTERVAL '1 ${grain}')"
+    label: Sales (Prior Period)
+    format: "$,.0f"
+  profit:
+    calculation: "{{ revenue }} - {{ cost }}"
+    label: Profit
+    format: "$,.0f"
+  revenue_by_period:
+    calculation: "{{ revenue }} / DATE_PART('${period}', CURRENT_DATE)"
+    label: Revenue by Period
+    format: "$,.0f"

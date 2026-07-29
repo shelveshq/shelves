@@ -22,6 +22,8 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
+from shelves.params.substitute import ParameterReferenceError, ParameterSet, substitute_parameters
+
 # DSL version — bump when the grammar changes.
 # Follows semver: major = breaking, minor = additive, patch = fixes.
 # 0.8.0: label grammar changed — LabelConfig.position replaced by
@@ -31,7 +33,11 @@ from pydantic import BaseModel, Field, model_validator
 # booleans; AxisConfig.x/.y accept a bare bool (false drops the axis). The
 # x-off/y-on grid default moved from a hardcoded encoding injection to the
 # theme (axisX/axisY). Additive → minor.
-DSL_VERSION = "0.9.0"  # Axis toggles + themeable grid default (KAN-306)
+# 0.10.0: project-level parameters (models/parameters.yaml) with $name /
+# ${name} references in field slots, filter values, and title text (SHE-89).
+# No ChartSpec field changes — references are substituted before parsing.
+# Additive → minor.
+DSL_VERSION = "0.10.0"  # Project-level parameters (SHE-89)
 
 # ─── Primitives ────────────────────────────────────────────────────
 
@@ -465,14 +471,35 @@ class ChartSpec(BaseModel):
 # ─── Public API ───────────────────────────────────────────────────
 
 
-def parse_chart(yaml_string: str) -> ChartSpec:
+def parse_chart(
+    yaml_string: str,
+    *,
+    parameters: ParameterSet | None = None,
+) -> ChartSpec:
     """
     Parse a YAML string and validate against the Chart DSL schema.
 
     Returns a ChartSpec on success, raises pydantic.ValidationError on failure.
 
+    `$name` / `${name}` references are substituted before validation using
+    `parameters` (SHE-89). None means no parameters are declared — a spec that
+    contains references then fails with an undeclared-reference error.
+
     Usage:
         spec = parse_chart(Path("chart.yaml").read_text())
+
+    Raises:
+        ValueError: a reference is undeclared, sits in a forbidden position, or
+            has the wrong type for its slot; or the YAML declares an inline
+            `parameters:` block (parameters live in models/parameters.yaml).
     """
     raw = yaml.safe_load(yaml_string)
-    return ChartSpec.model_validate(raw)
+    if not isinstance(raw, dict):
+        # Preserve today's error behavior for malformed input.
+        return ChartSpec.model_validate(raw)
+
+    result = substitute_parameters(raw, parameters or ParameterSet.empty())
+    if result.errors:
+        raise ParameterReferenceError(result.errors)
+
+    return ChartSpec.model_validate(result.data)

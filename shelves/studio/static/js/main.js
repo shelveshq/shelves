@@ -103,6 +103,11 @@ document.addEventListener('shelves:theme-changed', () => {
   if (state.currentFile) compileDashboardOrChart();
 });
 
+// Parameters file changed: recompile so the preview picks up new defaults.
+document.addEventListener('shelves:parameters-changed', () => {
+  if (state.currentFile) compileDashboardOrChart();
+});
+
 // ─── Status Bar Terminal Toggle ───────────────────────────
 // By id, not `.sh-status-term` — other chips may share that class.
 const termBtn = document.getElementById('terminal-toggle-status');

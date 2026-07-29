@@ -76,6 +76,7 @@ def create_app(
     charts_dir: Path | None = None,
     dashboards_dir: Path | None = None,
     assets_dir: Path | None = None,
+    parameters_path: Path | None = None,
 ) -> FastAPI:
     """
     Create and configure the FastAPI application for Shelves Studio.
@@ -90,6 +91,9 @@ def create_app(
         assets_dir: Directory of image assets served at /assets. Defaults to
             project_dir/assets. Need not exist at startup — it is served
             whenever files appear in it.
+        parameters_path: Path to parameters.yaml. Defaults to
+            <models_dir>/parameters.yaml. Need not exist — a project with no
+            parameters simply has none.
 
     Returns:
         Configured FastAPI instance.
@@ -98,6 +102,7 @@ def create_app(
     resolved_charts = charts_dir or (project_dir / "charts")
     resolved_dashboards = dashboards_dir or (project_dir / "dashboards")
     resolved_assets = assets_dir or (project_dir / "assets")
+    resolved_parameters = parameters_path or (resolved_models / "parameters.yaml")
 
     lifespan = make_lifespan(
         project_dir,
@@ -106,6 +111,7 @@ def create_app(
         resolved_charts,
         resolved_dashboards,
         resolved_assets,
+        resolved_parameters,
     )
 
     app = FastAPI(title="Shelves Studio", lifespan=lifespan)
@@ -119,6 +125,7 @@ def create_app(
     # Stored even when the directory is absent so the startup banner can show the
     # resolved path; only the StaticFiles mount below is conditional.
     app.state.assets_dir = resolved_assets
+    app.state.parameters_path = resolved_parameters
     app.state.manager = ConnectionManager()
     # Per-app random token gating the terminal WS. The token is embedded in
     # the served HTML as a <meta> tag, so same-origin scripts can read it

@@ -24,7 +24,7 @@ from shelves.studio.connection import ConnectionManager
 from shelves.studio.lifespan import compile_file_and_broadcast as _compile_file_and_broadcast
 from shelves.studio.server import create_app
 from shelves.studio.watcher import COMPILE_EXTENSIONS, WATCH_EXTENSIONS, should_compile
-from tests.conftest import MODELS_DIR, SubprocessOutputDrainer
+from tests.conftest import FIXTURES_DIR, MODELS_DIR, SubprocessOutputDrainer
 
 # ─── Helpers ─────────────────────────────────────────────────────
 
@@ -198,11 +198,11 @@ class TestDefaultThemeInCompile:
 
     _CHART_YAML = "sheet: S\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n"
 
-    def test_compile_endpoint_applies_default_theme(self, tmp_path):
+    def test_compile_endpoint_applies_default_theme(self):
         """POST /compile with no theme_path returns a spec with config.title tokens."""
         from tests.conftest import LoopbackTestClient as TestClient
 
-        app = create_app(project_dir=tmp_path, theme_path=None, models_dir=MODELS_DIR)
+        app = create_app(project_dir=FIXTURES_DIR, theme_path=None, models_dir=MODELS_DIR)
         with TestClient(app) as client:
             resp = client.post("/compile", content=self._CHART_YAML)
         assert resp.status_code == 200
@@ -236,6 +236,7 @@ class TestDefaultThemeInCompile:
                 _Capture(),  # type: ignore[arg-type]
                 models_dir=MODELS_DIR,
                 theme_path=None,
+                project_dir=FIXTURES_DIR,
             )
 
             assert captured, "No broadcast emitted"
@@ -269,6 +270,7 @@ class TestDefaultThemeInCompile:
                 _Capture(),  # type: ignore[arg-type]
                 models_dir=MODELS_DIR,
                 theme_path=None,
+                project_dir=FIXTURES_DIR,
             )
 
             assert captured, "No broadcast emitted"
@@ -302,6 +304,7 @@ class TestWatcherYamlSyntaxError:
                 _Capture(),  # type: ignore[arg-type]
                 models_dir=MODELS_DIR,
                 theme_path=None,
+                project_dir=FIXTURES_DIR,
             )
 
             assert captured, "No broadcast emitted"
@@ -348,6 +351,7 @@ class TestWatcherRuntimeError:
                 _Capture(),  # type: ignore[arg-type]
                 models_dir=MODELS_DIR,
                 theme_path=None,
+                project_dir=FIXTURES_DIR,
             )
 
             assert captured, "No broadcast emitted"
@@ -387,6 +391,7 @@ class TestWatcherVanishedFile:
                 _Capture(),  # type: ignore[arg-type]
                 models_dir=MODELS_DIR,
                 theme_path=None,
+                project_dir=FIXTURES_DIR,
             )
 
             assert captured == [], f"Vanished file should emit nothing, got {captured}"
@@ -413,6 +418,7 @@ class TestWatcherVanishedFile:
                 _Capture(),  # type: ignore[arg-type]
                 models_dir=MODELS_DIR,
                 theme_path=None,
+                project_dir=FIXTURES_DIR,
             )
 
             assert captured == [], f"Vanished dashboard should emit nothing, got {captured}"

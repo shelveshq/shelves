@@ -46,3 +46,7 @@ Invariants the loop guarantees (do not break):
 - **Python warnings are captured** (via `shelves.diagnostics.capture_warnings`)
   into the returned warnings list, prefixed with the sheet name, so Studio
   users see KPI/tooltip notices too.
+- **One `ParameterSet` per dashboard.** `parameters` is built by the surface and
+  passed in; the loop never builds one. Every sheet compiles against the same
+  resolved values, so two sheets in one dashboard can never disagree about
+  `$metric`.

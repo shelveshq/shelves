@@ -59,6 +59,10 @@ export function connectWebSocket() {
       case 'theme_changed':
         document.dispatchEvent(new CustomEvent('shelves:theme-changed', { detail: msg }));
         break;
+
+      case 'parameters_changed':
+        document.dispatchEvent(new CustomEvent('shelves:parameters-changed', { detail: msg }));
+        break;
     }
   };
 

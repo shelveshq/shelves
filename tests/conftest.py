@@ -37,6 +37,16 @@ def load_data(name: str) -> str:
     return (DATA_DIR / name).read_text()
 
 
+def params_fixture(name: str = "parameters.yaml") -> Path:
+    """Path to a parameters fixture file.
+
+    Returns a path rather than text: `shelves.params.loader.load_parameters`
+    takes the file path itself (and a missing path is a valid input meaning
+    "no parameters"), so tests pass this straight through.
+    """
+    return MODELS_DIR / name
+
+
 class LoopbackTestClient(TestClient):
     """TestClient pinned to a loopback base_url.
 

@@ -40,6 +40,7 @@ async def handle_fs_event(
     theme_path: Path | None,
     models_dir: Path,
     charts_dir: Path,
+    parameters_path: Path | None = None,
 ) -> None:
     """Watcher callback body — module-level so the routing is testable.
 
@@ -60,6 +61,10 @@ async def handle_fs_event(
         await manager.broadcast({"type": "theme_changed", "path": rel})
         return
 
+    if parameters_path is not None and abs_path.resolve() == parameters_path.resolve():
+        await manager.broadcast({"type": "parameters_changed", "path": rel})
+        return
+
     if should_compile(abs_path) and event != "deleted":
         await compile_file_and_broadcast(
             abs_path,
@@ -69,6 +74,7 @@ async def handle_fs_event(
             theme_path,
             project_dir=project_dir,
             charts_dir=charts_dir,
+            parameters_path=parameters_path,
         )
 
 
@@ -79,6 +85,7 @@ def make_lifespan(
     charts_dir: Path,
     dashboards_dir: Path,
     assets_dir: Path,
+    parameters_path: Path | None = None,
 ):
     """
     Create a FastAPI lifespan context manager that starts/stops the file watcher.
@@ -99,6 +106,7 @@ def make_lifespan(
                 theme_path=theme_path,
                 models_dir=models_dir,
                 charts_dir=charts_dir,
+                parameters_path=parameters_path,
             )
 
         # Broadcasts are scoped to the configured dirs + the theme file
@@ -127,12 +135,14 @@ async def compile_file_and_broadcast(
     theme_path: Path | None,
     project_dir: Path | None = None,
     charts_dir: Path | None = None,
+    parameters_path: Path | None = None,
 ) -> None:
     """Read a YAML file, compile it, and broadcast the result."""
     import yaml as _yaml
     from pydantic import ValidationError as _ValidationError
 
     from shelves.diagnostics import capture_warnings
+    from shelves.params.resolve import load_parameter_set
     from shelves.pipeline import compile_chart, resolve_model_data
 
     try:
@@ -168,6 +178,7 @@ async def compile_file_and_broadcast(
                 theme_path,
                 project_dir=project_dir,
                 charts_dir=charts_dir,
+                parameters_path=parameters_path,
             )
             return
 
@@ -179,11 +190,18 @@ async def compile_file_and_broadcast(
         # ...) into the structured warnings list the frontend displays — same
         # contract as the POST /compile route.
         warnings: list[str] = []
+        effective_models_dir = models_dir if models_dir.exists() else None
         with capture_warnings(warnings):
+            parameters = load_parameter_set(
+                parameters_path,
+                models_dir=effective_models_dir,
+                data_base_dir=project_dir,
+            )
             vl_spec, spec = compile_chart(
                 content,
                 theme_path=theme_path,
-                models_dir=models_dir if models_dir.exists() else None,
+                models_dir=effective_models_dir,
+                parameters=parameters,
             )
 
         try:
@@ -193,6 +211,7 @@ async def compile_file_and_broadcast(
                     spec,
                     models_dir=models_dir,
                     data_base_dir=project_dir,
+                    parameters=parameters,
                 )
         except Exception as e:
             warnings.append(f"Data resolution skipped: {e}")
@@ -267,6 +286,7 @@ async def compile_dashboard_file_and_broadcast(
     theme_path: Path | None,
     project_dir: Path | None = None,
     charts_dir: Path | None = None,
+    parameters_path: Path | None = None,
 ) -> None:
     """Read a dashboard YAML file, compile it, and broadcast the result."""
     from shelves.studio.routes.dashboard import run_dashboard_pipeline
@@ -286,6 +306,7 @@ async def compile_dashboard_file_and_broadcast(
             resolved_charts,
             theme_path,
             models_dir=models_dir,
+            parameters_path=parameters_path,
         )
         await manager.broadcast(
             {

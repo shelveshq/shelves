@@ -254,6 +254,57 @@ class TestWatcherThemeRouting:
         ]
 
 
+# ─── parameters_changed routing ─────────────────────────────────
+
+
+class TestWatcherParametersRouting:
+    def test_parameters_event_broadcasts_parameters_changed(self, tmp_path):
+        project = _make_project(tmp_path)
+        models = project / "models"
+        models.mkdir(exist_ok=True)
+        params_file = models / "parameters.yaml"
+        params_file.write_text("parameters:\n  region:\n    type: string\n")
+        manager = AsyncMock()
+        asyncio.run(
+            handle_fs_event(
+                "modified",
+                params_file,
+                manager=manager,
+                project_dir=project,
+                theme_path=None,
+                models_dir=models,
+                charts_dir=project / "charts",
+                parameters_path=params_file,
+            )
+        )
+        assert manager.broadcast.await_args_list == [
+            call({"type": "file_change", "event": "modified", "path": "models/parameters.yaml"}),
+            call({"type": "parameters_changed", "path": "models/parameters.yaml"}),
+        ]
+
+    def test_chart_event_does_not_broadcast_parameters_changed(self, tmp_path):
+        project = _make_project(tmp_path)
+        models = project / "models"
+        models.mkdir(exist_ok=True)
+        params_file = models / "parameters.yaml"
+        params_file.write_text("parameters:\n  region:\n    type: string\n")
+        manager = AsyncMock()
+        asyncio.run(
+            handle_fs_event(
+                "modified",
+                project / "charts" / "revenue.yaml",
+                manager=manager,
+                project_dir=project,
+                theme_path=None,
+                models_dir=models,
+                charts_dir=project / "charts",
+                parameters_path=params_file,
+            )
+        )
+        broadcasts = [c.args[0] for c in manager.broadcast.await_args_list]
+        assert not any(b["type"] == "parameters_changed" for b in broadcasts)
+
+
 # ─── theme_alias helper ──────────────────────────────────────────
 
 

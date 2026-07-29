@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
 
@@ -163,6 +163,41 @@ def build_cube_query(
     return query
 
 
+def build_cube_domain_query(
+    cube_name: str,
+    field_ref: str,
+    resolver: FieldTypeResolver,
+    *,
+    limit: int | None = None,
+    order: Literal["asc", "desc"] | None = None,
+) -> dict[str, Any]:
+    """Build a single-member Cube query for domain resolution."""
+    base = resolver.resolve_base_field(field_ref)
+    grain = resolver.resolve_grain(field_ref)
+    member = f"{cube_name}.{base}"
+
+    query: dict[str, Any] = {"measures": [], "dimensions": []}
+
+    if grain is not None:
+        query["timeDimensions"] = [{"dimension": member, "granularity": grain}]
+    else:
+        query["dimensions"] = [member]
+
+    if limit is not None:
+        query["limit"] = limit
+    if order is not None:
+        query["order"] = {member: order}
+
+    return query
+
+
+def domain_response_key(field_ref: str, resolver: FieldTypeResolver) -> str:
+    """The key a domain row carries after _strip_prefix."""
+    base = resolver.resolve_base_field(field_ref)
+    grain = resolver.resolve_grain(field_ref)
+    return f"{base}.{grain}" if grain is not None else base
+
+
 def _translate_filters(
     filters: list[ShelfFilter],
     cube_name: str,
@@ -256,15 +291,22 @@ def fetch_from_cube_model(
         CubeTimeoutError: If the request times out.
         CubeQueryError: If Cube returns any other non-200 status.
     """
+    assert isinstance(model.source, CubeSource), "resolve_data requires a CubeSource"
+    query = build_cube_query(model.source.cube, chart_spec, resolver)
+    return _post_query(query, config, transport)
+
+
+def _post_query(
+    query: dict[str, Any],
+    config: CubeConfig | None,
+    transport: HTTPTransport | None,
+) -> list[dict[str, Any]]:
+    """POST one query, apply the status-code error mapping, strip cube prefixes."""
     if config is None:
         config = CubeConfig.from_env()
 
     if transport is None:
         transport = HttpxTransport()
-
-    assert isinstance(model.source, CubeSource), "resolve_data requires a CubeSource"
-    cube_name = model.source.cube
-    query = build_cube_query(cube_name, chart_spec, resolver)
 
     url = f"{config.api_url}/cubejs-api/v1/load"
     headers = {"Authorization": config.api_token}
@@ -285,3 +327,52 @@ def fetch_from_cube_model(
 
     raw_rows = response.json().get("data", [])
     return [_strip_prefix(row) for row in raw_rows]
+
+
+def fetch_domain_values_from_cube_model(
+    model: DataModel,
+    field_ref: str,
+    resolver: FieldTypeResolver,
+    *,
+    limit: int,
+    config: CubeConfig | None = None,
+    transport: HTTPTransport | None = None,
+) -> list[Any]:
+    """Distinct values of a dimension, at most `limit` of them."""
+    assert isinstance(model.source, CubeSource), "domain resolution requires a CubeSource"
+    query = build_cube_domain_query(model.source.cube, field_ref, resolver, limit=limit)
+    rows = _post_query(query, config, transport)
+
+    key = domain_response_key(field_ref, resolver)
+    values: list[Any] = []
+    for row in rows:
+        if key not in row:
+            raise CubeQueryError(
+                f"Cube response for '{field_ref}' has no '{key}' key; got {sorted(row)}."
+            )
+        values.append(row[key])
+    return values
+
+
+def fetch_domain_bounds_from_cube_model(
+    model: DataModel,
+    field_ref: str,
+    resolver: FieldTypeResolver,
+    *,
+    config: CubeConfig | None = None,
+    transport: HTTPTransport | None = None,
+) -> tuple[Any, Any]:
+    """(min, max) of a dimension via two ordered limit-1 queries."""
+    assert isinstance(model.source, CubeSource), "domain resolution requires a CubeSource"
+    cube_name = model.source.cube
+    key = domain_response_key(field_ref, resolver)
+
+    def _edge(order: Literal["asc", "desc"]) -> Any:
+        query = build_cube_domain_query(cube_name, field_ref, resolver, limit=1, order=order)
+        rows = _post_query(query, config, transport)
+        return rows[0].get(key) if rows else None
+
+    low = _edge("asc")
+    if low is None:
+        return (None, None)
+    return (low, _edge("desc"))

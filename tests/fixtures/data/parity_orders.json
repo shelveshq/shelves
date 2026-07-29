@@ -1,0 +1,7 @@
+[
+  {"region": "EMEA", "country": "UK", "order_date": "2024-01-15", "fiscal_year": 2023, "revenue": 32000},
+  {"region": "EMEA", "country": "FR", "order_date": "2024-02-20", "fiscal_year": 2024, "revenue": 22000},
+  {"region": "NA",   "country": "US", "order_date": "2024-01-10", "fiscal_year": 2023, "revenue": 45000},
+  {"region": "NA",   "country": "US", "order_date": "2024-03-05", "fiscal_year": 2024, "revenue": 50000},
+  {"region": "APAC", "country": "JP", "order_date": "2024-03-22", "fiscal_year": 2024, "revenue": 18000}
+]

@@ -97,6 +97,8 @@ async def compile_yaml(request: Request) -> JSONResponse:
     """POST /compile — compile YAML body to Vega-Lite spec."""
     import yaml as _yaml
 
+    from shelves.params.resolve import load_parameter_set
+    from shelves.params.substitute import ParameterReferenceError as _ParameterReferenceError
     from shelves.pipeline import compile_chart, resolve_model_data
 
     yaml_body = (await request.body()).decode("utf-8")
@@ -123,6 +125,7 @@ async def compile_yaml(request: Request) -> JSONResponse:
 
     models_dir = request.app.state.models_dir
     theme_path: Path | None = request.app.state.theme_path
+    effective_models_dir = models_dir if models_dir.exists() else None
 
     # Python warnings emitted during compile (KPI shelf conflicts, tooltip
     # disaggregation, ...) are invisible to Studio unless captured into the
@@ -130,16 +133,43 @@ async def compile_yaml(request: Request) -> JSONResponse:
     warnings: list[str] = []
     try:
         with capture_warnings(warnings):
+            parameters = load_parameter_set(
+                request.app.state.parameters_path,
+                models_dir=effective_models_dir,
+                data_base_dir=request.app.state.project_dir,
+            )
             vl_spec, spec = compile_chart(
                 yaml_body,
                 theme_path=theme_path,
-                models_dir=models_dir if models_dir.exists() else None,
+                models_dir=effective_models_dir,
+                parameters=parameters,
             )
     except ValidationError as e:
         return JSONResponse(
             {
                 "vega_lite_spec": None,
                 "errors": _format_validation_errors(e, yaml_body),
+                "warnings": [],
+                "model": None,
+            }
+        )
+    except _ParameterReferenceError as e:
+        return JSONResponse(
+            {
+                "vega_lite_spec": None,
+                "errors": [
+                    {
+                        "loc": [d.path],
+                        "display_loc": [d.path],
+                        "msg": d.message,
+                        "friendly_msg": d.message,
+                        "source": "parameter",
+                        "type": d.code,
+                        "line": None,
+                        "col": None,
+                    }
+                    for d in e.diagnostics
+                ],
                 "warnings": [],
                 "model": None,
             }
@@ -181,6 +211,7 @@ async def compile_yaml(request: Request) -> JSONResponse:
                 spec,
                 models_dir=models_dir,
                 data_base_dir=request.app.state.project_dir,
+                parameters=parameters,
             )
     except Exception as e:
         warnings.append(f"Data resolution skipped: {e}")
