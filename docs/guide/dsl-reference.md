@@ -1450,7 +1450,6 @@ The `comparison` block is optional. When present, a comparison line is rendered 
 - **Data labels on `line`, `area`, and `arc`/pie marks** — a `label` on these
   mark types is silently ignored for now. Bars, points/circles/squares, and
   ticks are supported. Line/area end-of-series labels are planned separately.
-- **Parameter controls** — parameters resolve at compile time, from the declared `default` or `--param`. Interactive widgets that change a parameter in the browser are not yet available; a rendered HTML file has its parameter values baked in.
 - **Parameters in `sort.top`** — top-N is not yet part of the DSL.
 - **Cascading parameters** — one parameter's `values` cannot depend on another parameter's current value.
 - **Relative dates** — `date` parameters take absolute bounds; "last 30 days" style presets are not yet supported.
@@ -1467,7 +1466,8 @@ See the DSL version history below for what shipped in each version.
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.10.0** | Current | Project-level parameters: a `models/parameters.yaml` file declaring `string`/`number`/`date`/`field` parameters, referenced from charts with `$name` in field slots and filter values, and `${name}` in title text. Resolved before parsing, so a parameterized spec compiles identically to the hand-written equivalent. |
+| **0.11.0** | Current | Dashboard parameter controls: `{control: <param_name>}` layout leaf renders interactive widgets (dropdown, stepper, date, text) inferred from the parameter type. In Studio, changing a control recompiles the dashboard; in exported HTML, controls render disabled. New `layout.control` theme block. |
+| **0.10.0** | Previous | Project-level parameters: a `models/parameters.yaml` file declaring `string`/`number`/`date`/`field` parameters, referenced from charts with `$name` in field slots and filter values, and `${name}` in title text. Resolved before parsing, so a parameterized spec compiles identically to the hand-written equivalent. |
 | **0.9.0** | Previous | Axis channel toggles: `AxisChannelConfig` gains `ruler` (→ VL `axis.domain`), `ticks` (→ `axis.ticks`), `labels` (→ `axis.labels`). Each axis channel also accepts a bare bool (`x: false` removes the axis). The x-off/y-on grid default moved from a hardcoded encoding injection to the theme (`axisX`/`axisY`), making grid/ruler/tick defaults themeable. |
 | **0.8.0** | Previous | **Breaking:** label grammar — `LabelConfig.position` replaced by `horizontal`/`vertical`; `color` now accepts `"match"`. |
 | **0.7.0** | Previous | Labels: `label` property on charts (`true`, `false`, or config object). Two-axis position model (`vertical` + `horizontal`). Three-level cascade (chart → entry → layer). Label intents emitted in `usermeta` for compile-then-patch rendering. |

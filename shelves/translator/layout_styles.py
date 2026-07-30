@@ -46,6 +46,20 @@ LINK_DEFAULTS: dict[str, str] = {
 
 
 @dataclass(frozen=True)
+class ControlMeta:
+    """Compose-time metadata for a control component, consumed by the translator."""
+
+    param: str
+    widget: str  # "dropdown" | "stepper" | "date" | "text"
+    title: str
+    default: str | None
+    options: list[dict[str, str]] | None = None  # [{value, label}] for dropdowns
+    min: str | None = None
+    max: str | None = None
+    step: str | None = None
+
+
+@dataclass(frozen=True)
 class LegendLink:
     """Resolved binding from a legend element to its sheet's encoding (SHE-10/11).
 
@@ -81,9 +95,8 @@ class RenderContext:
     # SHE-10: (legend.source, legend.field) -> resolved link. Empty for the
     # studio/direct-translate paths that don't resolve legends yet.
     legend_links: dict[tuple[str, str], LegendLink] = field(default_factory=dict)
-    # SHE-29: sheet/legend DOM ids are assigned once at flatten time
-    # (layout_flatten._assign_dom_ids) and read off the node — the renderer no
-    # longer maintains auto-id counters here.
+    # SHE-92: dom_id -> ControlMeta for each control component.
+    control_meta: dict[str, ControlMeta] = field(default_factory=dict)
 
 
 # ─── CSS Helpers ─────────────────────────────────────────────────

@@ -21,7 +21,11 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-def _pipeline(yaml_body: str, parameters_path: Path | None = None) -> dict:
+def _pipeline(
+    yaml_body: str,
+    parameters_path: Path | None = None,
+    overrides: dict[str, str] | None = None,
+) -> dict:
     """Run the dashboard pipeline against the shared chart/model fixtures.
 
     `parameters_path` defaults to `<models_dir>/parameters.yaml`; pass a
@@ -36,6 +40,7 @@ def _pipeline(yaml_body: str, parameters_path: Path | None = None) -> dict:
             theme_path=None,
             models_dir=MODELS_DIR,  # orders.yaml model → field labels/types
             parameters_path=parameters_path,
+            overrides=overrides,
         )
 
     return _run(_test())
@@ -482,3 +487,100 @@ class TestVendoredVegaSources:
         for name in VEGA_LIB_FILES:
             assert f'<script src="/static/vendor/{name}"></script>' in html
         assert "jsdelivr.net/npm/vega" not in html
+
+
+class TestStudioDashboardControls:
+    """SHE-92: controls in the Studio dashboard pipeline."""
+
+    CONTROL_YAML = (
+        'dashboard: "Controls"\n'
+        "canvas: { width: 1440, height: 900 }\n"
+        "root:\n"
+        "  orientation: vertical\n"
+        "  contains:\n"
+        "    - horizontal:\n"
+        "        gap: 16\n"
+        "        height: 48\n"
+        "        contains:\n"
+        "          - control: metric\n"
+        "          - control: status\n"
+        '            label: "Order Status"\n'
+        "          - control: top_n\n"
+        "    - sheet: param_field_swap.yaml\n"
+        "      name: chart_1\n"
+        '      height: "80%"\n'
+    )
+
+    def test_controls_produce_data_param_attrs(self):
+        """Controls in the Studio pipeline emit data-param attributes in HTML."""
+        result = _pipeline(self.CONTROL_YAML)
+        assert result["errors"] == [], result["errors"]
+        html = result["html"]
+        assert html is not None
+        assert 'data-param="metric"' in html
+        assert 'data-param="status"' in html
+        assert 'data-param="top_n"' in html
+
+    def test_control_label_override_in_html(self):
+        """Inline label on a control overrides the parameter label."""
+        result = _pipeline(self.CONTROL_YAML)
+        html = result["html"]
+        assert html is not None
+        assert 'data-title="Order Status"' in html
+
+    def test_control_widget_inference(self):
+        """Widget type is inferred from the parameter definition."""
+        result = _pipeline(self.CONTROL_YAML)
+        html = result["html"]
+        assert html is not None
+        # metric is type:field → dropdown
+        assert 'data-param="metric"' in html
+        assert 'data-control="dropdown"' in html
+        # top_n is type:number with range → stepper
+        assert 'data-param="top_n"' in html
+        assert 'data-control="stepper"' in html
+
+    def test_component_tree_includes_controls(self):
+        """The component tree returned to Studio includes control entries."""
+        result = _pipeline(self.CONTROL_YAML)
+        assert result["errors"] == []
+        tree = result["component_tree"]
+        control_entries = [e for e in tree if e["type"] == "control"]
+        assert len(control_entries) == 3
+
+    def test_override_header_threads_to_parameter_set(self):
+        """X-Shelves-Params header overrides the default parameter values."""
+        result = _pipeline(self.CONTROL_YAML)
+        assert result["errors"] == []
+        html = result["html"]
+        # Default value for metric is "revenue"
+        assert 'data-default="revenue"' in html
+
+        # Now recompile with an override
+        overrides = {"metric": "cost"}
+        result2 = _pipeline(self.CONTROL_YAML, overrides=overrides)
+        assert result2["errors"] == [], result2["errors"]
+        html2 = result2["html"]
+        assert html2 is not None
+        assert 'data-default="cost"' in html2
+
+    def test_undeclared_control_returns_error(self):
+        """A control referencing a non-existent parameter returns an error."""
+        yaml_body = (
+            'dashboard: "Bad Control"\n'
+            "canvas: { width: 800, height: 600 }\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - control: nonexistent\n"
+        )
+        result = _pipeline(yaml_body)
+        assert result["html"] is None
+        assert any("nonexistent" in e and "not a declared parameter" in e for e in result["errors"])
+
+    def test_control_render_js_inlined(self):
+        """When controls are present, control_render.js is inlined in the HTML."""
+        result = _pipeline(self.CONTROL_YAML)
+        html = result["html"]
+        assert html is not None
+        assert "controlRender" in html

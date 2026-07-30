@@ -28,6 +28,10 @@ COMPOUND_FIT_JS_PATH = Path(__file__).parent / "compound_fit.js"
 # label_patch.js / compound_fit.js. Read fresh per render.
 LEGEND_RENDER_JS_PATH = Path(__file__).parent / "legend_render.js"
 
+# Canonical browser-side control renderer (window.controlRender), shared like
+# legend_render.js. Read fresh per render.
+CONTROL_RENDER_JS_PATH = Path(__file__).parent / "control_render.js"
+
 
 def load_label_patch_js() -> str:
     """Read the canonical label-patch JS from disk (fresh, no import-time cache)."""
@@ -42,6 +46,11 @@ def load_compound_fit_js() -> str:
 def load_legend_render_js() -> str:
     """Read the canonical legend-render JS from disk (fresh, no import-time cache)."""
     return LEGEND_RENDER_JS_PATH.read_text(encoding="utf-8")
+
+
+def load_control_render_js() -> str:
+    """Read the canonical control-render JS from disk (fresh, no import-time cache)."""
+    return CONTROL_RENDER_JS_PATH.read_text(encoding="utf-8")
 
 
 # Snapshot for tests/back-compat; render paths call load_label_patch_js().

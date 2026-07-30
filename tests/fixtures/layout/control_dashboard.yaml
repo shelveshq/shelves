@@ -1,0 +1,16 @@
+dashboard: "Control Dashboard"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        gap: 16
+        height: 48
+        contains:
+          - control: metric
+          - control: status
+            label: "Order Status"
+          - control: top_n
+    - sheet: param_field_swap.yaml
+      name: chart_1
+      height: "80%"

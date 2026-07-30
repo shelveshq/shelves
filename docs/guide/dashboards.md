@@ -199,6 +199,10 @@ The type key's value is always the component's **primary field**. Additional pro
   href: "/docs"
   target: _blank
 
+- control: metric                        # parameter control
+- control: status                        # control with label override
+  label: "Order Status"
+
 - blank:                                 # empty spacer
 - blank:                                 # spacer with explicit size
   height: 16
@@ -214,6 +218,7 @@ The type key's value is always the component's **primary field**. Additional pro
 | `button` | display text | `button: "Export"` |
 | `link` | display text | `link: "Details"` |
 | `legend` | source (chart path) | `legend: revenue.yaml` |
+| `control` | parameter name | `control: metric` |
 | `blank` | *(none)* | `blank:` |
 
 ---
@@ -548,6 +553,45 @@ same rules as every other layout element (see [Sizing](#sizing) and
 > field's model label), with the in-sheet legend suppressed. Legends pointing at
 > layered or dual-axis charts (multiple scales per channel) are not supported yet
 > and raise a build error.
+
+### Control (parameter widget)
+
+An interactive control for a declared parameter. The widget type is inferred from the parameter's `type` and `values` shape — no author-chosen widget override.
+
+```yaml
+- control: metric                    # dropdown (type: field)
+- control: status                    # dropdown (literal values)
+  label: "Order Status"              # overrides the parameter label
+- control: top_n                     # stepper (type: number + range)
+```
+
+| Property | Required | Default | Description |
+|---|---|---|---|
+| *(value)* | Yes | — | `param`: the declared parameter name |
+| `label` | No | parameter label or name | Display title for the control |
+| `width` | No | `auto` | Outer box width |
+| `height` | No | `auto` | Outer box height |
+| `padding` | No | `0` | Inner spacing |
+| `margin` | No | `0` | Outer spacing |
+| `style` | No | — | Reference to a shared style |
+| `html` | No | — | Raw CSS escape hatch |
+
+**Widget inference:**
+
+| Parameter shape | Widget | HTML element |
+|---|---|---|
+| `type: field` with `values:` | Dropdown | `<select>` of field names |
+| Literal `values:` list | Dropdown | `<select>` of literal values |
+| Field-reference domain | Dropdown | `<select>` of resolved domain values |
+| `type: number` with `min`/`max` range | Stepper | `<input type="number">` |
+| `type: date` with `min`/`max` range | Date picker | `<input type="date">` |
+| `type: string` with no `values:` | Text input | `<input type="text">` |
+
+**Label precedence:** inline `label:` on the control > `label:` on the parameter declaration > parameter name.
+
+**Studio interactivity:** In Shelves Studio, changing a control recompiles the dashboard with the new parameter value. In exported HTML (`shelves render`), controls render as disabled read-only widgets — parameters are compile-time and there is no server to recompile against.
+
+The control must reference a declared parameter (from `parameters.yaml`). An unknown parameter name produces a build error, identical to an unresolved legend source.
 
 ### Blank (spacer)
 

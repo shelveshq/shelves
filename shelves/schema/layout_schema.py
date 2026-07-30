@@ -73,7 +73,7 @@ class Canvas(BaseModel):
 
 # ─── Type Constants ───────────────────────────────────────────────
 
-KNOWN_LEAF_TYPES = {"sheet", "text", "image", "button", "link", "blank", "legend"}
+KNOWN_LEAF_TYPES = {"sheet", "text", "image", "button", "link", "blank", "legend", "control"}
 KNOWN_CONTAINER_TYPES = {"horizontal", "vertical"}
 KNOWN_TYPES = KNOWN_LEAF_TYPES | KNOWN_CONTAINER_TYPES
 
@@ -182,6 +182,19 @@ class BlankComponent(BaseModel):
     html: str | None = None
 
 
+class ControlComponent(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    type: Literal["control"] = "control"
+    param: str = Field(min_length=1)
+    label: str | None = None
+    width: SizeValue = None
+    height: SizeValue = None
+    margin: int | str | None = None
+    padding: int | str | None = None
+    style: str | None = None
+    html: str | None = None
+
+
 class ContainerComponent(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: Literal["horizontal", "vertical"]
@@ -231,6 +244,7 @@ Component = (
     | ImageComponent
     | BlankComponent
     | LegendComponent
+    | ControlComponent
 )
 
 
@@ -245,6 +259,7 @@ _LEAF_BUILDERS: dict[str, tuple[type, str]] = {
     "link": (LinkComponent, "text"),
     "blank": (BlankComponent, ""),  # blank has no primary field
     "legend": (LegendComponent, "source"),
+    "control": (ControlComponent, "param"),
 }
 
 

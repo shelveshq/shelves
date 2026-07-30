@@ -45,6 +45,17 @@ async def compile_dashboard_yaml(request: Request) -> JSONResponse:
     theme_path: Path | None = request.app.state.theme_path
     models_dir: Path = request.app.state.models_dir
     parameters_path: Path | None = request.app.state.parameters_path
+    # SHE-92: controls in the iframe post param overrides via the parent frame,
+    # which sends them as a JSON-encoded X-Shelves-Params header.
+    overrides: dict[str, str] | None = None
+    raw_header = request.headers.get("x-shelves-params")
+    if raw_header:
+        import contextlib
+        import json as _json
+
+        with contextlib.suppress(Exception):
+            overrides = _json.loads(raw_header)
+
     result = await run_dashboard_pipeline(
         yaml_body,
         project_dir,
@@ -52,6 +63,7 @@ async def compile_dashboard_yaml(request: Request) -> JSONResponse:
         theme_path,
         models_dir=models_dir,
         parameters_path=parameters_path,
+        overrides=overrides,
     )
     return JSONResponse(result)
 
@@ -63,6 +75,7 @@ async def run_dashboard_pipeline(
     theme_path: Path | None,
     models_dir: Path | None = None,
     parameters_path: Path | None = None,
+    overrides: dict[str, str] | None = None,
 ) -> dict:
     """Run the dashboard compilation pipeline and return a result dict."""
     from shelves.schema.layout_schema import parse_dashboard
@@ -80,6 +93,8 @@ async def run_dashboard_pipeline(
 
     # Discover sheets (name → link) — reuse the already-flattened tree.
     from shelves.compose.dashboard import (
+        _build_control_meta,
+        _discover_controls,
         _discover_sheets,
         compile_dashboard_charts,
         link_legends,
@@ -107,6 +122,7 @@ async def run_dashboard_pipeline(
             parameters_path,
             models_dir=effective_models_dir,
             data_base_dir=project_dir,
+            overrides=overrides,
         )
     except ValueError as e:
         return {
@@ -149,6 +165,19 @@ async def run_dashboard_pipeline(
         }
     warnings.extend(legend_warnings)
 
+    # SHE-92: discover controls and build metadata from the ParameterSet.
+    controls = _discover_controls(flat_root)
+    try:
+        control_meta = _build_control_meta(controls, flat_root, parameters) if controls else {}
+    except ValueError as ce:
+        return {
+            "html": None,
+            "errors": [str(ce)],
+            "warnings": warnings,
+            "component_tree": component_tree,
+            "canvas": {"width": spec.canvas.width, "height": spec.canvas.height},
+        }
+
     # vega_src_base: the preview iframe (srcdoc) resolves relative URLs against
     # the studio origin, so it loads the vendored same-origin copies instead of
     # the CDN — immune to CDN blips and content blockers (SHE-77).
@@ -159,6 +188,7 @@ async def run_dashboard_pipeline(
         legend_links=legend_links,
         flat_tree=flat_root,
         vega_src_base="/static/vendor",
+        control_meta=control_meta,
     )
 
     return {
@@ -176,7 +206,7 @@ def build_component_tree(flat_root: Any) -> list[dict]:
     Walk order is depth-first pre-order.
     Each entry: {name, type, depth, link?, children_count}
     """
-    from shelves.schema.layout_schema import SheetComponent
+    from shelves.schema.layout_schema import ControlComponent, SheetComponent
     from shelves.translator.layout_flatten import FlatNode
 
     result: list[dict] = []
@@ -189,6 +219,8 @@ def build_component_tree(flat_root: Any) -> list[dict]:
             comp_type = getattr(comp, "orientation", "vertical")
         elif isinstance(comp, SheetComponent):
             comp_type = "sheet"
+        elif isinstance(comp, ControlComponent):
+            comp_type = "control"
 
         entry: dict = {
             "name": node.name,
