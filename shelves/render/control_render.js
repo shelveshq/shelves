@@ -118,8 +118,7 @@
     doc = doc || (typeof document !== 'undefined' ? document : null);
     if (!doc) return;
     var divs = doc.querySelectorAll('div[data-param][data-control]');
-    var inStudio = false;
-    try { inStudio = window.parent !== window; } catch (e) { /* cross-origin */ }
+    var inStudio = !!window.__SHELVES_INTERACTIVE__;
 
     Array.prototype.forEach.call(divs, function (div) {
       var attrs = {

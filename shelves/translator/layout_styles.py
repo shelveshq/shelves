@@ -14,6 +14,7 @@ from typing import Literal
 from shelves.schema.layout_schema import (
     ButtonComponent,
     Component,
+    ControlComponent,
     LinkComponent,
     RootComponent,
     SheetComponent,
@@ -344,6 +345,9 @@ def resolve_inner_styles(
         css["display"] = "flex"
         css["flex-direction"] = "column"
         css["justify-content"] = "center"
+    elif isinstance(component, ControlComponent):
+        css["display"] = "flex"
+        css["align-items"] = "center"
     else:
         # Container/Image/Blank: clip child content at the content box.  The
         # outer wrapper dropped overflow when clipping moved to the inner div,

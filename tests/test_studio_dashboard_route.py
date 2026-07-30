@@ -584,3 +584,46 @@ class TestStudioDashboardControls:
         html = result["html"]
         assert html is not None
         assert "controlRender" in html
+
+    def test_studio_html_sets_interactive_flag(self):
+        """Studio dashboard HTML includes __SHELVES_INTERACTIVE__ for controls."""
+        result = _pipeline(self.CONTROL_YAML)
+        html = result["html"]
+        assert html is not None
+        assert "__SHELVES_INTERACTIVE__" in html
+
+
+class TestOverrideHeaderParsing:
+    """Test the X-Shelves-Params header parsing and validation."""
+
+    def test_valid_json_object_parsed(self):
+        from shelves.studio.routes.dashboard import _parse_override_header
+
+        result = _parse_override_header('{"metric": "cost"}')
+        assert result == {"metric": "cost"}
+
+    def test_malformed_json_returns_none(self):
+        from shelves.studio.routes.dashboard import _parse_override_header
+
+        assert _parse_override_header("{bad json") is None
+
+    def test_json_array_returns_none(self):
+        from shelves.studio.routes.dashboard import _parse_override_header
+
+        assert _parse_override_header('["metric"]') is None
+
+    def test_json_string_returns_none(self):
+        from shelves.studio.routes.dashboard import _parse_override_header
+
+        assert _parse_override_header('"just a string"') is None
+
+    def test_json_number_returns_none(self):
+        from shelves.studio.routes.dashboard import _parse_override_header
+
+        assert _parse_override_header("42") is None
+
+    def test_values_coerced_to_strings(self):
+        from shelves.studio.routes.dashboard import _parse_override_header
+
+        result = _parse_override_header('{"top_n": 5, "active": true}')
+        assert result == {"top_n": "5", "active": "True"}

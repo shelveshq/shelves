@@ -165,6 +165,7 @@ export function setDashboardZoom(zoom) {
 
 // ─── Layout Switching ─────────────────────────────────────
 export function applyDashboardLayout() {
+  clearParamOverrides();
   state.dashboardMode = true;
   state.currentView = 'dashboard';
   document.getElementById('preview-pane').classList.add('is-dashboard');

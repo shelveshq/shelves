@@ -54,6 +54,7 @@ def translate_dashboard(
     flat_tree: FlatNode | None = None,
     vega_src_base: str | None = None,
     control_meta: dict[str, ControlMeta] | None = None,
+    interactive: bool = False,
 ) -> str:
     """Translate a DashboardSpec to a complete HTML page.
 
@@ -102,6 +103,7 @@ def translate_dashboard(
         has_legends=bool(ctx.legend_links),
         has_controls=bool(ctx.control_meta),
         vega_src_base=vega_src_base,
+        interactive=interactive,
     )
 
 
@@ -432,6 +434,7 @@ def wrap_html_page(
     has_legends: bool = False,
     has_controls: bool = False,
     vega_src_base: str | None = None,
+    interactive: bool = False,
 ) -> str:
     """Wrap rendered component tree in a full HTML page."""
     from shelves.render.to_html import vega_script_tags
@@ -574,6 +577,8 @@ def wrap_html_page(
         from shelves.render.to_html import load_control_render_js
 
         control_js = load_control_render_js()
+        if interactive:
+            control_js = "window.__SHELVES_INTERACTIVE__ = true;\n" + control_js
 
     script_block = "\n".join(script_lines)
     patch_block = f"  <script>\n{patch_js}\n  </script>\n" if patch_js else ""

@@ -45,16 +45,10 @@ async def compile_dashboard_yaml(request: Request) -> JSONResponse:
     theme_path: Path | None = request.app.state.theme_path
     models_dir: Path = request.app.state.models_dir
     parameters_path: Path | None = request.app.state.parameters_path
-    # SHE-92: controls in the iframe post param overrides via the parent frame,
-    # which sends them as a JSON-encoded X-Shelves-Params header.
     overrides: dict[str, str] | None = None
     raw_header = request.headers.get("x-shelves-params")
     if raw_header:
-        import contextlib
-        import json as _json
-
-        with contextlib.suppress(Exception):
-            overrides = _json.loads(raw_header)
+        overrides = _parse_override_header(raw_header)
 
     result = await run_dashboard_pipeline(
         yaml_body,
@@ -189,6 +183,7 @@ async def run_dashboard_pipeline(
         flat_tree=flat_root,
         vega_src_base="/static/vendor",
         control_meta=control_meta,
+        interactive=True,
     )
 
     return {
@@ -198,6 +193,30 @@ async def run_dashboard_pipeline(
         "component_tree": component_tree,
         "canvas": {"width": spec.canvas.width, "height": spec.canvas.height},
     }
+
+
+def _parse_override_header(raw: str) -> dict[str, str] | None:
+    """Parse and validate the X-Shelves-Params header value.
+
+    Returns a dict of string overrides, or None on parse/validation failure.
+    Logs a warning instead of silently swallowing errors.
+    """
+    import json as _json
+    import logging
+
+    logger = logging.getLogger("shelves.studio")
+    try:
+        parsed = _json.loads(raw)
+    except (ValueError, TypeError) as exc:
+        logger.warning("Malformed X-Shelves-Params header (ignored): %s", exc)
+        return None
+    if not isinstance(parsed, dict):
+        logger.warning(
+            "X-Shelves-Params header is not a JSON object (got %s, ignored)",
+            type(parsed).__name__,
+        )
+        return None
+    return {str(k): str(v) for k, v in parsed.items()}
 
 
 def build_component_tree(flat_root: Any) -> list[dict]:
