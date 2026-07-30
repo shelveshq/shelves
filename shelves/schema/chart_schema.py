@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from shelves.params.substitute import ParameterReferenceError, ParameterSet, substitute_parameters
 
-# DSL version — bump when the grammar changes.
+# DSL version — bump when ANY DSL grammar changes (chart or layout).
 # Follows semver: major = breaking, minor = additive, patch = fixes.
 # 0.8.0: label grammar changed — LabelConfig.position replaced by
 # horizontal/vertical, and color now accepts "match" (KAN-281). Breaking for
@@ -37,7 +37,8 @@ from shelves.params.substitute import ParameterReferenceError, ParameterSet, sub
 # ${name} references in field slots, filter values, and title text (SHE-89).
 # No ChartSpec field changes — references are substituted before parsing.
 # Additive → minor.
-DSL_VERSION = "0.10.0"  # Project-level parameters (SHE-89)
+# 0.11.0: control leaf type added to the layout DSL (SHE-92). Additive → minor.
+DSL_VERSION = "0.11.0"  # Layout: control leaf type (SHE-92)
 
 # ─── Primitives ────────────────────────────────────────────────────
 

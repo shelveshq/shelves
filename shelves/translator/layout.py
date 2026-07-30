@@ -595,10 +595,8 @@ def wrap_html_page(
             f" --shelves-control-surface: {ct.surface};"
             f" --shelves-control-border: {ct.border};"
             f" --shelves-control-radius: {ct.radius}px;"
-            f" --shelves-control-accent: {ct.accent};"
             f" --shelves-control-font-size: {ct.font_size}px;"
             f" --shelves-control-height: {ct.height}px;"
-            f" --shelves-control-focus-ring: {ct.focus_ring};"
             f" }}"
         )
 

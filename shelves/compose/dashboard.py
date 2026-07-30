@@ -355,6 +355,9 @@ def _build_control_meta(
 
         widget, options, rmin, rmax, rstep = _infer_widget(param_def, param_name, parameters)
 
+        if default_str is None and options:
+            default_str = options[0]["value"]
+
         meta[dom_id] = ControlMeta(
             param=param_name,
             widget=widget,
@@ -418,8 +421,10 @@ def _infer_widget(
         opts = [{"value": str(v), "label": str(v)} for v in values]
         return "dropdown", opts, None, None, None
 
-    if ptype == "string":
-        return "text", None, None, None, None
+    if ptype == "date":
+        return "date", None, None, None, None
+    if ptype == "number":
+        return "stepper", None, None, None, None
 
     return "text", None, None, None, None
 
