@@ -1166,6 +1166,7 @@ class TestDomainCache:
         ):
             mock_time.monotonic.side_effect = [0.0, 0.0 + DOMAIN_CACHE_TTL + 1, 100.0]
             resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
+            assert spy.call_count == 1
             resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
             assert spy.call_count == 2
 
@@ -1180,6 +1181,7 @@ class TestDomainCache:
         ref = FieldRef(model="gen", field="region")
         with patch("shelves.data.domains._inline_domain", wraps=_inline_domain) as spy:
             resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
+            assert spy.call_count == 1
             clear_domain_cache()
             resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
             assert spy.call_count == 2
@@ -1225,7 +1227,12 @@ parameters:
         ref = FieldRef(model="gen", field="fy")
         with patch("shelves.data.domains._inline_domain", wraps=_inline_domain) as spy:
             d1 = resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
+            assert spy.call_count == 1
             d2 = resolve_field_domain(ref, "number", models_dir=tmp_path, data_base_dir=tmp_path)
+            assert spy.call_count == 2
             assert d1.kind == "values"
             assert d2.kind == "bounds"
+            # Re-query string — should hit cache from d1, not re-query
+            d3 = resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
             assert spy.call_count == 2
+            assert d3 == d1

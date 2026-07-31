@@ -190,6 +190,8 @@ def resolve_field_domain(
         if isinstance(model.source, InlineSource)
         else (model.source.type if model.source is not None else "none")
     )
+    # Key omits models_dir/data_base_dir — safe because each process (Studio,
+    # dev server) binds a single project directory for its lifetime.
     cache_key = (source_type, ref.model, ref.field, param_type)
     cached = _domain_cache.get(cache_key)
     if cached is not None:
