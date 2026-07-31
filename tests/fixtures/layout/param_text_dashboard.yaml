@@ -1,0 +1,16 @@
+dashboard: "Parameter Text Dashboard"
+canvas: { width: 1440, height: 900 }
+components:
+  breakdown:
+    text: "${metric} Breakdown"
+root:
+  orientation: vertical
+  contains:
+    - text: "Showing ${metric}"
+    - horizontal:
+        contains:
+          - text: "Filtered to ${region}"
+          - sheet: param_field_swap.yaml
+            name: swap_a
+            height: 400
+    - "breakdown"

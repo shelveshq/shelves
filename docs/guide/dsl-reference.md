@@ -570,6 +570,7 @@ values:
 | Field slots — `rows`, `cols`, `color`, `detail`, `size`, `facet.*`, `sort.field`, `tooltip`, `label.field`, `kpi.value`, `kpi.comparison.field`, a filter's `field`, measure and layer entries | `$name` | `field` parameters |
 | Filter values — `value`, `values[…]`, `range[…]` | `$name` | `string`, `number`, `date` |
 | Title text — `sheet`, `description`, `axis.x.title`, `axis.y.title`, `kpi.title`, `kpi.comparison.label` | `${name}` | all types |
+| Dashboard text — `text:` in `root.contains`, `components` text (any nesting depth) | `${name}` | all types |
 | Model manifest `calculation` fields (measures and dimensions) | `${name}` | all types (file/DuckDB sources only) |
 
 A bare `$name` is recognized only when it is the **entire** value. To embed a

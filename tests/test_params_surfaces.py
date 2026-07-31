@@ -257,6 +257,17 @@ def _studio_client(project: Path) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
 
 
+def _studio_client_from_dirs(project: Path, models: Path) -> TestClient:
+    from shelves.studio.server import create_app
+
+    app = create_app(
+        project_dir=project,
+        models_dir=models,
+        charts_dir=project / "yaml",
+    )
+    return TestClient(app, raise_server_exceptions=False)
+
+
 def _run_studio_chart(
     project: Path, target: str, extra_argv: list[str] | None = None
 ) -> tuple[str | None, str | None]:
@@ -428,6 +439,42 @@ class TestThreading:
         specs = _embedded_specs(html)
         assert _sheet_y_field(specs, "swap_a") == "arpu"
         assert _sheet_y_field(specs, "swap_b") == "arpu"
+
+    def test_compose_dashboard_interpolates_text_components(self):
+        """SHE-96: text components in a dashboard have ${name} resolved."""
+        from shelves.compose.dashboard import compose_dashboard
+
+        html = compose_dashboard(
+            dashboard_path=LAYOUT_DIR / "param_text_dashboard.yaml",
+            chart_base_dir=YAML_DIR,
+            data_dir=FIXTURES_DIR,
+            models_dir=MODELS_DIR,
+            no_theme=True,
+            parameters=load_parameter_set(
+                params_fixture(),
+                models_dir=MODELS_DIR,
+                data_base_dir=FIXTURES_DIR,
+            ),
+        )
+        assert "Showing revenue" in html
+        assert "Filtered to EMEA" in html
+        assert "revenue Breakdown" in html
+        assert "${metric}" not in html
+        assert "${region}" not in html
+
+    def test_studio_dashboard_interpolates_text_components(self):
+        """SHE-96: Studio POST /compile-dashboard resolves ${name} in text."""
+        project = Path(__file__).parent / "fixtures"
+        models = project / "models"
+        client = _studio_client_from_dirs(project, models)
+        body = (LAYOUT_DIR / "param_text_dashboard.yaml").read_text()
+        data = client.post("/compile-dashboard", content=body).json()
+        assert data["errors"] == [], data["errors"]
+        assert "Showing revenue" in data["html"]
+        assert "Filtered to EMEA" in data["html"]
+        assert "revenue Breakdown" in data["html"]
+        assert "${metric}" not in data["html"]
+        assert "${region}" not in data["html"]
 
     def test_compose_dashboard_without_parameters_still_fails_on_a_ref(self):
         """No parameters threaded → the $ref is undeclared, per SHE-89."""

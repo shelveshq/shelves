@@ -103,6 +103,11 @@ def normalize(path: str) -> str:
     return _INDEX_RE.sub("[*]", path)
 
 
+_NESTED_CONTAINS_RE = re.compile(
+    r"^(?:root|components\.\*)(?:\.(horizontal|vertical))?(?:\.contains\[\*\]\.(horizontal|vertical))*\.contains\[\*\]\.text$"
+)
+
+
 def classify(path: str) -> SlotKind | None:
     """Slot kind for a dotted path, or None if a reference is forbidden there."""
     key = normalize(path)
@@ -117,4 +122,8 @@ def classify(path: str) -> SlotKind | None:
         generic = re.sub(r"^components\.[^.]+\.", "components.*.", key)
         if generic in INTERPOLATION_SLOTS:
             return "interpolation"
+        key = generic
+    # Dashboard text can nest arbitrarily inside horizontal/vertical containers.
+    if _NESTED_CONTAINS_RE.match(key):
+        return "interpolation"
     return None

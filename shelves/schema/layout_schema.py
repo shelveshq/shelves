@@ -16,6 +16,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from shelves.params.substitute import ParameterReferenceError, ParameterSet, substitute_parameters
+
 # ─── Size Type ─────────────────────────────────────────────────────
 
 SizeValue = int | str | None
@@ -495,12 +497,31 @@ class DashboardSpec(BaseModel):
 # ─── Public API ───────────────────────────────────────────────────
 
 
-def parse_dashboard(yaml_string: str) -> DashboardSpec:
-    """Parse a YAML string and validate against the Layout DSL schema."""
+def parse_dashboard(
+    yaml_string: str,
+    *,
+    parameters: ParameterSet | None = None,
+) -> DashboardSpec:
+    """Parse a YAML string and validate against the Layout DSL schema.
+
+    `${name}` references in text components are substituted before validation
+    using `parameters` (SHE-96). None means `ParameterSet.empty()`.
+    """
     raw = yaml.safe_load(yaml_string)
-    return DashboardSpec.model_validate(raw)
+    if not isinstance(raw, dict):
+        return DashboardSpec.model_validate(raw)
+
+    result = substitute_parameters(raw, parameters or ParameterSet.empty())
+    if result.errors:
+        raise ParameterReferenceError(result.errors)
+
+    return DashboardSpec.model_validate(result.data)
 
 
-def load_dashboard(path: Path) -> DashboardSpec:
+def load_dashboard(
+    path: Path,
+    *,
+    parameters: ParameterSet | None = None,
+) -> DashboardSpec:
     """Load and validate a dashboard YAML file."""
-    return parse_dashboard(path.read_text())
+    return parse_dashboard(path.read_text(), parameters=parameters)

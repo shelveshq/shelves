@@ -72,13 +72,36 @@ async def run_dashboard_pipeline(
     overrides: dict[str, str] | None = None,
 ) -> dict:
     """Run the dashboard compilation pipeline and return a result dict."""
+    from shelves.params.resolve import load_parameter_set
     from shelves.schema.layout_schema import parse_dashboard
     from shelves.theme.merge import load_theme
     from shelves.translator.layout import translate_dashboard
     from shelves.translator.layout_flatten import flatten_dashboard
 
+    # Resolve a models_dir usable for both chart compile and the per-sheet
+    # resolver AND data resolution — one value, threaded everywhere, so the two
+    # halves of a compile can never read different model directories.
+    effective_models_dir = models_dir if models_dir and models_dir.exists() else None
+
+    # SHE-96: parameters must be loaded BEFORE parse_dashboard so ${name}
+    # references in text components are substituted before model_validate.
     try:
-        spec = parse_dashboard(yaml_body)
+        parameters = load_parameter_set(
+            parameters_path,
+            models_dir=effective_models_dir,
+            data_base_dir=project_dir,
+            overrides=overrides,
+        )
+    except ValueError as e:
+        return {
+            "html": None,
+            "errors": [str(e)],
+            "warnings": [],
+            "component_tree": [],
+        }
+
+    try:
+        spec = parse_dashboard(yaml_body, parameters=parameters)
     except Exception as e:
         return {"html": None, "errors": [str(e)], "warnings": [], "component_tree": []}
 
@@ -103,29 +126,6 @@ async def run_dashboard_pipeline(
         from shelves.theme.theme_schema import ThemeSpec
 
         theme = ThemeSpec()
-
-    # Resolve a models_dir usable for both chart compile and the per-sheet
-    # resolver AND data resolution — one value, threaded everywhere, so the two
-    # halves of a compile can never read different model directories.
-    effective_models_dir = models_dir if models_dir and models_dir.exists() else None
-
-    from shelves.params.resolve import load_parameter_set
-
-    try:
-        parameters = load_parameter_set(
-            parameters_path,
-            models_dir=effective_models_dir,
-            data_base_dir=project_dir,
-            overrides=overrides,
-        )
-    except ValueError as e:
-        return {
-            "html": None,
-            "errors": [str(e)],
-            "warnings": [],
-            "component_tree": component_tree,
-            "canvas": {"width": spec.canvas.width, "height": spec.canvas.height},
-        }
 
     # Compile each referenced chart via the shared per-sheet loop (the same one
     # compose_dashboard uses — Studio is a surface, not a second compiler).

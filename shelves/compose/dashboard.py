@@ -76,7 +76,7 @@ def compose_dashboard(
     the failure is emitted via `warnings.warn` (same message format Studio
     shows in its warnings panel).
     """
-    spec = load_dashboard(dashboard_path)
+    spec = load_dashboard(dashboard_path, parameters=parameters)
 
     theme = ThemeSpec() if no_theme else (theme or load_theme())
 

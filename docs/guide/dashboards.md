@@ -369,6 +369,11 @@ Static text blocks with optional presets for quick styling.
 | `style` | No | — | Reference to a shared style |
 | `html` | No | — | Raw CSS escape hatch |
 
+**Parameter interpolation:** text values support `${name}` references to
+project-level parameters. For example, `text: "Showing ${metric}"` resolves
+the parameter before rendering. This works at any nesting depth inside
+`root.contains` and in `components` text.
+
 **Overflow:** text is clipped to its box and rendered on a single line; text that
 is too long for the box is truncated with an ellipsis (`…`). Size the box (via
 `width`/`height` on the component or its container) to fit the content, or shorten

@@ -121,7 +121,21 @@ class TestClassify:
 
     @pytest.mark.parametrize(
         "path",
-        ["sheet", "description", "axis.x.title", "axis.y.title", "kpi.title"],
+        [
+            "sheet",
+            "description",
+            "axis.x.title",
+            "axis.y.title",
+            "kpi.title",
+            # Dashboard top-level text
+            "root.contains[0].text",
+            "components.breakdown.text",
+            # Dashboard nested text (SHE-96)
+            "root.contains[0].horizontal.contains[0].text",
+            "root.contains[1].vertical.contains[0].horizontal.contains[0].text",
+            "components.sidebar.horizontal.contains[0].text",
+            "components.sidebar.vertical.contains[1].horizontal.contains[0].text",
+        ],
     )
     def test_interpolation_slots(self, path):
         assert classify(path) == "interpolation"
@@ -565,3 +579,160 @@ class TestParameterSetDomains:
             domains={"region": self.REGION_DOMAIN},
         )
         assert ps.values["status"] == "closed"
+
+
+# ─── Dashboard text substitution (SHE-96) ───────────────────────
+
+
+def _sub_dashboard(yaml_text: str, params: ParameterSet | None = None):
+    return substitute_parameters(yaml.safe_load(yaml_text), params or _params())
+
+
+class TestDashboardTextSubstitution:
+    def test_top_level_text(self):
+        result = _sub_dashboard("""
+dashboard: "Test"
+root:
+  orientation: vertical
+  contains:
+    - text: "Showing ${metric}"
+""")
+        assert result.diagnostics == []
+        assert result.data["root"]["contains"][0]["text"] == "Showing revenue"
+
+    def test_nested_text_in_container(self):
+        result = _sub_dashboard("""
+dashboard: "Test"
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        contains:
+          - text: "Filtered to ${region}"
+""")
+        assert result.diagnostics == []
+        inner = result.data["root"]["contains"][0]["horizontal"]["contains"][0]
+        assert inner["text"] == "Filtered to EMEA"
+
+    def test_deeply_nested_text(self):
+        result = _sub_dashboard("""
+dashboard: "Test"
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        contains:
+          - vertical:
+              contains:
+                - text: "Deep ${metric}"
+""")
+        assert result.diagnostics == []
+        deep = result.data["root"]["contains"][0]["horizontal"]["contains"][0]
+        assert deep["vertical"]["contains"][0]["text"] == "Deep revenue"
+
+    def test_component_text(self):
+        result = _sub_dashboard("""
+dashboard: "Test"
+components:
+  breakdown:
+    text: "${metric} Breakdown"
+root:
+  orientation: vertical
+  contains: []
+""")
+        assert result.diagnostics == []
+        assert result.data["components"]["breakdown"]["text"] == "revenue Breakdown"
+
+    def test_multiple_refs_in_one_text(self):
+        result = _sub_dashboard("""
+dashboard: "Test"
+root:
+  orientation: vertical
+  contains:
+    - text: "${metric} by ${region}"
+""")
+        assert result.diagnostics == []
+        assert result.data["root"]["contains"][0]["text"] == "revenue by EMEA"
+
+    def test_dollar_escape_in_dashboard_text(self):
+        result = _sub_dashboard("""
+dashboard: "Test"
+root:
+  orientation: vertical
+  contains:
+    - text: "Price in $$"
+""")
+        assert result.data["root"]["contains"][0]["text"] == "Price in $"
+
+    def test_null_renders_as_empty_string_in_dashboard_text(self):
+        result = _sub_dashboard("""
+dashboard: "Test"
+root:
+  orientation: vertical
+  contains:
+    - text: "Region ${maybe_region}"
+""")
+        assert result.data["root"]["contains"][0]["text"] == "Region "
+
+    def test_no_refs_passthrough(self):
+        raw = yaml.safe_load("""
+dashboard: "Test"
+root:
+  orientation: vertical
+  contains:
+    - text: "No refs here"
+""")
+        result = substitute_parameters(raw, ParameterSet.empty())
+        assert result.data is raw
+        assert result.diagnostics == []
+
+    def test_undeclared_ref_in_dashboard_text(self):
+        result = _sub_dashboard("""
+dashboard: "Test"
+root:
+  orientation: vertical
+  contains:
+    - text: "Showing ${unknown}"
+""")
+        assert [d.code for d in result.errors] == ["undeclared_ref"]
+
+    def test_bare_ref_in_dashboard_text_forbidden(self):
+        result = _sub_dashboard("""
+dashboard: "Test"
+root:
+  orientation: vertical
+  contains:
+    - text: $metric
+""")
+        assert [d.code for d in result.errors] == ["forbidden_position"]
+        assert "bare $ref" in result.errors[0].message
+
+    def test_inline_parameters_block_rejected_dashboard(self):
+        with pytest.raises(ValueError, match=re.escape("models/parameters.yaml")):
+            substitute_parameters(
+                yaml.safe_load("""
+dashboard: "Test"
+parameters:
+  metric:
+    type: string
+    default: revenue
+root:
+  orientation: vertical
+  contains: []
+"""),
+                ParameterSet.empty(),
+            )
+
+    def test_mixed_chart_and_text_in_dashboard(self):
+        """Dashboard with parameterized text AND parameterized sheets — both interpolated."""
+        result = _sub_dashboard("""
+dashboard: "Test"
+root:
+  orientation: vertical
+  contains:
+    - text: "Showing ${metric}"
+    - sheet: param_field_swap.yaml
+      name: swap_a
+""")
+        assert result.diagnostics == []
+        assert result.data["root"]["contains"][0]["text"] == "Showing revenue"
