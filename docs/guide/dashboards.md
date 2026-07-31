@@ -589,7 +589,7 @@ An interactive control for a declared parameter. The widget type is inferred fro
 
 **Label precedence:** inline `label:` on the control > `label:` on the parameter declaration > parameter name.
 
-**Studio interactivity:** In Shelves Studio, changing a control recompiles the dashboard with the new parameter value. In exported HTML (`shelves render`), controls render as disabled read-only widgets — parameters are compile-time and there is no server to recompile against.
+**Studio interactivity:** In Shelves Studio, changing a control recompiles the dashboard with the new parameter value. In exported HTML (`shelves-render`), controls render as disabled read-only widgets — parameters are compile-time and there is no server to recompile against.
 
 The control must reference a declared parameter (from `parameters.yaml`). An unknown parameter name produces a build error, identical to an unresolved legend source.
 

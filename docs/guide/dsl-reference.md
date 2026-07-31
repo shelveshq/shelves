@@ -465,7 +465,7 @@ is the clearing token, a `string` parameter cannot be set to the literal text
 | `type` | yes | `string`, `number`, `date`, or `field` |
 | `values` | see below | Constraint on the value space |
 | `default` | yes | Every parameter must render with zero input |
-| `label` | no | Display name; falls back to the model's label |
+| `label` | no | Display name for controls; falls back to the parameter name |
 
 `type: field` holds a **field name** — it is the measure/dimension swapper. The
 other three hold literal values.
@@ -567,9 +567,9 @@ values:
 
 | Position | Form | Accepts |
 |---|---|---|
-| Field slots — `rows`, `cols`, `color`, `detail`, `size`, `facet.*`, `sort.field`, `tooltip`, `label.field`, `kpi.value`, measure and layer entries | `$name` | `field` parameters |
+| Field slots — `rows`, `cols`, `color`, `detail`, `size`, `facet.*`, `sort.field`, `tooltip`, `label.field`, `kpi.value`, `kpi.comparison.field`, a filter's `field`, measure and layer entries | `$name` | `field` parameters |
 | Filter values — `value`, `values[…]`, `range[…]` | `$name` | `string`, `number`, `date` |
-| Title text — `sheet`, `description`, `axis.x.title`, `axis.y.title`, `kpi.title` | `${name}` | all types |
+| Title text — `sheet`, `description`, `axis.x.title`, `axis.y.title`, `kpi.title`, `kpi.comparison.label` | `${name}` | all types |
 | Model manifest `calculation` fields (measures and dimensions) | `${name}` | all types (file/DuckDB sources only) |
 
 A bare `$name` is recognized only when it is the **entire** value. To embed a
