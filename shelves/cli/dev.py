@@ -81,6 +81,10 @@ def _build(
     param_overrides: dict[str, str] | None = None,
 ):
     """Re-run the full pipeline and update state."""
+    from shelves.data.domains import clear_domain_cache
+
+    clear_domain_cache()
+
     try:
         yaml_string = yaml_path.read_text()
         raw = yaml_lib.safe_load(yaml_string)

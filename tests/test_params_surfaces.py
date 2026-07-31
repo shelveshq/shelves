@@ -28,6 +28,7 @@ from unittest.mock import patch
 
 import pytest
 
+from shelves.data.domains import clear_domain_cache
 from shelves.models.loader import clear_model_cache
 from shelves.params.coerce import parse_param_flags
 from shelves.params.resolve import load_parameter_set
@@ -47,8 +48,10 @@ from tests.conftest import LoopbackTestClient as TestClient
 @pytest.fixture(autouse=True)
 def _clear_cache():
     clear_model_cache()
+    clear_domain_cache()
     yield
     clear_model_cache()
+    clear_domain_cache()
 
 
 def _maybe_embedded_specs(html: str) -> dict | None:

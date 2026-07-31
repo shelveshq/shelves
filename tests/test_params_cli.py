@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+from shelves.data.domains import clear_domain_cache
 from shelves.data.errors import ParameterDomainError
 from shelves.models.loader import clear_model_cache
 from shelves.params.coerce import coerce_override, parse_param_flags
@@ -46,8 +47,10 @@ parameters:
 @pytest.fixture(autouse=True)
 def _clear_cache():
     clear_model_cache()
+    clear_domain_cache()
     yield
     clear_model_cache()
+    clear_domain_cache()
 
 
 @pytest.fixture

@@ -6,6 +6,7 @@ import dataclasses
 import datetime as dt
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -13,17 +14,22 @@ import respx
 import yaml
 
 from shelves.data.domains import (
+    DOMAIN_CACHE_TTL,
     MAX_DOMAIN_CARDINALITY,
     Domain,
+    _inline_domain,
     _normalize,
     _to_date,
     _truncate,
     check_value_in_domain,
+    clear_domain_cache,
+    resolve_field_domain,
     resolve_parameter_domains,
 )
 from shelves.data.errors import ParameterDomainError
 from shelves.models.loader import clear_model_cache
 from shelves.params.loader import load_parameters
+from shelves.params.schema import FieldRef
 from tests.conftest import FIXTURES_DIR, MODELS_DIR, params_fixture
 
 CUBE_URL = "http://localhost:4000"
@@ -33,8 +39,10 @@ LOAD_URL = f"{CUBE_URL}/cubejs-api/v1/load"
 @pytest.fixture(autouse=True)
 def _clear_cache():
     clear_model_cache()
+    clear_domain_cache()
     yield
     clear_model_cache()
+    clear_domain_cache()
 
 
 @pytest.fixture
@@ -1125,3 +1133,99 @@ parameters:
         monkeypatch.chdir(tmp_path)
         domains = resolve_parameter_domains(params, models_dir=tmp_path, data_base_dir=None)
         assert domains["region"].values == ["EMEA"]
+
+
+class TestDomainCache:
+    def test_cache_hit(self, tmp_path):
+        """Second call returns the cached Domain without re-querying the backend."""
+        _write_inline_model(
+            tmp_path,
+            "gen",
+            {"region": {"label": "Region"}},
+            [{"region": "EMEA"}, {"region": "NA"}],
+        )
+        ref = FieldRef(model="gen", field="region")
+        with patch("shelves.data.domains._inline_domain", wraps=_inline_domain) as spy:
+            d1 = resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
+            d2 = resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
+            assert d1 == d2
+            assert spy.call_count == 1
+
+    def test_ttl_expiry(self, tmp_path):
+        """After TTL expires, the second call re-queries the backend."""
+        _write_inline_model(
+            tmp_path,
+            "gen",
+            {"region": {"label": "Region"}},
+            [{"region": "EMEA"}],
+        )
+        ref = FieldRef(model="gen", field="region")
+        with (
+            patch("shelves.data.domains._inline_domain", wraps=_inline_domain) as spy,
+            patch("shelves.data.domains.time") as mock_time,
+        ):
+            mock_time.monotonic.side_effect = [0.0, 0.0 + DOMAIN_CACHE_TTL + 1, 100.0]
+            resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
+            resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
+            assert spy.call_count == 2
+
+    def test_explicit_clear(self, tmp_path):
+        """clear_domain_cache() forces a re-query even within the TTL."""
+        _write_inline_model(
+            tmp_path,
+            "gen",
+            {"region": {"label": "Region"}},
+            [{"region": "EMEA"}],
+        )
+        ref = FieldRef(model="gen", field="region")
+        with patch("shelves.data.domains._inline_domain", wraps=_inline_domain) as spy:
+            resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
+            clear_domain_cache()
+            resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
+            assert spy.call_count == 2
+
+    def test_end_to_end_cross_compile_cache(self, tmp_path):
+        """Two resolve_parameter_domains calls share cached domains across invocations."""
+        params = _write_params(
+            tmp_path,
+            """
+parameters:
+  a:
+    type: string
+    values:
+      - model: parity_inline
+        field: region
+    default: EMEA
+  b:
+    type: string
+    values:
+      - model: parity_inline
+        field: region
+    default: null
+""",
+        )
+        with patch("shelves.data.domains._inline_domain", wraps=_inline_domain) as spy:
+            d1 = resolve_parameter_domains(
+                params, models_dir=MODELS_DIR, data_base_dir=FIXTURES_DIR
+            )
+            d2 = resolve_parameter_domains(
+                params, models_dir=MODELS_DIR, data_base_dir=FIXTURES_DIR
+            )
+            assert spy.call_count == 1
+            assert d1 == d2
+
+    def test_different_param_type_separate_entries(self, tmp_path):
+        """string and number on the same (model, field) produce separate cache entries."""
+        _write_inline_model(
+            tmp_path,
+            "gen",
+            {"fy": {"label": "Fiscal Year"}},
+            [{"fy": 2023}, {"fy": 2024}],
+        )
+        ref = FieldRef(model="gen", field="fy")
+        with patch("shelves.data.domains._inline_domain", wraps=_inline_domain) as spy:
+            d1 = resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
+            d2 = resolve_field_domain(ref, "number", models_dir=tmp_path, data_base_dir=tmp_path)
+            assert d1.kind == "values"
+            assert d2.kind == "bounds"
+            assert spy.call_count == 2
