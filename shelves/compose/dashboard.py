@@ -24,6 +24,7 @@ from shelves.diagnostics import capture_warnings
 from shelves.params.substitute import ParameterSet
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.schema.layout_schema import (
+    ControlComponent,
     LegendComponent,
     SheetComponent,
     load_dashboard,
@@ -32,7 +33,7 @@ from shelves.theme.merge import load_theme
 from shelves.theme.theme_schema import ThemeSpec
 from shelves.translator.layout import translate_dashboard
 from shelves.translator.layout_flatten import FlatNode, flatten_dashboard
-from shelves.translator.layout_styles import LegendLink
+from shelves.translator.layout_styles import ControlMeta, LegendLink
 
 
 def compose_dashboard(
@@ -75,7 +76,7 @@ def compose_dashboard(
     the failure is emitted via `warnings.warn` (same message format Studio
     shows in its warnings panel).
     """
-    spec = load_dashboard(dashboard_path)
+    spec = load_dashboard(dashboard_path, parameters=parameters)
 
     theme = ThemeSpec() if no_theme else (theme or load_theme())
 
@@ -105,6 +106,10 @@ def compose_dashboard(
     for msg in legend_warnings:
         warnings.warn(msg, stacklevel=2)
 
+    # SHE-92: discover controls and build metadata from the ParameterSet.
+    controls = _discover_controls(flat_tree)
+    control_meta = _build_control_meta(controls, flat_tree, parameters) if controls else {}
+
     html = translate_dashboard(
         spec,
         theme,
@@ -112,6 +117,7 @@ def compose_dashboard(
         asset_url_prefix=asset_url_prefix,
         legend_links=legend_links,
         flat_tree=flat_tree,
+        control_meta=control_meta,
     )
     return html
 
@@ -307,3 +313,135 @@ def _walk_legends(node: FlatNode, legends: list[LegendComponent]) -> None:
         legends.append(node.component)
     for child in node.children:
         _walk_legends(child, legends)
+
+
+def _build_control_meta(
+    controls: dict[str, str],
+    flat_tree: FlatNode,
+    parameters: ParameterSet | None,
+) -> dict[str, ControlMeta]:
+    """Build ControlMeta for each discovered control from the ParameterSet.
+
+    Validates that each control's param is a declared parameter. Returns a dict
+    keyed by dom_id. The flat_tree is walked to find ControlComponent nodes for
+    their inline label override.
+    """
+    if not controls:
+        return {}
+    if parameters is None or not parameters.declared:
+        undeclared = list(controls.values())
+        raise ValueError(
+            f"Controls reference parameters {undeclared!r} but no parameters are declared."
+        )
+
+    control_nodes: dict[str, ControlComponent] = {}
+    _walk_control_nodes(flat_tree, control_nodes)
+
+    meta: dict[str, ControlMeta] = {}
+    for dom_id, param_name in controls.items():
+        if param_name not in parameters.declared:
+            raise ValueError(
+                f"'{param_name}' is not a declared parameter. "
+                f"Declared: {', '.join(sorted(parameters.declared))}."
+            )
+
+        param_def = parameters.declared[param_name]
+        comp = control_nodes.get(dom_id)
+        inline_label = comp.label if comp else None
+        title = inline_label or param_def.label or param_name
+
+        default = parameters.values.get(param_name)
+        default_str = str(default) if default is not None else None
+
+        widget, options, rmin, rmax, rstep = _infer_widget(param_def, param_name, parameters)
+
+        if default_str is None and options:
+            default_str = options[0]["value"]
+
+        meta[dom_id] = ControlMeta(
+            param=param_name,
+            widget=widget,
+            title=title,
+            default=default_str,
+            options=options,
+            min=rmin,
+            max=rmax,
+            step=rstep,
+        )
+    return meta
+
+
+def _walk_control_nodes(node: FlatNode, out: dict[str, ControlComponent]) -> None:
+    if isinstance(node.component, ControlComponent) and node.dom_id:
+        out[node.dom_id] = node.component
+    for child in node.children:
+        _walk_control_nodes(child, out)
+
+
+def _infer_widget(
+    param_def: object,
+    param_name: str,
+    parameters: ParameterSet,
+) -> tuple[str, list[dict[str, str]] | None, str | None, str | None, str | None]:
+    """Infer widget type and build options/range from a parameter definition.
+
+    Returns (widget, options, min, max, step).
+    """
+    from shelves.params.schema import FieldRef, RangeBounds
+
+    ptype = param_def.type  # type: ignore[attr-defined]
+    values = param_def.values  # type: ignore[attr-defined]
+
+    if ptype == "field":
+        opts = []
+        for v in values or []:
+            if isinstance(v, FieldRef) and v.field:
+                opts.append({"value": v.field, "label": v.field})
+        return "dropdown", opts, None, None, None
+
+    if values:
+        first = values[0]
+        if isinstance(first, RangeBounds):
+            widget = "date" if ptype == "date" else "stepper"
+            return (
+                widget,
+                None,
+                str(first.min),
+                str(first.max),
+                str(first.step) if first.step is not None else None,
+            )
+        if isinstance(first, FieldRef):
+            domain = parameters.domains.get(param_name)
+            if domain and domain.values:
+                opts = [{"value": str(v), "label": str(v)} for v in domain.values]
+            else:
+                current = parameters.values.get(param_name)
+                opts = [{"value": str(current), "label": str(current)}] if current else []
+            return "dropdown", opts, None, None, None
+        opts = [{"value": str(v), "label": str(v)} for v in values]
+        return "dropdown", opts, None, None, None
+
+    if ptype == "date":
+        return "date", None, None, None, None
+    if ptype == "number":
+        return "stepper", None, None, None, None
+
+    return "text", None, None, None, None
+
+
+def _discover_controls(flat_tree: FlatNode) -> dict[str, str]:
+    """Walk an already-flattened tree and collect every ControlComponent.
+
+    Returns a dict mapping dom_id → param name.
+    """
+    controls: dict[str, str] = {}
+    _walk_controls(flat_tree, controls)
+    return controls
+
+
+def _walk_controls(node: FlatNode, controls: dict[str, str]) -> None:
+    if isinstance(node.component, ControlComponent):
+        assert node.dom_id is not None, "control node missing dom_id"
+        controls[node.dom_id] = node.component.param
+    for child in node.children:
+        _walk_controls(child, controls)

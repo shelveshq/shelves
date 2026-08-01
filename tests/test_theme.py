@@ -7,7 +7,7 @@ Tests for ThemeSpec loading, preset color resolution, and merge_theme integratio
 from pathlib import Path
 
 from shelves.theme.merge import load_theme, merge_theme
-from shelves.theme.theme_schema import ThemeSpec
+from shelves.theme.theme_schema import ControlTokens, ThemeSpec
 
 # ─── Theme Loading ────────────────────────────────────────────────
 
@@ -397,3 +397,37 @@ class TestLayoutTokens:
         assert title["subtitleColor"] == "#666666"
         assert title["offset"] == 24
         assert title["anchor"] == "start"
+
+
+# ─── Control Tokens (SHE-92) ───────────────────────────────────
+
+
+class TestControlTokens:
+    """SHE-92: ControlTokens model defaults and presence on LayoutTheme."""
+
+    def test_control_tokens_defaults(self):
+        tokens = ControlTokens()
+        assert tokens.surface == "#ffffff"
+        assert tokens.border == "#e5e7eb"
+        assert tokens.radius == 4
+        assert tokens.accent == "#4A90D9"
+        assert tokens.font_size == 13
+        assert tokens.height == 32
+        assert tokens.focus_ring == "0 0 0 2px rgba(74, 144, 217, 0.3)"
+
+    def test_layout_theme_has_control_tokens(self):
+        theme = load_theme()
+        assert hasattr(theme.layout, "control")
+        assert isinstance(theme.layout.control, ControlTokens)
+
+    def test_default_theme_yaml_has_control_block(self):
+        theme = load_theme()
+        assert theme.layout.control.surface == "#ffffff"
+        assert theme.layout.control.accent == "#4A90D9"
+        assert theme.layout.control.radius == 4
+
+    def test_custom_theme_inherits_control_defaults(self):
+        custom_path = Path(__file__).parent / "fixtures" / "themes" / "custom_brand.yaml"
+        theme = load_theme(custom_path)
+        assert isinstance(theme.layout.control, ControlTokens)
+        assert theme.layout.control.height == 32

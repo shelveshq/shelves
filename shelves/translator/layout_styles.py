@@ -14,6 +14,7 @@ from typing import Literal
 from shelves.schema.layout_schema import (
     ButtonComponent,
     Component,
+    ControlComponent,
     LinkComponent,
     RootComponent,
     SheetComponent,
@@ -43,6 +44,20 @@ LINK_DEFAULTS: dict[str, str] = {
 
 
 # ─── Legend Link ─────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class ControlMeta:
+    """Compose-time metadata for a control component, consumed by the translator."""
+
+    param: str
+    widget: str  # "dropdown" | "stepper" | "date" | "text"
+    title: str
+    default: str | None
+    options: list[dict[str, str]] | None = None  # [{value, label}] for dropdowns
+    min: str | None = None
+    max: str | None = None
+    step: str | None = None
 
 
 @dataclass(frozen=True)
@@ -81,9 +96,8 @@ class RenderContext:
     # SHE-10: (legend.source, legend.field) -> resolved link. Empty for the
     # studio/direct-translate paths that don't resolve legends yet.
     legend_links: dict[tuple[str, str], LegendLink] = field(default_factory=dict)
-    # SHE-29: sheet/legend DOM ids are assigned once at flatten time
-    # (layout_flatten._assign_dom_ids) and read off the node — the renderer no
-    # longer maintains auto-id counters here.
+    # SHE-92: dom_id -> ControlMeta for each control component.
+    control_meta: dict[str, ControlMeta] = field(default_factory=dict)
 
 
 # ─── CSS Helpers ─────────────────────────────────────────────────
@@ -331,6 +345,9 @@ def resolve_inner_styles(
         css["display"] = "flex"
         css["flex-direction"] = "column"
         css["justify-content"] = "center"
+    elif isinstance(component, ControlComponent):
+        css["display"] = "flex"
+        css["align-items"] = "center"
     else:
         # Container/Image/Blank: clip child content at the content box.  The
         # outer wrapper dropped overflow when clipping moved to the inner div,

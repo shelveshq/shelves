@@ -18,6 +18,7 @@ from shelves.schema.layout_schema import (
     Canvas,
     Component,
     ContainerComponent,
+    ControlComponent,
     DashboardSpec,
     LegendComponent,
     RootComponent,
@@ -133,22 +134,16 @@ def _flatten_children(
 
 
 def _assign_dom_ids(root: FlatNode) -> None:
-    """Assign `dom_id` to every sheet and legend node in pre-order, in place.
+    """Assign `dom_id` to every sheet, legend, and control node in pre-order.
 
-    The single source of truth for DOM identity (SHE-29). Walks the flattened
-    tree in document (pre-order) order — the same order the renderer and
-    `_discover_sheets` walk — and stamps each sheet/legend node's `dom_id`:
-      - named node  -> its explicit `name`
-      - anonymous sheet  -> `auto-{sheet_counter}`  (sheet-only counter)
-      - anonymous legend -> `auto-{legend_counter}` (legend-only counter)
-    Counters are independent so a legend never offsets a sheet's id. All other
-    node types keep `dom_id = None`.
+    Counters are independent per type so a legend never offsets a sheet's id.
     """
     sheet_counter = 0
     legend_counter = 0
+    control_counter = 0
 
     def walk(node: FlatNode) -> None:
-        nonlocal sheet_counter, legend_counter
+        nonlocal sheet_counter, legend_counter, control_counter
         comp = node.component
         if isinstance(comp, SheetComponent):
             if node.name is not None:
@@ -162,6 +157,12 @@ def _assign_dom_ids(root: FlatNode) -> None:
             else:
                 legend_counter += 1
                 node.dom_id = f"auto-{legend_counter}"
+        elif isinstance(comp, ControlComponent):
+            if node.name is not None:
+                node.dom_id = node.name
+            else:
+                control_counter += 1
+                node.dom_id = f"auto-{control_counter}"
         for child in node.children:
             walk(child)
 

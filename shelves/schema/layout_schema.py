@@ -16,6 +16,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from shelves.params.substitute import ParameterReferenceError, ParameterSet, substitute_parameters
+
 # ─── Size Type ─────────────────────────────────────────────────────
 
 SizeValue = int | str | None
@@ -73,7 +75,7 @@ class Canvas(BaseModel):
 
 # ─── Type Constants ───────────────────────────────────────────────
 
-KNOWN_LEAF_TYPES = {"sheet", "text", "image", "button", "link", "blank", "legend"}
+KNOWN_LEAF_TYPES = {"sheet", "text", "image", "button", "link", "blank", "legend", "control"}
 KNOWN_CONTAINER_TYPES = {"horizontal", "vertical"}
 KNOWN_TYPES = KNOWN_LEAF_TYPES | KNOWN_CONTAINER_TYPES
 
@@ -182,6 +184,19 @@ class BlankComponent(BaseModel):
     html: str | None = None
 
 
+class ControlComponent(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    type: Literal["control"] = "control"
+    param: str = Field(min_length=1)
+    label: str | None = None
+    width: SizeValue = None
+    height: SizeValue = None
+    margin: int | str | None = None
+    padding: int | str | None = None
+    style: str | None = None
+    html: str | None = None
+
+
 class ContainerComponent(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: Literal["horizontal", "vertical"]
@@ -231,6 +246,7 @@ Component = (
     | ImageComponent
     | BlankComponent
     | LegendComponent
+    | ControlComponent
 )
 
 
@@ -245,6 +261,7 @@ _LEAF_BUILDERS: dict[str, tuple[type, str]] = {
     "link": (LinkComponent, "text"),
     "blank": (BlankComponent, ""),  # blank has no primary field
     "legend": (LegendComponent, "source"),
+    "control": (ControlComponent, "param"),
 }
 
 
@@ -480,12 +497,31 @@ class DashboardSpec(BaseModel):
 # ─── Public API ───────────────────────────────────────────────────
 
 
-def parse_dashboard(yaml_string: str) -> DashboardSpec:
-    """Parse a YAML string and validate against the Layout DSL schema."""
+def parse_dashboard(
+    yaml_string: str,
+    *,
+    parameters: ParameterSet | None = None,
+) -> DashboardSpec:
+    """Parse a YAML string and validate against the Layout DSL schema.
+
+    `${name}` references in text components are substituted before validation
+    using `parameters` (SHE-96). None means `ParameterSet.empty()`.
+    """
     raw = yaml.safe_load(yaml_string)
-    return DashboardSpec.model_validate(raw)
+    if not isinstance(raw, dict):
+        return DashboardSpec.model_validate(raw)
+
+    result = substitute_parameters(raw, parameters or ParameterSet.empty())
+    if result.errors:
+        raise ParameterReferenceError(result.errors)
+
+    return DashboardSpec.model_validate(result.data)
 
 
-def load_dashboard(path: Path) -> DashboardSpec:
+def load_dashboard(
+    path: Path,
+    *,
+    parameters: ParameterSet | None = None,
+) -> DashboardSpec:
     """Load and validate a dashboard YAML file."""
-    return parse_dashboard(path.read_text())
+    return parse_dashboard(path.read_text(), parameters=parameters)

@@ -45,6 +45,11 @@ async def compile_dashboard_yaml(request: Request) -> JSONResponse:
     theme_path: Path | None = request.app.state.theme_path
     models_dir: Path = request.app.state.models_dir
     parameters_path: Path | None = request.app.state.parameters_path
+    overrides: dict[str, str] | None = None
+    raw_header = request.headers.get("x-shelves-params")
+    if raw_header:
+        overrides = _parse_override_header(raw_header)
+
     result = await run_dashboard_pipeline(
         yaml_body,
         project_dir,
@@ -52,6 +57,7 @@ async def compile_dashboard_yaml(request: Request) -> JSONResponse:
         theme_path,
         models_dir=models_dir,
         parameters_path=parameters_path,
+        overrides=overrides,
     )
     return JSONResponse(result)
 
@@ -63,15 +69,39 @@ async def run_dashboard_pipeline(
     theme_path: Path | None,
     models_dir: Path | None = None,
     parameters_path: Path | None = None,
+    overrides: dict[str, str] | None = None,
 ) -> dict:
     """Run the dashboard compilation pipeline and return a result dict."""
+    from shelves.params.resolve import load_parameter_set
     from shelves.schema.layout_schema import parse_dashboard
     from shelves.theme.merge import load_theme
     from shelves.translator.layout import translate_dashboard
     from shelves.translator.layout_flatten import flatten_dashboard
 
+    # Resolve a models_dir usable for both chart compile and the per-sheet
+    # resolver AND data resolution — one value, threaded everywhere, so the two
+    # halves of a compile can never read different model directories.
+    effective_models_dir = models_dir if models_dir and models_dir.exists() else None
+
+    # SHE-96: parameters must be loaded BEFORE parse_dashboard so ${name}
+    # references in text components are substituted before model_validate.
     try:
-        spec = parse_dashboard(yaml_body)
+        parameters = load_parameter_set(
+            parameters_path,
+            models_dir=effective_models_dir,
+            data_base_dir=project_dir,
+            overrides=overrides,
+        )
+    except ValueError as e:
+        return {
+            "html": None,
+            "errors": [str(e)],
+            "warnings": [],
+            "component_tree": [],
+        }
+
+    try:
+        spec = parse_dashboard(yaml_body, parameters=parameters)
     except Exception as e:
         return {"html": None, "errors": [str(e)], "warnings": [], "component_tree": []}
 
@@ -80,6 +110,8 @@ async def run_dashboard_pipeline(
 
     # Discover sheets (name → link) — reuse the already-flattened tree.
     from shelves.compose.dashboard import (
+        _build_control_meta,
+        _discover_controls,
         _discover_sheets,
         compile_dashboard_charts,
         link_legends,
@@ -94,28 +126,6 @@ async def run_dashboard_pipeline(
         from shelves.theme.theme_schema import ThemeSpec
 
         theme = ThemeSpec()
-
-    # Resolve a models_dir usable for both chart compile and the per-sheet
-    # resolver AND data resolution — one value, threaded everywhere, so the two
-    # halves of a compile can never read different model directories.
-    effective_models_dir = models_dir if models_dir and models_dir.exists() else None
-
-    from shelves.params.resolve import load_parameter_set
-
-    try:
-        parameters = load_parameter_set(
-            parameters_path,
-            models_dir=effective_models_dir,
-            data_base_dir=project_dir,
-        )
-    except ValueError as e:
-        return {
-            "html": None,
-            "errors": [str(e)],
-            "warnings": [],
-            "component_tree": component_tree,
-            "canvas": {"width": spec.canvas.width, "height": spec.canvas.height},
-        }
 
     # Compile each referenced chart via the shared per-sheet loop (the same one
     # compose_dashboard uses — Studio is a surface, not a second compiler).
@@ -149,6 +159,19 @@ async def run_dashboard_pipeline(
         }
     warnings.extend(legend_warnings)
 
+    # SHE-92: discover controls and build metadata from the ParameterSet.
+    controls = _discover_controls(flat_root)
+    try:
+        control_meta = _build_control_meta(controls, flat_root, parameters) if controls else {}
+    except ValueError as ce:
+        return {
+            "html": None,
+            "errors": [str(ce)],
+            "warnings": warnings,
+            "component_tree": component_tree,
+            "canvas": {"width": spec.canvas.width, "height": spec.canvas.height},
+        }
+
     # vega_src_base: the preview iframe (srcdoc) resolves relative URLs against
     # the studio origin, so it loads the vendored same-origin copies instead of
     # the CDN — immune to CDN blips and content blockers (SHE-77).
@@ -159,6 +182,8 @@ async def run_dashboard_pipeline(
         legend_links=legend_links,
         flat_tree=flat_root,
         vega_src_base="/static/vendor",
+        control_meta=control_meta,
+        interactive=True,
     )
 
     return {
@@ -170,13 +195,37 @@ async def run_dashboard_pipeline(
     }
 
 
+def _parse_override_header(raw: str) -> dict[str, str] | None:
+    """Parse and validate the X-Shelves-Params header value.
+
+    Returns a dict of string overrides, or None on parse/validation failure.
+    Logs a warning instead of silently swallowing errors.
+    """
+    import json as _json
+    import logging
+
+    logger = logging.getLogger("shelves.studio")
+    try:
+        parsed = _json.loads(raw)
+    except (ValueError, TypeError) as exc:
+        logger.warning("Malformed X-Shelves-Params header (ignored): %s", exc)
+        return None
+    if not isinstance(parsed, dict):
+        logger.warning(
+            "X-Shelves-Params header is not a JSON object (got %s, ignored)",
+            type(parsed).__name__,
+        )
+        return None
+    return {str(k): str(v) for k, v in parsed.items()}
+
+
 def build_component_tree(flat_root: Any) -> list[dict]:
     """Walk a FlatNode tree and produce a flat list for the component tree strip.
 
     Walk order is depth-first pre-order.
     Each entry: {name, type, depth, link?, children_count}
     """
-    from shelves.schema.layout_schema import SheetComponent
+    from shelves.schema.layout_schema import ControlComponent, SheetComponent
     from shelves.translator.layout_flatten import FlatNode
 
     result: list[dict] = []
@@ -189,6 +238,8 @@ def build_component_tree(flat_root: Any) -> list[dict]:
             comp_type = getattr(comp, "orientation", "vertical")
         elif isinstance(comp, SheetComponent):
             comp_type = "sheet"
+        elif isinstance(comp, ControlComponent):
+            comp_type = "control"
 
         entry: dict = {
             "name": node.name,

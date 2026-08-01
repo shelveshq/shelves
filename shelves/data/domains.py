@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -36,6 +37,15 @@ LiteralParamType = Literal["string", "number", "date"]
 
 MAX_DOMAIN_CARDINALITY = 500
 """Distinct values above which a domain must be listed explicitly (SHE-90)."""
+
+DOMAIN_CACHE_TTL: float = 60.0
+
+_domain_cache: dict[tuple[str, str, str, str], tuple[Domain, float]] = {}
+
+
+def clear_domain_cache() -> None:
+    _domain_cache.clear()
+
 
 _CARDINALITY_MESSAGE = (
     "field {source!r} has {limit} or more distinct values — too many for a "
@@ -174,6 +184,21 @@ def resolve_field_domain(
     assert ref.field is not None
 
     model = load_model(ref.model, models_dir=models_dir)
+
+    source_type = (
+        "inline"
+        if isinstance(model.source, InlineSource)
+        else (model.source.type if model.source is not None else "none")
+    )
+    # Key omits models_dir/data_base_dir — safe because each process (Studio,
+    # dev server) binds a single project directory for its lifetime.
+    cache_key = (source_type, ref.model, ref.field, param_type)
+    cached = _domain_cache.get(cache_key)
+    if cached is not None:
+        domain, ts = cached
+        if time.monotonic() - ts <= DOMAIN_CACHE_TTL:
+            return domain
+
     resolver = ModelResolver(model)
     source = f"{ref.model}.{ref.field}"
     try:
@@ -220,18 +245,21 @@ def resolve_field_domain(
             raise ParameterDomainError(
                 _CARDINALITY_MESSAGE.format(source=source, limit=MAX_DOMAIN_CARDINALITY + 1)
             )
-        return Domain(kind="values", param_type=param_type, source=source, values=values)
+        domain = Domain(kind="values", param_type=param_type, source=source, values=values)
+    else:
+        low, high = raw
+        if low is None or high is None:
+            raise ParameterDomainError(_EMPTY_MESSAGE.format(source=source))
+        domain = Domain(
+            kind="bounds",
+            param_type=param_type,
+            source=source,
+            min=_normalize(low, param_type, is_temporal),
+            max=_normalize(high, param_type, is_temporal),
+        )
 
-    low, high = raw
-    if low is None or high is None:
-        raise ParameterDomainError(_EMPTY_MESSAGE.format(source=source))
-    return Domain(
-        kind="bounds",
-        param_type=param_type,
-        source=source,
-        min=_normalize(low, param_type, is_temporal),
-        max=_normalize(high, param_type, is_temporal),
-    )
+    _domain_cache[cache_key] = (domain, time.monotonic())
+    return domain
 
 
 def resolve_parameter_domains(
@@ -247,7 +275,6 @@ def resolve_parameter_domains(
     FieldRef. Literal lists, ranges, and `type: field` are skipped.
     """
     out: dict[str, Domain] = {}
-    memo: dict[tuple[str, str, str], Domain] = {}
 
     for name, param in parameters.items():
         entries = param.values or []
@@ -264,17 +291,13 @@ def resolve_parameter_domains(
         ref = entries[0]
         assert ref.field is not None
 
-        key = (ref.model, ref.field, param.type)
-        domain = memo.get(key)
-        if domain is None:
-            with _attributed(name):
-                domain = resolve_field_domain(
-                    ref,
-                    param.type,
-                    models_dir=models_dir,
-                    data_base_dir=data_base_dir,
-                )
-            memo[key] = domain
+        with _attributed(name):
+            domain = resolve_field_domain(
+                ref,
+                param.type,
+                models_dir=models_dir,
+                data_base_dir=data_base_dir,
+            )
 
         out[name] = domain
 

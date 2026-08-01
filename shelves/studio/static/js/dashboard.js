@@ -22,6 +22,12 @@ let lastDashboardResult = null;
 let dashboardZoom = 'fit';
 let compileSeq = 0;
 
+// SHE-92: parameter overrides accumulated from control changes in the iframe.
+// Keyed by param name → string value. Cleared on file switch.
+const paramOverrides = {};
+const PARAM_DEBOUNCE_MS = 300;
+let paramDebounceTimer = null;
+
 // ─── Rendered Signal (SHE-67) ─────────────────────────────
 // A dashboard result only means the HTML *string* exists — the iframe still
 // has to parse it, fetch Vega from the CDN, and render every sheet. The
@@ -79,7 +85,11 @@ export async function compileDashboardContent() {
   }
   try {
     const t0 = performance.now();
-    const resp = await fetch('/compile-dashboard', { method: 'POST', body: content });
+    const headers = {};
+    if (Object.keys(paramOverrides).length > 0) {
+      headers['X-Shelves-Params'] = JSON.stringify(paramOverrides);
+    }
+    const resp = await fetch('/compile-dashboard', { method: 'POST', body: content, headers });
     if (seq !== compileSeq) return;
     const result = await resp.json();
     state.lastCompileTimeMs = Math.round(performance.now() - t0);
@@ -155,6 +165,7 @@ export function setDashboardZoom(zoom) {
 
 // ─── Layout Switching ─────────────────────────────────────
 export function applyDashboardLayout() {
+  clearParamOverrides();
   state.dashboardMode = true;
   state.currentView = 'dashboard';
   document.getElementById('preview-pane').classList.add('is-dashboard');
@@ -168,10 +179,17 @@ export function restoreChartLayout() {
   // A signal armed for the departed dashboard must not fire into chart mode
   // via a late postMessage or fallback timer (PR#60 review).
   disarmRenderedSignal();
+  clearParamOverrides();
   state.currentView = 'chart';
   document.getElementById('preview-pane').classList.remove('is-dashboard');
   elDashboardPreview.style.display = 'none';
   renderPreviewHeader('chart');
+}
+
+function clearParamOverrides() {
+  for (const k of Object.keys(paramOverrides)) delete paramOverrides[k];
+  clearTimeout(paramDebounceTimer);
+  paramDebounceTimer = null;
 }
 
 // ─── Init ──────────────────────────────────────────────────
@@ -210,8 +228,20 @@ export function initDashboard() {
   });
 
   window.addEventListener('message', (e) => {
-    if (e.data?.type === 'shelves:rendered' && e.source === elDashboardIframe.contentWindow) {
+    if (e.source !== elDashboardIframe.contentWindow) return;
+    if (e.data?.type === 'shelves:rendered') {
       signalDashboardRendered();
+      return;
+    }
+    if (e.data?.type === 'shelves:param-change' && e.data.param) {
+      paramOverrides[e.data.param] = String(e.data.value ?? '');
+      clearTimeout(paramDebounceTimer);
+      paramDebounceTimer = setTimeout(() => {
+        state.compiling = true;
+        updateStatusBar();
+        document.dispatchEvent(new CustomEvent('shelves:compile-start'));
+        compileDashboardContent();
+      }, PARAM_DEBOUNCE_MS);
     }
   });
 

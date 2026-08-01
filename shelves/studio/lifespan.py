@@ -65,6 +65,11 @@ async def handle_fs_event(
         await manager.broadcast({"type": "parameters_changed", "path": rel})
         return
 
+    if abs_path.resolve().is_relative_to(models_dir.resolve()):
+        from shelves.data.domains import clear_domain_cache
+
+        clear_domain_cache()
+
     if should_compile(abs_path) and event != "deleted":
         await compile_file_and_broadcast(
             abs_path,

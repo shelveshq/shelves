@@ -19,7 +19,7 @@ Typical pipeline:
 
 from shelves.compose.dashboard import compose_dashboard
 from shelves.data.bind import bind_data, resolve_data
-from shelves.data.domains import Domain, resolve_parameter_domains
+from shelves.data.domains import Domain, clear_domain_cache, resolve_parameter_domains
 from shelves.errors import ShelvesError
 from shelves.params.loader import load_parameters
 from shelves.params.resolve import load_parameter_set
@@ -40,6 +40,7 @@ __all__ = [
     "ParameterSet",
     "ShelvesError",
     "bind_data",
+    "clear_domain_cache",
     "compile_chart",
     "compose_dashboard",
     "load_parameter_set",

@@ -19,6 +19,7 @@ from shelves.schema.layout_schema import (
     ButtonComponent,
     Canvas,
     ContainerComponent,
+    ControlComponent,
     DashboardSpec,
     ImageComponent,
     LegendComponent,
@@ -31,6 +32,7 @@ from shelves.theme.theme_schema import ThemeSpec
 from shelves.translator.layout_flatten import FlatNode, flatten_dashboard
 from shelves.translator.layout_solver import ResolvedNode, solve_layout
 from shelves.translator.layout_styles import (
+    ControlMeta,
     LegendLink,
     RenderContext,
     resolve_inner_styles,
@@ -51,6 +53,8 @@ def translate_dashboard(
     legend_links: dict[tuple[str, str], LegendLink] | None = None,
     flat_tree: FlatNode | None = None,
     vega_src_base: str | None = None,
+    control_meta: dict[str, ControlMeta] | None = None,
+    interactive: bool = False,
 ) -> str:
     """Translate a DashboardSpec to a complete HTML page.
 
@@ -75,6 +79,7 @@ def translate_dashboard(
         theme=theme,
         asset_url_prefix=asset_url_prefix,
         legend_links=legend_links or {},
+        control_meta=control_meta or {},
     )
 
     # Flatten first (unless a caller already did): resolve style + component refs
@@ -96,7 +101,9 @@ def translate_dashboard(
         sheet_show_titles=ctx.sheet_show_titles,
         sheet_content_dims=ctx.sheet_content_dims,
         has_legends=bool(ctx.legend_links),
+        has_controls=bool(ctx.control_meta),
         vega_src_base=vega_src_base,
+        interactive=interactive,
     )
 
 
@@ -285,6 +292,42 @@ def _render_blank(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
     return f'<div style="{safe_outer}"><div style="{safe_inner}"></div></div>'
 
 
+def _render_control(
+    node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str
+) -> str:
+    """Render a control placeholder with data-* attributes for control_render.js."""
+    defn = node.component
+    assert isinstance(defn, ControlComponent)
+    assert node.dom_id is not None, "control node missing dom_id"
+
+    meta = ctx.control_meta.get(node.dom_id)
+    if meta is None:
+        return f'<div style="{safe_outer}"><div style="{safe_inner}"></div></div>'
+
+    data_attrs = (
+        f' data-param="{html.escape(meta.param, quote=True)}"'
+        f' data-control="{html.escape(meta.widget, quote=True)}"'
+        f' data-title="{html.escape(meta.title, quote=True)}"'
+    )
+    if meta.default is not None:
+        data_attrs += f' data-default="{html.escape(str(meta.default), quote=True)}"'
+    if meta.options is not None:
+        data_attrs += f" data-options='{html.escape(json.dumps(meta.options), quote=True)}'"
+    if meta.min is not None:
+        data_attrs += f' data-min="{html.escape(str(meta.min), quote=True)}"'
+    if meta.max is not None:
+        data_attrs += f' data-max="{html.escape(str(meta.max), quote=True)}"'
+    if meta.step is not None:
+        data_attrs += f' data-step="{html.escape(str(meta.step), quote=True)}"'
+
+    safe_name = html.escape(node.dom_id, quote=True)
+    return (
+        f'<div style="{safe_outer}">'
+        f'<div id="control-{safe_name}"{data_attrs} style="{safe_inner}"></div>'
+        f"</div>"
+    )
+
+
 def _render_legend(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
     """Render a legend placeholder: an empty, box-styled div in a div-in-div wrapper.
 
@@ -335,6 +378,7 @@ _RENDERERS: dict[type, Callable[[ResolvedNode, RenderContext, str, str], str]] =
     ImageComponent: _render_image,
     BlankComponent: _render_blank,
     LegendComponent: _render_legend,
+    ControlComponent: _render_control,
 }
 
 
@@ -388,7 +432,9 @@ def wrap_html_page(
     sheet_show_titles: dict[str, bool] | None = None,
     sheet_content_dims: dict[str, tuple[int, int]] | None = None,
     has_legends: bool = False,
+    has_controls: bool = False,
     vega_src_base: str | None = None,
+    interactive: bool = False,
 ) -> str:
     """Wrap rendered component tree in a full HTML page."""
     from shelves.render.to_html import vega_script_tags
@@ -402,6 +448,7 @@ def wrap_html_page(
     patch_js = ""
     fit_js = ""
     legend_js = ""
+    control_js = ""
     script_lines = []
     # `has_legends` gates the legend renderer + populate wiring. It is derived
     # from the resolved legend links (a div emits data-channel iff its legend
@@ -526,10 +573,32 @@ def wrap_html_page(
     )
     script_lines.append("    });")
 
+    if has_controls:
+        from shelves.render.to_html import load_control_render_js
+
+        control_js = load_control_render_js()
+        if interactive:
+            control_js = "window.__SHELVES_INTERACTIVE__ = true;\n" + control_js
+
     script_block = "\n".join(script_lines)
     patch_block = f"  <script>\n{patch_js}\n  </script>\n" if patch_js else ""
     fit_block = f"  <script>\n{fit_js}\n  </script>\n" if fit_js else ""
     legend_block = f"  <script>\n{legend_js}\n  </script>\n" if legend_js else ""
+    control_block = f"  <script>\n{control_js}\n  </script>\n" if control_js else ""
+
+    # SHE-92: emit CSS custom properties for control theming.
+    control_css = ""
+    if has_controls:
+        ct = theme.layout.control
+        control_css = (
+            f"\n    :root {{"
+            f" --shelves-control-surface: {ct.surface};"
+            f" --shelves-control-border: {ct.border};"
+            f" --shelves-control-radius: {ct.radius}px;"
+            f" --shelves-control-font-size: {ct.font_size}px;"
+            f" --shelves-control-height: {ct.height}px;"
+            f" }}"
+        )
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -540,13 +609,14 @@ def wrap_html_page(
   <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
     body {{ font-family: {body_font}; }}
-    img {{ display: block; object-fit: contain; }}
+    img {{ display: block; object-fit: contain; }}{control_css}
   </style>
 </head>
 <body>
   {body_html}
-{patch_block}{fit_block}{legend_block}  <script>
+{patch_block}{fit_block}{legend_block}{control_block}  <script>
 {script_block}
+    if (window.controlRender) controlRender.render(document);
   </script>
 </body>
 </html>"""

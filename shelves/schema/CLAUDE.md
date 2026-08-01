@@ -11,7 +11,7 @@ This module handles **Parse**: YAML string → `ChartSpec` via Pydantic.
 
 ## Key Rules
 
-- **DSL versioning:** `DSL_VERSION` lives in `chart_schema.py` (currently `0.9.0`). Bump on grammar changes (semver: major = breaking, minor = additive, patch = fixes). `ChartSpec` accepts an optional `version` field.
+- **DSL versioning:** `DSL_VERSION` lives in `chart_schema.py` and covers the **whole** DSL — chart grammar *and* layout grammar. Bump on any grammar change (semver: major = breaking, minor = additive, patch = fixes) and add the row to the version table in `docs/guide/dsl-reference.md`. `ChartSpec` accepts an optional `version` field.
 - **Validation constraint:** At most ONE of `rows`/`cols` can be a multi-measure list; single-measure charts require top-level `marks`.
 - **Inheritance:** Top-level `marks`/`color`/`detail` cascade down to multi-measure entries → layer entries. More specific overrides less specific.
 - **FieldTypeResolver protocol:** An abstraction that allows pluggable type resolution (e.g., from data block, from semantic layer models). The translator depends on this protocol, not on any specific resolver implementation.

@@ -11,8 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from shelves.compose.dashboard import compose_dashboard
+from shelves.compose.dashboard import (
+    _discover_controls,
+    compose_dashboard,
+)
+from shelves.schema.layout_schema import parse_dashboard
 from shelves.theme.merge import load_theme
+from shelves.translator.layout_flatten import flatten_dashboard
 from tests.conftest import DATA_DIR, FIXTURES_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
 
 THEMES_DIR = Path(__file__).parent / "fixtures" / "themes"
@@ -444,3 +449,122 @@ class TestCLI:
         )
         assert result.returncode == 0, f"stderr: {result.stderr}"
         assert "Rendered:" in result.stdout
+
+
+# ─── Control Discovery (SHE-92) ─────────────────────────────────
+
+
+class TestControlCompose:
+    """SHE-92: end-to-end compose with controls → HTML with data-param attrs."""
+
+    def test_compose_control_dashboard(self):
+        from shelves.params.resolve import load_parameter_set
+
+        parameters = load_parameter_set(
+            MODELS_DIR / "parameters.yaml",
+            models_dir=MODELS_DIR,
+            data_base_dir=FIXTURES_DIR,
+        )
+        html = _compose("control_dashboard.yaml", parameters=parameters)
+        assert "<!DOCTYPE html>" in html
+        assert 'data-param="metric"' in html
+        assert 'data-param="status"' in html
+        assert 'data-param="top_n"' in html
+        # Inline label override on status control
+        assert 'data-title="Order Status"' in html
+        # Widget inference: metric=field→dropdown, top_n=number range→stepper
+        assert 'data-control="dropdown"' in html
+        assert 'data-control="stepper"' in html
+        # control_render.js inlined
+        assert "controlRender" in html
+        # The sheet still renders
+        assert "vegaEmbed" in html
+
+    def test_compose_control_with_override(self):
+        from shelves.params.resolve import load_parameter_set
+
+        parameters = load_parameter_set(
+            MODELS_DIR / "parameters.yaml",
+            models_dir=MODELS_DIR,
+            data_base_dir=FIXTURES_DIR,
+            overrides={"metric": "cost"},
+        )
+        html = _compose("control_dashboard.yaml", parameters=parameters)
+        assert 'data-default="cost"' in html
+
+    def test_compose_control_undeclared_param_raises(self):
+        yaml_str = """\
+dashboard: "Bad Control"
+canvas: { width: 800, height: 600 }
+root:
+  orientation: vertical
+  contains:
+    - control: nonexistent
+"""
+        dashboard_path = LAYOUT_DIR / "_tmp_bad_control.yaml"
+        dashboard_path.write_text(yaml_str)
+        try:
+            with pytest.raises(ValueError, match="nonexistent"):
+                compose_dashboard(
+                    dashboard_path=dashboard_path,
+                    chart_base_dir=YAML_DIR,
+                    data_dir=DATA_DIR,
+                    models_dir=MODELS_DIR,
+                )
+        finally:
+            dashboard_path.unlink(missing_ok=True)
+
+
+class TestControlDiscovery:
+    """SHE-92: _discover_controls walks a flat tree collecting control components."""
+
+    def test_discover_controls_finds_all(self):
+        spec = parse_dashboard("""\
+dashboard: "Controls"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        gap: 16
+        contains:
+          - control: metric
+          - control: status
+    - sheet: charts/foo.yaml
+      name: chart_1
+""")
+        flat = flatten_dashboard(spec)
+        controls = _discover_controls(flat)
+        assert set(controls.values()) == {"metric", "status"}
+        assert len(controls) == 2
+
+    def test_discover_controls_empty_when_none(self):
+        spec = parse_dashboard("""\
+dashboard: "No Controls"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: charts/foo.yaml
+      name: chart_1
+""")
+        flat = flatten_dashboard(spec)
+        controls = _discover_controls(flat)
+        assert controls == {}
+
+    def test_discover_controls_nested(self):
+        spec = parse_dashboard("""\
+dashboard: "Nested"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - vertical:
+        contains:
+          - horizontal:
+              contains:
+                - control: top_n
+""")
+        flat = flatten_dashboard(spec)
+        controls = _discover_controls(flat)
+        assert "top_n" in controls.values()

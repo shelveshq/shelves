@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from shelves.schema.layout_schema import (
     ButtonComponent,
     ContainerComponent,
+    ControlComponent,
     ImageComponent,
     LegendComponent,
     LinkComponent,
@@ -1018,6 +1019,108 @@ root:
   contains:
     - legend: charts/foo.yaml
       field: Region
+      style: nonexistent
+"""
+        with pytest.raises((ValueError, KeyError)):
+            parse_dashboard(yaml_str)
+
+
+# ─── Control Component (SHE-92) ────────────────────────────────────
+
+
+class TestControlComponent:
+    """SHE-92: control leaf component — schema parse/resolve/defaults + errors."""
+
+    def test_resolve_control(self):
+        entry = {"control": "metric"}
+        name, comp = resolve_child(entry, {})
+        assert name is None
+        assert isinstance(comp, ControlComponent)
+        assert comp.type == "control"
+        assert comp.param == "metric"
+        assert comp.label is None
+
+    def test_resolve_control_with_label(self):
+        entry = {"control": "status", "label": "Order Status"}
+        name, comp = resolve_child(entry, {})
+        assert name is None
+        assert isinstance(comp, ControlComponent)
+        assert comp.param == "status"
+        assert comp.label == "Order Status"
+
+    def test_resolve_control_with_sizing(self):
+        entry = {"control": "metric", "width": 200, "height": 40}
+        _, comp = resolve_child(entry, {})
+        assert isinstance(comp, ControlComponent)
+        assert comp.width == 200
+        assert comp.height == 40
+
+    def test_resolve_control_with_style(self):
+        entry = {"control": "metric", "style": "card"}
+        _, comp = resolve_child(entry, {})
+        assert isinstance(comp, ControlComponent)
+        assert comp.style == "card"
+
+    def test_resolve_control_with_html(self):
+        entry = {"control": "metric", "html": "border: 1px solid red;"}
+        _, comp = resolve_child(entry, {})
+        assert comp.html == "border: 1px solid red;"
+
+    def test_control_empty_param_raises(self):
+        with pytest.raises(ValidationError):
+            resolve_child({"control": ""}, {})
+
+    def test_control_with_contains_raises(self):
+        yaml_str = """\
+dashboard: "Control Contains"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - control: metric
+      contains:
+        - blank:
+"""
+        with pytest.raises(ValueError):
+            parse_dashboard(yaml_str)
+
+    def test_parse_dashboard_with_controls(self):
+        spec = parse_dashboard(load_layout_yaml("control_dashboard.yaml"))
+        assert len(spec.root.contains) == 2
+        # First child is a horizontal container with controls
+        h_entry = spec.root.contains[0]
+        assert isinstance(h_entry, dict)
+        inner = h_entry["horizontal"]
+        assert len(inner["contains"]) == 3
+
+    def test_control_in_components_block(self):
+        yaml_str = """\
+dashboard: "Control Component"
+canvas: { width: 1440, height: 900 }
+components:
+  metric_picker:
+    control: metric
+    label: "Choose KPI"
+root:
+  orientation: vertical
+  contains:
+    - metric_picker
+"""
+        spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
+        comp = spec.components["metric_picker"]
+        assert isinstance(comp, ControlComponent)
+        assert comp.param == "metric"
+        assert comp.label == "Choose KPI"
+
+    def test_control_undefined_style_raises(self):
+        yaml_str = """\
+dashboard: "Bad Control Style"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - control: metric
       style: nonexistent
 """
         with pytest.raises((ValueError, KeyError)):
