@@ -199,8 +199,8 @@ The type key's value is always the component's **primary field**. Additional pro
   href: "/docs"
   target: _blank
 
-- control: metric                        # parameter control
-- control: status                        # control with label override
+- parameter: metric                      # parameter widget
+- parameter: status                      # parameter with label override
   label: "Order Status"
 
 - blank:                                 # empty spacer
@@ -218,7 +218,7 @@ The type key's value is always the component's **primary field**. Additional pro
 | `button` | display text | `button: "Export"` |
 | `link` | display text | `link: "Details"` |
 | `legend` | source (chart path) | `legend: revenue.yaml` |
-| `control` | parameter name | `control: metric` |
+| `parameter` | parameter name | `parameter: metric` |
 | `blank` | *(none)* | `blank:` |
 
 ---
@@ -559,21 +559,21 @@ same rules as every other layout element (see [Sizing](#sizing) and
 > layered or dual-axis charts (multiple scales per channel) are not supported yet
 > and raise a build error.
 
-### Control (parameter widget)
+### Parameter widget
 
-An interactive control for a declared parameter. The widget type is inferred from the parameter's `type` and `values` shape — no author-chosen widget override.
+An interactive widget for a declared parameter. The widget type is inferred from the parameter's `type` and `values` shape — no author-chosen widget override.
 
 ```yaml
-- control: metric                    # dropdown (type: field)
-- control: status                    # dropdown (literal values)
+- parameter: metric                  # dropdown (type: field)
+- parameter: status                  # dropdown (literal values)
   label: "Order Status"              # overrides the parameter label
-- control: top_n                     # stepper (type: number + range)
+- parameter: top_n                   # stepper (type: number + range)
 ```
 
 | Property | Required | Default | Description |
 |---|---|---|---|
 | *(value)* | Yes | — | `param`: the declared parameter name |
-| `label` | No | parameter label or name | Display title for the control |
+| `label` | No | parameter label or name | Display title for the widget |
 | `width` | No | `auto` | Outer box width |
 | `height` | No | `auto` | Outer box height |
 | `padding` | No | `0` | Inner spacing |
@@ -592,11 +592,13 @@ An interactive control for a declared parameter. The widget type is inferred fro
 | `type: date` with `min`/`max` range | Date picker | `<input type="date">` |
 | `type: string` with no `values:` | Text input | `<input type="text">` |
 
-**Label precedence:** inline `label:` on the control > `label:` on the parameter declaration > parameter name.
+**Label precedence:** inline `label:` on the `parameter:` component > `label:` on the parameter declaration > parameter name.
 
-**Studio interactivity:** In Shelves Studio, changing a control recompiles the dashboard with the new parameter value. In exported HTML (`shelves-render`), controls render as disabled read-only widgets — parameters are compile-time and there is no server to recompile against.
+**Studio interactivity:** In Shelves Studio, changing a parameter widget recompiles the dashboard with the new value. In exported HTML (`shelves-render`), parameter widgets render as disabled read-only controls — parameters are compile-time and there is no server to recompile against.
 
-The control must reference a declared parameter (from `parameters.yaml`). An unknown parameter name produces a build error, identical to an unresolved legend source.
+**Theming:** the rendered widgets are styled via the `layout.control` theme block. This theming is shared with the upcoming `filter:` leaf type — both parameter and filter widgets use the same control styling tokens.
+
+The `parameter:` component must reference a declared parameter (from `parameters.yaml`). An unknown parameter name produces a build error, identical to an unresolved legend source.
 
 ### Blank (spacer)
 
@@ -1095,5 +1097,12 @@ Key theme tokens used by dashboards:
 | `layout.background` | Dashboard canvas background |
 | `layout.border` | Default border color |
 | `layout.presets.*` | Text preset definitions (font_size, font_weight, color) |
+| `layout.control.surface` | Background color for parameter and filter widgets |
+| `layout.control.border` | Border color for parameter and filter widgets |
+| `layout.control.radius` | Border radius (px) for parameter and filter widgets |
+| `layout.control.font_size` | Font size (px) for parameter and filter widgets |
+| `layout.control.height` | Widget height (px) for parameter and filter widgets |
 
 All preset values come from the theme — they are never hardcoded. This means your charts and dashboard chrome share a coherent visual identity from a single theme file.
+
+The `layout.control` block styles interactive widgets rendered by both `parameter:` and the upcoming `filter:` leaf types. Customize these tokens in your `theme.yaml` to match your brand:

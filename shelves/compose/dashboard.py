@@ -24,8 +24,8 @@ from shelves.diagnostics import capture_warnings
 from shelves.params.substitute import ParameterSet
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.schema.layout_schema import (
-    ControlComponent,
     LegendComponent,
+    ParameterComponent,
     SheetComponent,
     load_dashboard,
 )
@@ -323,7 +323,7 @@ def _build_control_meta(
     """Build ControlMeta for each discovered control from the ParameterSet.
 
     Validates that each control's param is a declared parameter. Returns a dict
-    keyed by dom_id. The flat_tree is walked to find ControlComponent nodes for
+    keyed by dom_id. The flat_tree is walked to find ParameterComponent nodes for
     their inline label override.
     """
     if not controls:
@@ -334,7 +334,7 @@ def _build_control_meta(
             f"Controls reference parameters {undeclared!r} but no parameters are declared."
         )
 
-    control_nodes: dict[str, ControlComponent] = {}
+    control_nodes: dict[str, ParameterComponent] = {}
     _walk_control_nodes(flat_tree, control_nodes)
 
     meta: dict[str, ControlMeta] = {}
@@ -371,8 +371,8 @@ def _build_control_meta(
     return meta
 
 
-def _walk_control_nodes(node: FlatNode, out: dict[str, ControlComponent]) -> None:
-    if isinstance(node.component, ControlComponent) and node.dom_id:
+def _walk_control_nodes(node: FlatNode, out: dict[str, ParameterComponent]) -> None:
+    if isinstance(node.component, ParameterComponent) and node.dom_id:
         out[node.dom_id] = node.component
     for child in node.children:
         _walk_control_nodes(child, out)
@@ -430,7 +430,7 @@ def _infer_widget(
 
 
 def _discover_controls(flat_tree: FlatNode) -> dict[str, str]:
-    """Walk an already-flattened tree and collect every ControlComponent.
+    """Walk an already-flattened tree and collect every ParameterComponent.
 
     Returns a dict mapping dom_id → param name.
     """
@@ -440,7 +440,7 @@ def _discover_controls(flat_tree: FlatNode) -> dict[str, str]:
 
 
 def _walk_controls(node: FlatNode, controls: dict[str, str]) -> None:
-    if isinstance(node.component, ControlComponent):
+    if isinstance(node.component, ParameterComponent):
         assert node.dom_id is not None, "control node missing dom_id"
         controls[node.dom_id] = node.component.param
     for child in node.children:

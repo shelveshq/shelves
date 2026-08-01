@@ -19,11 +19,11 @@ from shelves.schema.layout_schema import (
     ButtonComponent,
     Canvas,
     ContainerComponent,
-    ControlComponent,
     DashboardSpec,
     ImageComponent,
     LegendComponent,
     LinkComponent,
+    ParameterComponent,
     RootComponent,
     SheetComponent,
     TextComponent,
@@ -297,7 +297,7 @@ def _render_control(
 ) -> str:
     """Render a control placeholder with data-* attributes for control_render.js."""
     defn = node.component
-    assert isinstance(defn, ControlComponent)
+    assert isinstance(defn, ParameterComponent)
     assert node.dom_id is not None, "control node missing dom_id"
 
     meta = ctx.control_meta.get(node.dom_id)
@@ -378,7 +378,7 @@ _RENDERERS: dict[type, Callable[[ResolvedNode, RenderContext, str, str], str]] =
     ImageComponent: _render_image,
     BlankComponent: _render_blank,
     LegendComponent: _render_legend,
-    ControlComponent: _render_control,
+    ParameterComponent: _render_control,
 }
 
 

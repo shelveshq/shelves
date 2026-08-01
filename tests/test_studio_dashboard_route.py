@@ -490,7 +490,7 @@ class TestVendoredVegaSources:
 
 
 class TestStudioDashboardControls:
-    """SHE-92: controls in the Studio dashboard pipeline."""
+    """SHE-97: parameter components in the Studio dashboard pipeline."""
 
     CONTROL_YAML = (
         'dashboard: "Controls"\n'
@@ -502,10 +502,10 @@ class TestStudioDashboardControls:
         "        gap: 16\n"
         "        height: 48\n"
         "        contains:\n"
-        "          - control: metric\n"
-        "          - control: status\n"
+        "          - parameter: metric\n"
+        "          - parameter: status\n"
         '            label: "Order Status"\n'
-        "          - control: top_n\n"
+        "          - parameter: top_n\n"
         "    - sheet: param_field_swap.yaml\n"
         "      name: chart_1\n"
         '      height: "80%"\n'
@@ -540,13 +540,13 @@ class TestStudioDashboardControls:
         assert 'data-param="top_n"' in html
         assert 'data-control="stepper"' in html
 
-    def test_component_tree_includes_controls(self):
-        """The component tree returned to Studio includes control entries."""
+    def test_component_tree_includes_parameters(self):
+        """The component tree returned to Studio includes parameter entries."""
         result = _pipeline(self.CONTROL_YAML)
         assert result["errors"] == []
         tree = result["component_tree"]
-        control_entries = [e for e in tree if e["type"] == "control"]
-        assert len(control_entries) == 3
+        param_entries = [e for e in tree if e["type"] == "parameter"]
+        assert len(param_entries) == 3
 
     def test_override_header_threads_to_parameter_set(self):
         """X-Shelves-Params header overrides the default parameter values."""
@@ -564,15 +564,15 @@ class TestStudioDashboardControls:
         assert html2 is not None
         assert 'data-default="cost"' in html2
 
-    def test_undeclared_control_returns_error(self):
-        """A control referencing a non-existent parameter returns an error."""
+    def test_undeclared_parameter_returns_error(self):
+        """A parameter referencing a non-existent parameter returns an error."""
         yaml_body = (
-            'dashboard: "Bad Control"\n'
+            'dashboard: "Bad Parameter"\n'
             "canvas: { width: 800, height: 600 }\n"
             "root:\n"
             "  orientation: vertical\n"
             "  contains:\n"
-            "    - control: nonexistent\n"
+            "    - parameter: nonexistent\n"
         )
         result = _pipeline(yaml_body)
         assert result["html"] is None
