@@ -246,6 +246,7 @@ shelves-studio
 my-project/
   models/
     sales.yaml           # semantic model definitions (file or cube source)
+    parameters.yaml      # named values referenced as $name in charts
   charts/
     revenue_by_category.yaml
     sales_over_time.yaml
@@ -259,18 +260,18 @@ my-project/
 ## What works today
 
 - **Charts** — bars, lines, areas, scatter, heatmaps, pies, KPIs; multi-measure stacked panels; dual-axis layers; faceting; filters; sort; data labels. All snapshot-tested.
-- **Dashboards** — a nested-container layout DSL compiled to HTML through a constraint solver.
+- **Dashboards** — a nested-container layout DSL compiled to HTML through a constraint solver, with independent legends and interactive parameter controls.
+- **Parameters** — declare named values once in `parameters.yaml`, reference them as `$name` across charts, filters, titles, and model calculations. Override from the CLI with `--param key=value`, or make them interactive with dashboard controls.
 - **Semantic models** — flat files via DuckDB and Cube.dev, plus `shelves-import` to bootstrap a model from a CSV.
 - **Theming** — design tokens compiled into Vega-Lite config; dark mode and multi-brand are token-set swaps.
-- **Shelves Studio** — a local editor with Monaco, live preview, a file tree, and an integrated terminal.
+- **Shelves Studio** — a local editor with Monaco, live preview, a file tree, and an integrated terminal. Dashboard controls recompile live.
 
 ## What doesn't, yet
 
 Worth knowing before you adopt it:
 
-- **No interactivity.** Cross-filtering, drill-down, and parameter controls are not built. A Shelves dashboard is currently a static report.
+- **Limited interactivity.** Parameter controls recompile in Studio, but cross-filtering and drill-down are not built. Exported dashboards are static — controls render read-only.
 - **No tables or pivots.** The most-used visualization in real BI is missing.
-- **No composability.** Templates, includes, and variables don't exist in the grammar yet, so large projects will repeat themselves.
 
 Next up: an MCP server exposing the pipeline (list metrics, validate, compile, render) so any agent can drive it, and a public eval suite benchmarking prompt→DSL against prompt→raw-Vega-Lite across frontier models.
 
