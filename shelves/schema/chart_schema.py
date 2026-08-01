@@ -38,7 +38,8 @@ from shelves.params.substitute import ParameterReferenceError, ParameterSet, sub
 # No ChartSpec field changes — references are substituted before parsing.
 # Additive → minor.
 # 0.11.0: control leaf type added to the layout DSL (SHE-92). Additive → minor.
-DSL_VERSION = "0.11.0"  # Layout: control leaf type (SHE-92)
+# 0.12.0: control → parameter leaf type rename (SHE-97). Breaking → minor (pre-1.0).
+DSL_VERSION = "0.12.0"  # Layout: control → parameter rename (SHE-97)
 
 # ─── Primitives ────────────────────────────────────────────────────
 

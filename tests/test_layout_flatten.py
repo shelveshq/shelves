@@ -431,18 +431,18 @@ root:
         assert text_node.dom_id is None
         assert sheet_node.dom_id == "auto-1"  # nested sheet still counted in pre-order
 
-    def test_control_gets_dom_id(self):
+    def test_parameter_gets_dom_id(self):
         flat = _flatten("""\
 dashboard: "Dom Id"
 canvas: { width: 800, height: 600 }
 root:
   orientation: vertical
   contains:
-    - control: metric
-    - control: status
+    - parameter: metric
+    - parameter: status
     - sheet: charts/foo.yaml
 """)
-        ctrl_a, ctrl_b, sheet = flat.children
-        assert ctrl_a.dom_id == "auto-1"
-        assert ctrl_b.dom_id == "auto-2"
-        assert sheet.dom_id == "auto-1"  # sheet counter independent of control counter
+        param_a, param_b, sheet = flat.children
+        assert param_a.dom_id == "auto-1"
+        assert param_b.dom_id == "auto-2"
+        assert sheet.dom_id == "auto-1"  # sheet counter independent of parameter counter

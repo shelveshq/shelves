@@ -14,8 +14,8 @@ from typing import Literal
 from shelves.schema.layout_schema import (
     ButtonComponent,
     Component,
-    ControlComponent,
     LinkComponent,
+    ParameterComponent,
     RootComponent,
     SheetComponent,
     TextComponent,
@@ -345,7 +345,7 @@ def resolve_inner_styles(
         css["display"] = "flex"
         css["flex-direction"] = "column"
         css["justify-content"] = "center"
-    elif isinstance(component, ControlComponent):
+    elif isinstance(component, ParameterComponent):
         css["display"] = "flex"
         css["align-items"] = "center"
     else:

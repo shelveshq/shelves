@@ -14,10 +14,10 @@ from pydantic import ValidationError
 from shelves.schema.layout_schema import (
     ButtonComponent,
     ContainerComponent,
-    ControlComponent,
     ImageComponent,
     LegendComponent,
     LinkComponent,
+    ParameterComponent,
     SheetComponent,
     TextComponent,
     parse_dashboard,
@@ -1025,81 +1025,81 @@ root:
             parse_dashboard(yaml_str)
 
 
-# ─── Control Component (SHE-92) ────────────────────────────────────
+# ─── Parameter Component (SHE-97: renamed from control) ───────────────
 
 
-class TestControlComponent:
-    """SHE-92: control leaf component — schema parse/resolve/defaults + errors."""
+class TestParameterComponent:
+    """SHE-97: parameter leaf component — schema parse/resolve/defaults + errors."""
 
-    def test_resolve_control(self):
-        entry = {"control": "metric"}
+    def test_resolve_parameter(self):
+        entry = {"parameter": "metric"}
         name, comp = resolve_child(entry, {})
         assert name is None
-        assert isinstance(comp, ControlComponent)
-        assert comp.type == "control"
+        assert isinstance(comp, ParameterComponent)
+        assert comp.type == "parameter"
         assert comp.param == "metric"
         assert comp.label is None
 
-    def test_resolve_control_with_label(self):
-        entry = {"control": "status", "label": "Order Status"}
+    def test_resolve_parameter_with_label(self):
+        entry = {"parameter": "status", "label": "Order Status"}
         name, comp = resolve_child(entry, {})
         assert name is None
-        assert isinstance(comp, ControlComponent)
+        assert isinstance(comp, ParameterComponent)
         assert comp.param == "status"
         assert comp.label == "Order Status"
 
-    def test_resolve_control_with_sizing(self):
-        entry = {"control": "metric", "width": 200, "height": 40}
+    def test_resolve_parameter_with_sizing(self):
+        entry = {"parameter": "metric", "width": 200, "height": 40}
         _, comp = resolve_child(entry, {})
-        assert isinstance(comp, ControlComponent)
+        assert isinstance(comp, ParameterComponent)
         assert comp.width == 200
         assert comp.height == 40
 
-    def test_resolve_control_with_style(self):
-        entry = {"control": "metric", "style": "card"}
+    def test_resolve_parameter_with_style(self):
+        entry = {"parameter": "metric", "style": "card"}
         _, comp = resolve_child(entry, {})
-        assert isinstance(comp, ControlComponent)
+        assert isinstance(comp, ParameterComponent)
         assert comp.style == "card"
 
-    def test_resolve_control_with_html(self):
-        entry = {"control": "metric", "html": "border: 1px solid red;"}
+    def test_resolve_parameter_with_html(self):
+        entry = {"parameter": "metric", "html": "border: 1px solid red;"}
         _, comp = resolve_child(entry, {})
         assert comp.html == "border: 1px solid red;"
 
-    def test_control_empty_param_raises(self):
+    def test_parameter_empty_param_raises(self):
         with pytest.raises(ValidationError):
-            resolve_child({"control": ""}, {})
+            resolve_child({"parameter": ""}, {})
 
-    def test_control_with_contains_raises(self):
+    def test_parameter_with_contains_raises(self):
         yaml_str = """\
-dashboard: "Control Contains"
+dashboard: "Parameter Contains"
 canvas: { width: 1440, height: 900 }
 root:
   orientation: vertical
   contains:
-    - control: metric
+    - parameter: metric
       contains:
         - blank:
 """
         with pytest.raises(ValueError):
             parse_dashboard(yaml_str)
 
-    def test_parse_dashboard_with_controls(self):
+    def test_parse_dashboard_with_parameters(self):
         spec = parse_dashboard(load_layout_yaml("control_dashboard.yaml"))
         assert len(spec.root.contains) == 2
-        # First child is a horizontal container with controls
+        # First child is a horizontal container with parameter components
         h_entry = spec.root.contains[0]
         assert isinstance(h_entry, dict)
         inner = h_entry["horizontal"]
         assert len(inner["contains"]) == 3
 
-    def test_control_in_components_block(self):
+    def test_parameter_in_components_block(self):
         yaml_str = """\
-dashboard: "Control Component"
+dashboard: "Parameter Component"
 canvas: { width: 1440, height: 900 }
 components:
   metric_picker:
-    control: metric
+    parameter: metric
     label: "Choose KPI"
 root:
   orientation: vertical
@@ -1109,19 +1109,24 @@ root:
         spec = parse_dashboard(yaml_str)
         assert spec.components is not None
         comp = spec.components["metric_picker"]
-        assert isinstance(comp, ControlComponent)
+        assert isinstance(comp, ParameterComponent)
         assert comp.param == "metric"
         assert comp.label == "Choose KPI"
 
-    def test_control_undefined_style_raises(self):
+    def test_parameter_undefined_style_raises(self):
         yaml_str = """\
-dashboard: "Bad Control Style"
+dashboard: "Bad Parameter Style"
 canvas: { width: 1440, height: 900 }
 root:
   orientation: vertical
   contains:
-    - control: metric
+    - parameter: metric
       style: nonexistent
 """
         with pytest.raises((ValueError, KeyError)):
             parse_dashboard(yaml_str)
+
+    def test_control_key_is_now_unknown(self):
+        """SHE-97: the old `control:` key is an unknown type — no deprecation alias."""
+        with pytest.raises((ValueError, KeyError)):
+            resolve_child({"control": "metric"}, {})

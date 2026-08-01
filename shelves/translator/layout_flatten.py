@@ -18,9 +18,9 @@ from shelves.schema.layout_schema import (
     Canvas,
     Component,
     ContainerComponent,
-    ControlComponent,
     DashboardSpec,
     LegendComponent,
+    ParameterComponent,
     RootComponent,
     SheetComponent,
     StyleProperties,
@@ -157,7 +157,7 @@ def _assign_dom_ids(root: FlatNode) -> None:
             else:
                 legend_counter += 1
                 node.dom_id = f"auto-{legend_counter}"
-        elif isinstance(comp, ControlComponent):
+        elif isinstance(comp, ParameterComponent):
             if node.name is not None:
                 node.dom_id = node.name
             else:

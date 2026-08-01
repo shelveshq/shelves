@@ -451,13 +451,13 @@ class TestCLI:
         assert "Rendered:" in result.stdout
 
 
-# ─── Control Discovery (SHE-92) ─────────────────────────────────
+# ─── Parameter Control Discovery (SHE-97: renamed from control) ──
 
 
-class TestControlCompose:
-    """SHE-92: end-to-end compose with controls → HTML with data-param attrs."""
+class TestParameterCompose:
+    """SHE-97: end-to-end compose with parameter components → HTML with data-param attrs."""
 
-    def test_compose_control_dashboard(self):
+    def test_compose_parameter_dashboard(self):
         from shelves.params.resolve import load_parameter_set
 
         parameters = load_parameter_set(
@@ -470,7 +470,7 @@ class TestControlCompose:
         assert 'data-param="metric"' in html
         assert 'data-param="status"' in html
         assert 'data-param="top_n"' in html
-        # Inline label override on status control
+        # Inline label override on status parameter
         assert 'data-title="Order Status"' in html
         # Widget inference: metric=field→dropdown, top_n=number range→stepper
         assert 'data-control="dropdown"' in html
@@ -480,7 +480,7 @@ class TestControlCompose:
         # The sheet still renders
         assert "vegaEmbed" in html
 
-    def test_compose_control_with_override(self):
+    def test_compose_parameter_with_override(self):
         from shelves.params.resolve import load_parameter_set
 
         parameters = load_parameter_set(
@@ -492,16 +492,16 @@ class TestControlCompose:
         html = _compose("control_dashboard.yaml", parameters=parameters)
         assert 'data-default="cost"' in html
 
-    def test_compose_control_undeclared_param_raises(self):
+    def test_compose_parameter_undeclared_param_raises(self):
         yaml_str = """\
-dashboard: "Bad Control"
+dashboard: "Bad Parameter"
 canvas: { width: 800, height: 600 }
 root:
   orientation: vertical
   contains:
-    - control: nonexistent
+    - parameter: nonexistent
 """
-        dashboard_path = LAYOUT_DIR / "_tmp_bad_control.yaml"
+        dashboard_path = LAYOUT_DIR / "_tmp_bad_parameter.yaml"
         dashboard_path.write_text(yaml_str)
         try:
             with pytest.raises(ValueError, match="nonexistent"):
@@ -515,12 +515,12 @@ root:
             dashboard_path.unlink(missing_ok=True)
 
 
-class TestControlDiscovery:
-    """SHE-92: _discover_controls walks a flat tree collecting control components."""
+class TestParameterDiscovery:
+    """SHE-97: _discover_controls walks a flat tree collecting parameter components."""
 
     def test_discover_controls_finds_all(self):
         spec = parse_dashboard("""\
-dashboard: "Controls"
+dashboard: "Parameters"
 canvas: { width: 1440, height: 900 }
 root:
   orientation: vertical
@@ -528,8 +528,8 @@ root:
     - horizontal:
         gap: 16
         contains:
-          - control: metric
-          - control: status
+          - parameter: metric
+          - parameter: status
     - sheet: charts/foo.yaml
       name: chart_1
 """)
@@ -540,7 +540,7 @@ root:
 
     def test_discover_controls_empty_when_none(self):
         spec = parse_dashboard("""\
-dashboard: "No Controls"
+dashboard: "No Parameters"
 canvas: { width: 1440, height: 900 }
 root:
   orientation: vertical
@@ -563,7 +563,7 @@ root:
         contains:
           - horizontal:
               contains:
-                - control: top_n
+                - parameter: top_n
 """)
         flat = flatten_dashboard(spec)
         controls = _discover_controls(flat)

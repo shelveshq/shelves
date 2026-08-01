@@ -225,7 +225,7 @@ def build_component_tree(flat_root: Any) -> list[dict]:
     Walk order is depth-first pre-order.
     Each entry: {name, type, depth, link?, children_count}
     """
-    from shelves.schema.layout_schema import ControlComponent, SheetComponent
+    from shelves.schema.layout_schema import ParameterComponent, SheetComponent
     from shelves.translator.layout_flatten import FlatNode
 
     result: list[dict] = []
@@ -238,8 +238,8 @@ def build_component_tree(flat_root: Any) -> list[dict]:
             comp_type = getattr(comp, "orientation", "vertical")
         elif isinstance(comp, SheetComponent):
             comp_type = "sheet"
-        elif isinstance(comp, ControlComponent):
-            comp_type = "control"
+        elif isinstance(comp, ParameterComponent):
+            comp_type = "parameter"
 
         entry: dict = {
             "name": node.name,

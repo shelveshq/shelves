@@ -245,7 +245,7 @@ point at it with `--parameters-file`. See the
 [DSL reference](dsl-reference.md#parameters) for the full declaration grammar
 and the list of positions where `$name` may appear.
 
-To make a parameter interactive in a dashboard, add a `control:` element:
+To make a parameter interactive in a dashboard, add a `parameter:` element:
 
 ```yaml
 # dashboards/sales.yaml
@@ -258,18 +258,18 @@ root:
         gap: 16
         height: 48
         contains:
-          - control: metric
+          - parameter: metric
     - sheet: metric_by_country.yaml
       name: chart
       height: "90%"
 ```
 
-In Shelves Studio, the control renders as a dropdown (inferred from `type: field`).
+In Shelves Studio, the parameter renders as a dropdown (inferred from `type: field`).
 Changing the selection recompiles the dashboard with the new value. In exported
-HTML, the control renders disabled — parameters are baked in at compile time.
+HTML, the parameter renders disabled — parameters are baked in at compile time.
 
-See the [Dashboards guide](dashboards.md#control-parameter-widget) for widget
-inference rules and all control properties.
+See the [Dashboards guide](dashboards.md#parameter-widget) for widget
+inference rules and all parameter component properties.
 
 ## Dev server
 
