@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-01
+
+The **Parameters** release: charts and dashboards can now be parameterized —
+values declared once in `parameters.yaml` are substituted at compile time across
+field references, filters, titles, and model calculations. Dashboards get
+interactive controls that recompile on change in Studio.
+
+### Parameters
+
+- **Four parameter types** — `string`, `number`, `date`, and `list`, each with `default`, optional `values` constraint, and `label`. Declared in `models/parameters.yaml` and referenced as `$name` in chart specs. (SHE-89, SHE-90)
+- **Parameterized model calculations** — model measures and dimensions can use `${name}` substitution in their `column` and `expression` fields, enabling a single model definition to serve multiple parameter-driven views. (SHE-91)
+- **Dashboard parameter controls** — a `control: <param>` layout leaf renders an interactive widget (dropdown, number input, date picker, text input) whose type is inferred from the parameter declaration. Changing a control in Studio recompiles the dashboard with the new value; in exported HTML, controls render as disabled read-only widgets. (SHE-92)
+- **Dashboard text interpolation** — `text` components resolve `${name}` references against the current parameter values before rendering. (SHE-96)
+- **`--param` CLI flag** — `shelves-render` and `shelves-dev` accept `--param key=value` to override parameter defaults from the command line. (SHE-93)
+- **`--parameters-file` CLI flag** — point at a non-default parameters file location.
+
+### Performance
+
+- **Domain resolution cache** — a TTL-based cache across compiles avoids redundant data-source queries when resolving parameter domains (e.g. distinct values for a dropdown). (SHE-95)
+
+### Internal
+
+- Moved confidential material to a private companion repo (`shelveshq/shelves-internal`), symlinked via `.private/`.
+- README rewritten for the landed product positioning.
+- Corrected parameter documentation against the shipped code. (SHE-93)
+
 ## [0.5.0] - 2026-07-20
 
 The **Shelves Studio — UX & Design-System Polish** release: Studio is brought in
