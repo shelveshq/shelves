@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime
 import re
+from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -42,15 +43,6 @@ _FILE_READERS: dict[str, str] = {
     ".csv": "read_csv_auto",
     ".parquet": "read_parquet",
     ".json": "read_json_auto",
-}
-
-_SQL_OPERATORS: dict[str, str] = {
-    "eq": "=",
-    "neq": "!=",
-    "gt": ">",
-    "lt": "<",
-    "gte": ">=",
-    "lte": "<=",
 }
 
 
@@ -291,6 +283,47 @@ def _from_clause(file_path: str) -> str:
     return f"{reader}('{escaped_path}')"
 
 
+# ─── Filter dispatch table ──────────────────────────────────────────
+
+
+def _make_comparison_handler(sql_op: str) -> Callable[[str, ShelfFilter], str]:
+    def handler(col: str, f: ShelfFilter) -> str:
+        assert f.value is not None
+        return f"{col} {sql_op} {_quote_value(f.value)}"
+
+    return handler
+
+
+def _sql_in(col: str, f: ShelfFilter) -> str:
+    assert f.values is not None
+    vals = ", ".join(_quote_value(v) for v in f.values)
+    return f"{col} IN ({vals})"
+
+
+def _sql_not_in(col: str, f: ShelfFilter) -> str:
+    assert f.values is not None
+    vals = ", ".join(_quote_value(v) for v in f.values)
+    return f"{col} NOT IN ({vals})"
+
+
+def _sql_between(col: str, f: ShelfFilter) -> str:
+    assert f.range is not None
+    return f"{col} BETWEEN {_quote_value(f.range[0])} AND {_quote_value(f.range[1])}"
+
+
+_FILTER_DISPATCH: dict[str, Callable[[str, ShelfFilter], str]] = {
+    "eq": _make_comparison_handler("="),
+    "neq": _make_comparison_handler("!="),
+    "gt": _make_comparison_handler(">"),
+    "lt": _make_comparison_handler("<"),
+    "gte": _make_comparison_handler(">="),
+    "lte": _make_comparison_handler("<="),
+    "in": _sql_in,
+    "not_in": _sql_not_in,
+    "between": _sql_between,
+}
+
+
 def _build_filter_conditions(
     filters: list[ShelfFilter],
     model: DataModel,
@@ -322,22 +355,10 @@ def _build_filter_conditions(
             else:
                 col_ref = _quote_identifier(base)
 
-        if f.operator in _SQL_OPERATORS:
-            assert f.value is not None
-            conditions.append(f"{col_ref} {_SQL_OPERATORS[f.operator]} {_quote_value(f.value)}")
-        elif f.operator == "in":
-            assert f.values is not None
-            vals = ", ".join(_quote_value(v) for v in f.values)
-            conditions.append(f"{col_ref} IN ({vals})")
-        elif f.operator == "not_in":
-            assert f.values is not None
-            vals = ", ".join(_quote_value(v) for v in f.values)
-            conditions.append(f"{col_ref} NOT IN ({vals})")
-        elif f.operator == "between":
-            assert f.range is not None
-            conditions.append(
-                f"{col_ref} BETWEEN {_quote_value(f.range[0])} AND {_quote_value(f.range[1])}"
-            )
+        handler = _FILTER_DISPATCH.get(f.operator)
+        if handler is None:
+            raise DuckDBQueryError(f"Unsupported filter operator {f.operator!r} for DuckDB backend")
+        conditions.append(handler(col_ref, f))
 
     return conditions
 

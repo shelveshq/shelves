@@ -35,7 +35,7 @@ def build_transforms(
     return [{"filter": _translate_filter(f, resolver)} for f in filters]
 
 
-def _translate_filter(f: ShelfFilter, resolver: FieldTypeResolver | None = None) -> Any:
+def _translate_filter(f: ShelfFilter, resolver: FieldTypeResolver | None = None) -> dict[str, Any]:
     """Convert a single DSL filter to a Vega-Lite filter predicate."""
 
     field = resolver.resolve_base_field(f.field) if resolver else f.field
@@ -61,5 +61,3 @@ def _translate_filter(f: ShelfFilter, resolver: FieldTypeResolver | None = None)
             return {"not": {"field": field, "oneOf": f.values}}
         case "between":
             return {"field": field, "range": f.range}
-        case _:
-            raise ValueError(f'Unknown filter operator: "{f.operator}"')

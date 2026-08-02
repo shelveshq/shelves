@@ -10,6 +10,7 @@ Phase 3: replaces inline JSON data for charts backed by a semantic model.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -101,16 +102,44 @@ class HttpxTransport:
 
 # ─── Query Builder ───────────────────────────────────────────────────
 
-# DSL filter operator → Cube filter operator
-_FILTER_OP_MAP = {
-    "eq": "equals",
-    "neq": "notEquals",
-    "in": "equals",
-    "not_in": "notEquals",
-    "gt": "gt",
-    "lt": "lt",
-    "gte": "gte",
-    "lte": "lte",
+
+def _make_cube_value_handler(
+    cube_op: str,
+) -> Callable[[str, ShelfFilter], list[dict[str, Any]]]:
+    def handler(member: str, f: ShelfFilter) -> list[dict[str, Any]]:
+        return [{"member": member, "operator": cube_op, "values": [str(f.value)]}]
+
+    return handler
+
+
+def _cube_in(member: str, f: ShelfFilter) -> list[dict[str, Any]]:
+    assert f.values is not None
+    return [{"member": member, "operator": "equals", "values": [str(v) for v in f.values]}]
+
+
+def _cube_not_in(member: str, f: ShelfFilter) -> list[dict[str, Any]]:
+    assert f.values is not None
+    return [{"member": member, "operator": "notEquals", "values": [str(v) for v in f.values]}]
+
+
+def _cube_between(member: str, f: ShelfFilter) -> list[dict[str, Any]]:
+    assert f.range is not None
+    return [
+        {"member": member, "operator": "gte", "values": [str(f.range[0])]},
+        {"member": member, "operator": "lte", "values": [str(f.range[1])]},
+    ]
+
+
+_FILTER_DISPATCH: dict[str, Callable[[str, ShelfFilter], list[dict[str, Any]]]] = {
+    "eq": _make_cube_value_handler("equals"),
+    "neq": _make_cube_value_handler("notEquals"),
+    "gt": _make_cube_value_handler("gt"),
+    "lt": _make_cube_value_handler("lt"),
+    "gte": _make_cube_value_handler("gte"),
+    "lte": _make_cube_value_handler("lte"),
+    "in": _cube_in,
+    "not_in": _cube_not_in,
+    "between": _cube_between,
 }
 
 
@@ -204,35 +233,14 @@ def _translate_filters(
     resolver: FieldTypeResolver,
 ) -> list[dict[str, Any]]:
     """Convert DSL ShelfFilter list to Cube filter format."""
-    result = []
+    result: list[dict[str, Any]] = []
 
     for f in filters:
         member = f"{cube_name}.{resolver.resolve_base_field(f.field)}"
-
-        if f.operator == "between":
-            # Cube has no generic 'between' — emit gte + lte pair
-            assert f.range is not None, "ShelfFilter with operator='between' must have range set"
-            result.append({"member": member, "operator": "gte", "values": [str(f.range[0])]})
-            result.append({"member": member, "operator": "lte", "values": [str(f.range[1])]})
-        elif f.operator in ("in", "not_in"):
-            assert f.values is not None, (
-                "ShelfFilter with operator='in'/'not_in' must have values set"
-            )
-            result.append(
-                {
-                    "member": member,
-                    "operator": _FILTER_OP_MAP[f.operator],
-                    "values": [str(v) for v in f.values],
-                }
-            )
-        else:
-            result.append(
-                {
-                    "member": member,
-                    "operator": _FILTER_OP_MAP[f.operator],
-                    "values": [str(f.value)],
-                }
-            )
+        handler = _FILTER_DISPATCH.get(f.operator)
+        if handler is None:
+            raise CubeQueryError(f"Unsupported filter operator {f.operator!r} for Cube backend")
+        result.extend(handler(member, f))
 
     return result
 
