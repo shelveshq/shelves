@@ -99,6 +99,6 @@ data: orders
 marks: bar
 filters:
   - field: country
-    operator: contains
+    operator: starts_with
     value: "US"
 """)

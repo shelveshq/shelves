@@ -39,7 +39,7 @@ from shelves.params.substitute import ParameterReferenceError, ParameterSet, sub
 # Additive → minor.
 # 0.11.0: control leaf type added to the layout DSL (SHE-92). Additive → minor.
 # 0.12.0: control → parameter leaf type rename (SHE-97). Breaking → minor (pre-1.0).
-DSL_VERSION = "0.12.0"  # Layout: control → parameter rename (SHE-97)
+DSL_VERSION = "0.13.0"  # Filter leaf type + contains operator (SHE-79)
 
 # ─── Primitives ────────────────────────────────────────────────────
 
@@ -70,6 +70,7 @@ FilterOperator = Literal[
     "gte",
     "lte",
     "between",
+    "contains",
 ]
 
 SortOrder = Literal["ascending", "descending"]
@@ -130,6 +131,7 @@ _OPERATOR_RULES: dict[str, tuple[str, list[str]]] = {
     "lt": ("value", ["values", "range"]),
     "gte": ("value", ["values", "range"]),
     "lte": ("value", ["values", "range"]),
+    "contains": ("value", ["values", "range"]),
 }
 
 

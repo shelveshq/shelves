@@ -1,6 +1,6 @@
 # Shelves DSL Reference
 
-**DSL Version: 0.12.0**
+**DSL Version: 0.13.0**
 
 This document is the authoritative reference for the Shelves YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -346,6 +346,11 @@ filters:
   - field: revenue
     operator: between
     range: [1000, 5000]
+
+  # Substring match (case-insensitive)
+  - field: product
+    operator: contains
+    value: "Premium"
 ```
 
 **Operator → value field rules** (strictly enforced):
@@ -355,6 +360,7 @@ filters:
 | `in`, `not_in` | `values` (list) | `value`, `range` |
 | `between` | `range` (2-element list) | `value`, `values` |
 | `eq`, `neq`, `gt`, `lt`, `gte`, `lte` | `value` (scalar) | `values`, `range` |
+| `contains` | `value` (string) | `values`, `range` |
 
 ---
 
@@ -1467,7 +1473,8 @@ See the DSL version history below for what shipped in each version.
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.12.0** | Current | **Breaking:** `control:` layout leaf type renamed to `parameter:`. No deprecation alias — `control:` is now an unknown type. The rendered widget contract (`data-control`, `control_render.js`, `layout.control` theme block) is unchanged. |
+| **0.13.0** | Current | Filter leaf type (`filter:`) added to the layout DSL for interactive dashboard filters. `contains` filter operator added for case-insensitive substring matching. Filters are schema-validated and compose-time validated (mode↔field-type, model/field existence, target sheet constraints) but not yet compiled or rendered. |
+| **0.12.0** | Previous | **Breaking:** `control:` layout leaf type renamed to `parameter:`. No deprecation alias — `control:` is now an unknown type. The rendered widget contract (`data-control`, `control_render.js`, `layout.control` theme block) is unchanged. |
 | **0.11.0** | Previous | Dashboard parameter controls: `{control: <param_name>}` layout leaf renders interactive widgets (dropdown, stepper, date, text) inferred from the parameter type. In Studio, changing a control recompiles the dashboard; in exported HTML, controls render disabled. New `layout.control` theme block. Renamed to `parameter:` in 0.12.0. |
 | **0.10.0** | Previous | Project-level parameters: a `models/parameters.yaml` file declaring `string`/`number`/`date`/`field` parameters, referenced from charts with `$name` in field slots and filter values, and `${name}` in title text. Resolved before parsing, so a parameterized spec compiles identically to the hand-written equivalent. |
 | **0.9.0** | Previous | Axis channel toggles: `AxisChannelConfig` gains `ruler` (→ VL `axis.domain`), `ticks` (→ `axis.ticks`), `labels` (→ `axis.labels`). Each axis channel also accepts a bare bool (`x: false` removes the axis). The x-off/y-on grid default moved from a hardcoded encoding injection to the theme (`axisX`/`axisY`), making grid/ruler/tick defaults themeable. |

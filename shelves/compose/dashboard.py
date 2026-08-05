@@ -24,6 +24,7 @@ from shelves.diagnostics import capture_warnings
 from shelves.params.substitute import ParameterSet
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.schema.layout_schema import (
+    FilterComponent,
     LegendComponent,
     ParameterComponent,
     SheetComponent,
@@ -445,3 +446,120 @@ def _walk_controls(node: FlatNode, controls: dict[str, str]) -> None:
         controls[node.dom_id] = node.component.param
     for child in node.children:
         _walk_controls(child, controls)
+
+
+# ─── Filter Discovery & Validation (SHE-79) ─────────────────────────
+
+
+_DIMENSION_MODES = {"multi", "single", "wildcard"}
+_QUANTITATIVE_MODES = {"range", "at_least", "at_most"}
+_TEMPORAL_MODES = {"range", "after", "before"}
+
+
+def _discover_filters(flat_tree: FlatNode) -> list[FilterComponent]:
+    filters: list[FilterComponent] = []
+    _walk_filters(flat_tree, filters)
+    return filters
+
+
+def _walk_filters(node: FlatNode, filters: list[FilterComponent]) -> None:
+    if isinstance(node.component, FilterComponent):
+        filters.append(node.component)
+    for child in node.children:
+        _walk_filters(child, filters)
+
+
+def _validate_filters(
+    filters: list[FilterComponent],
+    *,
+    sheets: dict[str, str],
+    charts_dir: Path,
+    models_dir: Path | str | None = None,
+) -> list[str]:
+    """Validate filter declarations against models and sheets.
+
+    Returns a list of error strings (empty = all valid).
+    """
+    from shelves.models.loader import load_model
+    from shelves.models.schema import (
+        NominalDimensionDefinition,
+        TemporalDimensionDefinition,
+    )
+
+    errors: list[str] = []
+
+    sheet_models: dict[str, str] = {}
+    for sheet_id, link in sheets.items():
+        chart_path = charts_dir / link
+        if chart_path.exists():
+            import yaml as _yaml
+
+            raw = _yaml.safe_load(chart_path.read_text())
+            if isinstance(raw, dict) and "data" in raw:
+                sheet_models[sheet_id] = raw["data"]
+
+    for filt in filters:
+        try:
+            model = load_model(filt.model, models_dir=models_dir)
+        except Exception:
+            errors.append(
+                f"Filter on '{filt.field}': model '{filt.model}' not found. "
+                f"Available models are in the models directory."
+            )
+            continue
+
+        dim = model.dimensions.get(filt.field)
+        measure = model.measures.get(filt.field)
+        if dim is None and measure is None:
+            available = sorted(list(model.dimensions.keys()) + list(model.measures.keys()))
+            errors.append(
+                f"Filter field '{filt.field}' not found in model '{filt.model}'. "
+                f"Available fields: {', '.join(available)}"
+            )
+            continue
+
+        if filt.mode is not None:
+            if isinstance(dim, TemporalDimensionDefinition):
+                valid_modes = _TEMPORAL_MODES
+                category = "temporal"
+            elif isinstance(dim, NominalDimensionDefinition):
+                valid_modes = _DIMENSION_MODES
+                category = "dimension"
+            elif measure is not None:
+                valid_modes = _QUANTITATIVE_MODES
+                category = "quantitative"
+            else:
+                valid_modes = _DIMENSION_MODES
+                category = "dimension"
+
+            if filt.mode not in valid_modes:
+                errors.append(
+                    f"Filter mode '{filt.mode}' is not valid for {category} "
+                    f"field '{filt.field}'. Valid modes: {sorted(valid_modes)}"
+                )
+
+        if filt.targets == "all":
+            matching = [sid for sid, m in sheet_models.items() if m == filt.model]
+            if not matching:
+                used_models = sorted(set(sheet_models.values()))
+                errors.append(
+                    f"Filter on '{filt.field}' targets all sheets with model "
+                    f"'{filt.model}', but no sheet uses that model. "
+                    f"Models used by sheets: {', '.join(used_models)}"
+                )
+        else:
+            for target in filt.targets:
+                if target not in sheets:
+                    errors.append(
+                        f"Filter on '{filt.field}' targets sheet '{target}', "
+                        f"which does not exist. Available sheets: "
+                        f"{', '.join(sorted(sheets.keys()))}"
+                    )
+                elif target in sheet_models and sheet_models[target] != filt.model:
+                    errors.append(
+                        f"Filter on '{filt.field}' uses model '{filt.model}' "
+                        f"but target sheet '{target}' uses model "
+                        f"'{sheet_models[target]}'."
+                    )
+
+    return errors

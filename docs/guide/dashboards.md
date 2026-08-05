@@ -203,6 +203,9 @@ The type key's value is always the component's **primary field**. Additional pro
 - parameter: status                      # parameter with label override
   label: "Order Status"
 
+- filter: region                         # interactive filter
+  model: orders
+
 - blank:                                 # empty spacer
 - blank:                                 # spacer with explicit size
   height: 16
@@ -219,6 +222,7 @@ The type key's value is always the component's **primary field**. Additional pro
 | `link` | display text | `link: "Details"` |
 | `legend` | source (chart path) | `legend: revenue.yaml` |
 | `parameter` | parameter name | `parameter: metric` |
+| `filter` | field name | `filter: region` |
 | `blank` | *(none)* | `blank:` |
 
 ---
@@ -599,6 +603,46 @@ An interactive widget for a declared parameter. The widget type is inferred from
 **Theming:** the rendered widgets are styled via the `layout.control` theme block. This theming is shared with the upcoming `filter:` leaf type — both parameter and filter widgets use the same control styling tokens.
 
 The `parameter:` component must reference a declared parameter (from `parameters.yaml`). An unknown parameter name produces a build error, identical to an unresolved legend source.
+
+### Filter (interactive filter)
+
+A dashboard-level filter bound to a semantic model field. Filters target sheets that use the same model and will (in a future release) inject Vega-Lite transforms to filter the data at render time. Currently, filters are schema-validated and compose-time validated but not yet compiled or rendered.
+
+```yaml
+- filter: region                     # field name from the model
+  model: orders                      # required: which semantic model
+  mode: multi                        # optional: filter interaction mode
+  targets: all                       # optional: which sheets to filter (default: all)
+  default: "EMEA"                    # optional: default filter value
+  label: "Region Filter"             # optional: display label
+```
+
+| Property | Required | Default | Description |
+|---|---|---|---|
+| *(value)* | Yes | — | `field`: the model field this filter controls |
+| `model` | Yes | — | Semantic model name (must match a model in the models directory) |
+| `targets` | No | `"all"` | `"all"` (every sheet using this model) or a list of sheet names |
+| `mode` | No | inferred | Filter interaction mode (see table below) |
+| `default` | No | `null` (unfiltered) | Default filter value |
+| `label` | No | field label | Display label for the filter widget |
+| `width` | No | `auto` | Outer box width |
+| `height` | No | `auto` | Outer box height |
+| `padding` | No | `0` | Inner spacing |
+| `margin` | No | `0` | Outer spacing |
+| `style` | No | — | Reference to a shared style |
+| `html` | No | — | Raw CSS escape hatch |
+
+**Filter modes by field type:**
+
+| Field type | Valid modes | Description |
+|---|---|---|
+| Dimension (nominal/ordinal) | `multi`, `single`, `wildcard` | Select one or more categorical values |
+| Quantitative (measure) | `range`, `at_least`, `at_most` | Numeric range or threshold |
+| Temporal | `range`, `after`, `before` | Date range or boundary |
+
+When `mode` is omitted, it will be inferred from the field type at compile time (not yet implemented).
+
+**Compose-time validation:** the dashboard build validates that the filter's model and field exist, that the mode is compatible with the field type, that target sheets exist, and that target sheets use the same model as the filter. Validation errors are reported at build time.
 
 ### Blank (spacer)
 
