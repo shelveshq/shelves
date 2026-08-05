@@ -112,12 +112,28 @@ async def run_dashboard_pipeline(
     from shelves.compose.dashboard import (
         _build_control_meta,
         _discover_controls,
+        _discover_filters,
         _discover_sheets,
+        _validate_filters,
         compile_dashboard_charts,
         link_legends,
     )
 
     sheets = _discover_sheets(flat_root)
+
+    # SHE-79: validate filter declarations against models and sheets.
+    filters = _discover_filters(flat_root)
+    if filters:
+        filter_errors = _validate_filters(
+            filters, sheets=sheets, charts_dir=charts_dir, models_dir=effective_models_dir
+        )
+        if filter_errors:
+            return {
+                "html": None,
+                "errors": filter_errors,
+                "warnings": [],
+                "component_tree": component_tree,
+            }
 
     # Load theme
     try:

@@ -106,6 +106,35 @@ class TestFilterOperatorParity:
 # ─── Unsupported-operator error paths ───────────────────────────────
 
 
+class TestContainsEscaping:
+    """Contains operator must escape SQL wildcards and backslashes."""
+
+    def test_duckdb_contains_escapes_percent(self) -> None:
+        f = ShelfFilter(field="test_field", operator="contains", value="50%")
+        conditions = _build_filter_conditions([f], _PARITY_MODEL, _PARITY_RESOLVER)
+        sql = conditions[0]
+        assert "\\%" in sql
+        assert "ESCAPE" in sql
+
+    def test_duckdb_contains_escapes_underscore(self) -> None:
+        f = ShelfFilter(field="test_field", operator="contains", value="a_b")
+        conditions = _build_filter_conditions([f], _PARITY_MODEL, _PARITY_RESOLVER)
+        sql = conditions[0]
+        assert "\\_" in sql
+
+    def test_duckdb_contains_escapes_backslash(self) -> None:
+        f = ShelfFilter(field="test_field", operator="contains", value="a\\b")
+        conditions = _build_filter_conditions([f], _PARITY_MODEL, _PARITY_RESOLVER)
+        sql = conditions[0]
+        assert "\\\\" in sql
+
+    def test_vegalite_contains_escapes_backslash(self) -> None:
+        f = ShelfFilter(field="test_field", operator="contains", value="a\\b")
+        result = _translate_filter(f)
+        assert isinstance(result, str)
+        assert "a\\\\b" in result
+
+
 class TestUnsupportedOperatorErrors:
     def test_duckdb_raises_on_unknown_operator(self) -> None:
         """An operator not in the DuckDB dispatch table must raise DuckDBQueryError."""

@@ -20,6 +20,7 @@ from shelves.schema.layout_schema import (
     Canvas,
     ContainerComponent,
     DashboardSpec,
+    FilterComponent,
     ImageComponent,
     LegendComponent,
     LinkComponent,
@@ -292,6 +293,18 @@ def _render_blank(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
     return f'<div style="{safe_outer}"><div style="{safe_inner}"></div></div>'
 
 
+def _render_filter(
+    node: ResolvedNode, _ctx: RenderContext, safe_outer: str, safe_inner: str
+) -> str:
+    """Render a filter placeholder — interactive filter UI is not yet implemented."""
+    dom_id = node.dom_id or "filter"
+    return (
+        f'<div style="{safe_outer}">'
+        f'<div id="filter-{html.escape(dom_id, quote=True)}" style="{safe_inner}"></div>'
+        f"</div>"
+    )
+
+
 def _render_control(
     node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str
 ) -> str:
@@ -379,6 +392,7 @@ _RENDERERS: dict[type, Callable[[ResolvedNode, RenderContext, str, str], str]] =
     BlankComponent: _render_blank,
     LegendComponent: _render_legend,
     ParameterComponent: _render_control,
+    FilterComponent: _render_filter,
 }
 
 

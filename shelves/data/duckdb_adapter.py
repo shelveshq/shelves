@@ -313,8 +313,14 @@ def _sql_between(col: str, f: ShelfFilter) -> str:
 
 def _sql_contains(col: str, f: ShelfFilter) -> str:
     assert f.value is not None
-    escaped = str(f.value).replace("'", "''")
-    return f"LOWER(CAST({col} AS VARCHAR)) LIKE LOWER('%{escaped}%')"
+    escaped = (
+        str(f.value)
+        .replace("'", "''")
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+    return f"LOWER(CAST({col} AS VARCHAR)) LIKE LOWER('%{escaped}%') ESCAPE '\\'"
 
 
 _FILTER_DISPATCH: dict[str, Callable[[str, ShelfFilter], str]] = {

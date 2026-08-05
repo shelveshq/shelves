@@ -100,5 +100,5 @@ def _translate_filter(
         case "between":
             return {"field": field, "range": f.range}
         case "contains":
-            escaped = str(f.value).replace("'", "\\'")
+            escaped = str(f.value).replace("\\", "\\\\").replace("'", "\\'")
             return f"indexof(lower(datum['{field}']), lower('{escaped}')) >= 0"

@@ -15,6 +15,7 @@ import pytest
 from pydantic import ValidationError
 
 from shelves.schema.chart_schema import ShelfFilter
+from shelves.schema.layout_schema import FilterMode
 from shelves.translator.filters import _translate_filter
 from tests.conftest import MODELS_DIR
 
@@ -57,6 +58,12 @@ class TestContainsOperatorTranslation:
         result = _translate_filter(f)
         assert isinstance(result, str)
         assert "\\'" in result
+
+    def test_contains_escapes_backslashes(self):
+        f = ShelfFilter(field="name", operator="contains", value="a\\b")
+        result = _translate_filter(f)
+        assert isinstance(result, str)
+        assert "a\\\\b" in result
 
 
 # ─── Operator ↔ Field Type Warnings ───────────────────────────────────
@@ -166,7 +173,7 @@ class TestFilterValidation:
     # --- Mode ↔ field type: valid combos ---
 
     @pytest.mark.parametrize("mode", ["multi", "single", "wildcard"])
-    def test_mode_valid_for_dimension(self, mode: str, _chart_dir: Path):
+    def test_mode_valid_for_dimension(self, mode: FilterMode, _chart_dir: Path):
         from shelves.compose.dashboard import _validate_filters
         from shelves.schema.layout_schema import FilterComponent
 
@@ -180,7 +187,7 @@ class TestFilterValidation:
         assert not errors
 
     @pytest.mark.parametrize("mode", ["range", "at_least", "at_most"])
-    def test_mode_valid_for_quantitative(self, mode: str, _chart_dir: Path):
+    def test_mode_valid_for_quantitative(self, mode: FilterMode, _chart_dir: Path):
         from shelves.compose.dashboard import _validate_filters
         from shelves.schema.layout_schema import FilterComponent
 
@@ -194,7 +201,7 @@ class TestFilterValidation:
         assert not errors
 
     @pytest.mark.parametrize("mode", ["range", "after", "before"])
-    def test_mode_valid_for_temporal(self, mode: str, _chart_dir: Path):
+    def test_mode_valid_for_temporal(self, mode: FilterMode, _chart_dir: Path):
         from shelves.compose.dashboard import _validate_filters
         from shelves.schema.layout_schema import FilterComponent
 
@@ -210,7 +217,7 @@ class TestFilterValidation:
     # --- Mode ↔ field type: invalid combos ---
 
     @pytest.mark.parametrize("mode", ["range", "at_least", "at_most", "after", "before"])
-    def test_mode_invalid_for_dimension(self, mode: str, _chart_dir: Path):
+    def test_mode_invalid_for_dimension(self, mode: FilterMode, _chart_dir: Path):
         from shelves.compose.dashboard import _validate_filters
         from shelves.schema.layout_schema import FilterComponent
 
@@ -224,7 +231,7 @@ class TestFilterValidation:
         assert any("region" in e for e in errors)
 
     @pytest.mark.parametrize("mode", ["multi", "single", "wildcard", "after", "before"])
-    def test_mode_invalid_for_quantitative(self, mode: str, _chart_dir: Path):
+    def test_mode_invalid_for_quantitative(self, mode: FilterMode, _chart_dir: Path):
         from shelves.compose.dashboard import _validate_filters
         from shelves.schema.layout_schema import FilterComponent
 
@@ -238,7 +245,7 @@ class TestFilterValidation:
         assert any("revenue" in e for e in errors)
 
     @pytest.mark.parametrize("mode", ["multi", "single", "wildcard", "at_least", "at_most"])
-    def test_mode_invalid_for_temporal(self, mode: str, _chart_dir: Path):
+    def test_mode_invalid_for_temporal(self, mode: FilterMode, _chart_dir: Path):
         from shelves.compose.dashboard import _validate_filters
         from shelves.schema.layout_schema import FilterComponent
 
@@ -340,3 +347,57 @@ class TestFilterValidation:
             models_dir=MODELS_DIR,
         )
         assert not errors
+
+
+class TestFilterValidationIntegration:
+    """Integration tests that go through compose_dashboard, not direct calls."""
+
+    def test_compose_dashboard_runs_filter_validation(self, tmp_path: Path):
+        """Filters with a bad model should raise when composed through the public API."""
+        from shelves.compose.dashboard import compose_dashboard
+
+        chart = tmp_path / "chart.yaml"
+        chart.write_text("sheet: Chart\ndata: orders\ncols: region\nrows: revenue\nmarks: bar\n")
+        dashboard = tmp_path / "dashboard.yaml"
+        dashboard.write_text(
+            "dashboard: Test\n"
+            "canvas:\n  width: 800\n  height: 600\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - filter: region\n"
+            "      model: no_such_model\n"
+            "    - sheet: chart.yaml\n"
+            "      name: chart_1\n"
+        )
+        with pytest.raises(ValueError, match="no_such_model"):
+            compose_dashboard(
+                dashboard,
+                chart_base_dir=tmp_path,
+                models_dir=MODELS_DIR,
+            )
+
+    def test_compose_dashboard_valid_filter_passes(self, tmp_path: Path):
+        """A valid filter should not block dashboard composition."""
+        from shelves.compose.dashboard import compose_dashboard
+
+        chart = tmp_path / "chart.yaml"
+        chart.write_text("sheet: Chart\ndata: orders\ncols: region\nrows: revenue\nmarks: bar\n")
+        dashboard = tmp_path / "dashboard.yaml"
+        dashboard.write_text(
+            "dashboard: Test\n"
+            "canvas:\n  width: 800\n  height: 600\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - filter: region\n"
+            "      model: orders\n"
+            "    - sheet: chart.yaml\n"
+            "      name: chart_1\n"
+        )
+        html = compose_dashboard(
+            dashboard,
+            chart_base_dir=tmp_path,
+            models_dir=MODELS_DIR,
+        )
+        assert "filter-" in html

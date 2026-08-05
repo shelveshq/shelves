@@ -87,6 +87,18 @@ def compose_dashboard(
     sheets = _discover_sheets(flat_tree)
 
     base = chart_base_dir or dashboard_path.parent
+
+    # SHE-79: validate filter declarations against models and sheets.
+    filters = _discover_filters(flat_tree)
+    if filters:
+        filter_errors = _validate_filters(
+            filters, sheets=sheets, charts_dir=base, models_dir=models_dir
+        )
+        if filter_errors:
+            raise ValueError(
+                "Filter validation failed:\n" + "\n".join(f"  - {e}" for e in filter_errors)
+            )
+
     resolved_data_dir = Path(data_dir) if data_dir else Path.cwd()
 
     chart_specs, resolvers, chart_warnings = compile_dashboard_charts(
@@ -456,6 +468,15 @@ _QUANTITATIVE_MODES = {"range", "at_least", "at_most"}
 _TEMPORAL_MODES = {"range", "after", "before"}
 
 
+def _list_available_models(models_dir: Path | str | None) -> list[str]:
+    if models_dir is None:
+        return []
+    d = Path(models_dir)
+    if not d.is_dir():
+        return []
+    return sorted(p.stem for p in d.glob("*.yaml") if p.is_file())
+
+
 def _discover_filters(flat_tree: FlatNode) -> list[FilterComponent]:
     filters: list[FilterComponent] = []
     _walk_filters(flat_tree, filters)
@@ -501,11 +522,10 @@ def _validate_filters(
     for filt in filters:
         try:
             model = load_model(filt.model, models_dir=models_dir)
-        except Exception:
-            errors.append(
-                f"Filter on '{filt.field}': model '{filt.model}' not found. "
-                f"Available models are in the models directory."
-            )
+        except FileNotFoundError:
+            available = _list_available_models(models_dir)
+            suffix = f" Available models: {', '.join(available)}" if available else ""
+            errors.append(f"Filter on '{filt.field}': model '{filt.model}' not found.{suffix}")
             continue
 
         dim = model.dimensions.get(filt.field)
