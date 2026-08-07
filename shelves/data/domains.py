@@ -54,6 +54,12 @@ _CARDINALITY_WARNING = (
     "dimension that buckets the values."
 )
 
+_CARDINALITY_WARNING_APPROX = (
+    "field {source!r} has more than {limit} distinct values — truncated to the first "
+    "{limit}. Consider mode: wildcard for free-text search, or a calculated "
+    "dimension that buckets the values."
+)
+
 _EMPTY_MESSAGE = (
     "field {source!r} resolved to an empty domain — the data source returned no values."
 )
@@ -69,6 +75,7 @@ class Domain:
     values: list[Any] | None = None
     min: Any = None
     max: Any = None
+    truncated: bool = False
 
 
 _ISO_PREFIX_RE = re.compile(r"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?")
@@ -241,14 +248,28 @@ def resolve_field_domain(
         if not values:
             raise ParameterDomainError(_EMPTY_MESSAGE.format(source=source))
         if len(values) > MAX_DOMAIN_CARDINALITY:
-            warnings.warn(
-                _CARDINALITY_WARNING.format(
+            if len(values) == MAX_DOMAIN_CARDINALITY + 1 and not isinstance(
+                model.source, InlineSource
+            ):
+                msg = _CARDINALITY_WARNING_APPROX.format(
+                    source=source, limit=MAX_DOMAIN_CARDINALITY
+                )
+            else:
+                msg = _CARDINALITY_WARNING.format(
                     source=source, count=len(values), limit=MAX_DOMAIN_CARDINALITY
-                ),
-                stacklevel=2,
-            )
+                )
+            warnings.warn(msg, stacklevel=2)
             values = values[:MAX_DOMAIN_CARDINALITY]
-        domain = Domain(kind="values", param_type=param_type, source=source, values=values)
+            was_truncated = True
+        else:
+            was_truncated = False
+        domain = Domain(
+            kind="values",
+            param_type=param_type,
+            source=source,
+            values=values,
+            truncated=was_truncated,
+        )
     else:
         low, high = raw
         if low is None or high is None:
@@ -320,6 +341,8 @@ def check_value_in_domain(
     normalized = _normalize(value, domain.param_type, domain.param_type == "date")
 
     if domain.kind == "values":
+        if domain.truncated:
+            return
         values = domain.values or []
         if normalized in values:
             return

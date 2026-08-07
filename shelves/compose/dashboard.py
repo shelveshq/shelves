@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
+from typing import Any
 
 from shelves.compose.legend_link import resolve_legend_links
+from shelves.data.errors import ParameterDomainError
 from shelves.diagnostics import capture_warnings
 from shelves.params.substitute import ParameterSet
 from shelves.schema.field_types import FieldTypeResolver
@@ -773,6 +775,24 @@ def _get_sheet_models(sheets: dict[str, str], charts_dir: Path) -> dict[str, str
     return sheet_models
 
 
+def _measure_bounds_duckdb(
+    model: Any,
+    field: str,
+    data_base_dir: Path | None,
+) -> tuple:
+    """MIN/MAX of a measure's raw column via DuckDB."""
+    from shelves.data.duckdb_adapter import DuckDBAdapter, _from_clause, _quote_identifier
+
+    meas = model.measures.get(field)
+    col = meas.column if meas is not None and meas.column else field
+    adapter = DuckDBAdapter(base_dir=data_base_dir)
+    file_path = adapter._source_file(model)
+    expr = _quote_identifier(col)
+    sql = f'SELECT MIN({expr}) AS "min", MAX({expr}) AS "max"\nFROM {_from_clause(file_path)}'
+    rows = adapter._execute(sql)
+    return (rows[0]["min"], rows[0]["max"]) if rows else (None, None)
+
+
 def _resolve_filter_options(
     filt: FilterComponent,
     mode: str,
@@ -790,7 +810,6 @@ def _resolve_filter_options(
 
     from shelves.data.domains import (
         LiteralParamType,
-        _domain_adapter,
         _inline_domain,
         _normalize,
         resolve_field_domain,
@@ -818,20 +837,55 @@ def _resolve_filter_options(
     if is_measure:
         if model.source is None:
             raise ValueError(f"model {filt.model!r} has no source — cannot resolve filter options")
+
+        import time
+
+        from shelves.data.domains import DOMAIN_CACHE_TTL, _domain_cache
+
+        cache_key = (
+            "inline" if isinstance(model.source, InlineSource) else model.source.type,
+            filt.model,
+            filt.field,
+            param_type,
+        )
+        cached = _domain_cache.get(cache_key)
+        if cached is not None:
+            domain, ts = cached
+            if time.monotonic() - ts <= DOMAIN_CACHE_TTL:
+                return [domain.min, domain.max]
+
         if isinstance(model.source, InlineSource):
             raw = _inline_domain(
                 model, filt.field, resolver, kind="bounds", data_base_dir=data_base_dir
             )
+        elif model.source.type == "file":
+            raw = _measure_bounds_duckdb(model, filt.field, data_base_dir)
         else:
-            adapter = _domain_adapter(model.source.type, data_base_dir)
-            raw = adapter.fetch_domain_bounds(model, filt.field, resolver)
+            raise ValueError(
+                f"measure bounds for field {filt.field!r} are not supported on "
+                f"the {model.source.type!r} backend — use a dimension or mode: wildcard"
+            )
         low, high = raw
         if low is None or high is None:
             raise ValueError(f"filter field {filt.field!r} resolved to an empty domain")
-        return [
+        result = [
             _normalize(low, param_type, False),
             _normalize(high, param_type, False),
         ]
+
+        from shelves.data.domains import Domain
+
+        _domain_cache[cache_key] = (
+            Domain(
+                kind="bounds",
+                param_type=param_type,
+                source=f"{filt.model}.{filt.field}",
+                min=result[0],
+                max=result[1],
+            ),
+            time.monotonic(),
+        )
+        return result
 
     ref = FieldRef(model=filt.model, field=filt.field)
     domain = resolve_field_domain(
@@ -848,6 +902,8 @@ def _validate_filter_default(filt: FilterComponent, mode: str, options: list | N
     if filt.default is None or options is None:
         return
 
+    from shelves.data.domains import _normalize
+
     if mode in ("multi", "single"):
         values = {o["value"] for o in options}
         if mode == "multi":
@@ -855,15 +911,19 @@ def _validate_filter_default(filt: FilterComponent, mode: str, options: list | N
         else:
             defaults = [filt.default]
         for d in defaults:
-            if d not in values:
+            nd = _normalize(d, "string", False)
+            if nd not in values:
                 raise ValueError(
                     f"filter default {d!r} is not in the resolved domain for field {filt.field!r}"
                 )
     elif mode in ("range", "at_least", "at_most", "after", "before"):
         lo, hi = options[0], options[1]
+        is_temporal = isinstance(lo, str) and len(lo) == 10 and "-" in lo
+        param_type = "date" if is_temporal else "number"
         check_vals = filt.default if isinstance(filt.default, list) else [filt.default]
         for v in check_vals:
-            if v < lo or v > hi:
+            nv = _normalize(v, param_type, is_temporal)
+            if nv < lo or nv > hi:
                 raise ValueError(
                     f"filter default {v!r} is outside the resolved domain for "
                     f"field {filt.field!r} (min: {lo}, max: {hi})"
@@ -910,7 +970,7 @@ def _build_filter_control_meta(
             options = _resolve_filter_options(
                 filt, mode, models_dir=models_dir, data_base_dir=data_base_dir
             )
-        except Exception as e:
+        except (ValueError, FileNotFoundError, ParameterDomainError) as e:
             warnings.warn(
                 f"Filter options for '{filt.field}' could not be resolved: {e}",
                 stacklevel=2,

@@ -559,8 +559,10 @@ the distinct values, or falls outside the min/max, is a compile error naming the
 parameter and showing the valid values. `default: null` is exempt — null means
 *unset*.
 
-**More than 500 distinct values is an error.** A picker with that many options
-is not usable, and the query is not cheap. List the values you want explicitly:
+**More than 500 distinct values triggers a warning and truncation.** The resolved
+domain is truncated to the first 500 sorted values; default validation is skipped
+for truncated domains. Consider listing the values explicitly or using
+`mode: wildcard` for free-text filters:
 
 ```yaml
 values:

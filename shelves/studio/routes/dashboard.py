@@ -151,7 +151,13 @@ async def run_dashboard_pipeline(
             else {}
         )
         filter_control_meta = (
-            _build_filter_control_meta(flat_root, sheets, sheet_models, effective_models_dir)
+            _build_filter_control_meta(
+                flat_root,
+                sheets,
+                sheet_models,
+                effective_models_dir,
+                data_base_dir=project_dir,
+            )
             if filters
             else {}
         )
