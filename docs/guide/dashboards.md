@@ -606,7 +606,7 @@ The `parameter:` component must reference a declared parameter (from `parameters
 
 ### Filter (interactive filter)
 
-A dashboard-level filter bound to a semantic model field. Filters target sheets that use the same model and will (in a future release) inject Vega-Lite transforms to filter the data at render time. Currently, filters are schema-validated and compose-time validated but not yet compiled or rendered.
+A dashboard-level filter bound to a semantic model field. Filters inject Vega-Lite transforms into target sheets at compile time, filtering the data before it reaches the chart.
 
 ```yaml
 - filter: region                     # field name from the model
@@ -640,9 +640,30 @@ A dashboard-level filter bound to a semantic model field. Filters target sheets 
 | Quantitative (measure) | `range`, `at_least`, `at_most` | Numeric range or threshold |
 | Temporal | `range`, `after`, `before` | Date range or boundary |
 
-When `mode` is omitted, it will be inferred from the field type at compile time (not yet implemented).
+**Mode inference:** when `mode` is omitted, it is inferred from the field type: dimensions default to `multi`, quantitative fields to `range`, and temporal fields to `range`.
+
+**Mode → operator mapping:** each mode maps to a chart-level filter operator used in the injected Vega-Lite transform:
+
+| Mode | Operator | Value field |
+|---|---|---|
+| `multi` | `in` | `values` (list) |
+| `single` | `eq` | `value` (scalar) |
+| `wildcard` | `contains` | `value` (string) |
+| `range` | `between` | `range` (2-element list) |
+| `at_least` | `gte` | `value` (number) |
+| `at_most` | `lte` | `value` (number) |
+| `after` | `gte` | `value` (date/string) |
+| `before` | `lte` | `value` (date/string) |
+
+**Compile-time behavior:**
+
+- **`default: null`** (or omitted): no filter transform is injected — the chart renders unfiltered. The filter placeholder is still emitted in the dashboard HTML for future client-side interactivity.
+- **`default:` with a value**: a `ShelfFilter` transform is injected into every target sheet before compilation, using the operator from the mode→operator table above. The filter coexists with any filters declared directly in the chart YAML — both are AND-ed together.
+- **`targets: all`** (default): the filter is injected into every sheet whose chart references the same model. **`targets:` with a list**: only the named sheets receive the injection.
 
 **Compose-time validation:** the dashboard build validates that the filter's model and field exist, that the mode is compatible with the field type, that target sheets exist, and that target sheets use the same model as the filter. Validation errors are reported at build time.
+
+**Placeholder rendering:** each filter emits an HTML placeholder `<div>` with `data-*` attributes (`data-field`, `data-model`, `data-mode`, `data-operator`, `data-targets`, `data-default`, `data-options`). These placeholders will be wired to interactive widgets in a future release (SHE-81+).
 
 ### Blank (spacer)
 
@@ -1149,4 +1170,4 @@ Key theme tokens used by dashboards:
 
 All preset values come from the theme — they are never hardcoded. This means your charts and dashboard chrome share a coherent visual identity from a single theme file.
 
-The `layout.control` block styles interactive widgets rendered by both `parameter:` and the upcoming `filter:` leaf types. Customize these tokens in your `theme.yaml` to match your brand:
+The `layout.control` block styles interactive widgets rendered by both `parameter:` and `filter:` leaf types. Customize these tokens in your `theme.yaml` to match your brand:

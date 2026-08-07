@@ -25,6 +25,7 @@ def compile_chart(
     no_theme: bool = False,
     models_dir: Path | str | None = None,
     parameters: ParameterSet | None = None,
+    extra_filters: list[dict] | None = None,
 ) -> tuple[dict, ChartSpec]:
     """
     Core chart pipeline: parse → translate → theme merge.
@@ -45,6 +46,8 @@ def compile_chart(
         models_dir: Directory containing model YAML files.
         parameters: Resolved project parameters. None means no parameters
             declared — a spec containing `$refs` fails with undeclared-ref.
+        extra_filters: Dashboard-level ShelfFilter dicts to append to
+            the chart's filters before translation (SHE-80).
 
     Returns:
         Tuple of (vega_lite_spec_dict, parsed_chart_spec).
@@ -57,6 +60,13 @@ def compile_chart(
             the wrong type for its slot.
     """
     spec = parse_chart(yaml_text, parameters=parameters)
+
+    if extra_filters:
+        from shelves.schema.chart_schema import ShelfFilter
+
+        existing = list(spec.filters) if spec.filters else []
+        existing.extend(ShelfFilter.model_validate(f) for f in extra_filters)
+        spec.filters = existing
 
     if not no_theme and theme is None:
         theme = load_theme(theme_path)

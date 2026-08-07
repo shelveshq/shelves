@@ -9,7 +9,7 @@ Resolves the style cascade for layout DSL components:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from shelves.schema.layout_schema import (
     ButtonComponent,
@@ -62,6 +62,21 @@ class ControlMeta:
 
 
 @dataclass(frozen=True)
+class FilterControlMeta:
+    """Compose-time metadata for a filter control, consumed by the translator."""
+
+    field: str
+    model: str
+    mode: str
+    operator: str
+    widget: str
+    title: str
+    targets: list[str]
+    default: Any = None
+    options: Any = None
+
+
+@dataclass(frozen=True)
 class LegendLink:
     """Resolved binding from a legend element to its sheet's encoding (SHE-10/11).
 
@@ -99,6 +114,8 @@ class RenderContext:
     legend_links: dict[tuple[str, str], LegendLink] = field(default_factory=dict)
     # SHE-92: dom_id -> ControlMeta for each control component.
     control_meta: dict[str, ControlMeta] = field(default_factory=dict)
+    # SHE-80: dom_id -> FilterControlMeta for each filter component.
+    filter_control_meta: dict[str, FilterControlMeta] = field(default_factory=dict)
 
 
 # ─── CSS Helpers ─────────────────────────────────────────────────

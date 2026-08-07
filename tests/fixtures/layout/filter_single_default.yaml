@@ -1,0 +1,14 @@
+dashboard: "Filter Single Default"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - filter: region
+      model: orders
+      mode: single
+      default: "EMEA"
+      height: 48
+    - sheet: revenue_by_region.yaml
+      name: chart_1
+    - sheet: simple_bar.yaml
+      name: chart_2

@@ -34,6 +34,7 @@ from shelves.translator.layout_flatten import FlatNode, flatten_dashboard
 from shelves.translator.layout_solver import ResolvedNode, solve_layout
 from shelves.translator.layout_styles import (
     ControlMeta,
+    FilterControlMeta,
     LegendLink,
     RenderContext,
     resolve_inner_styles,
@@ -55,6 +56,7 @@ def translate_dashboard(
     flat_tree: FlatNode | None = None,
     vega_src_base: str | None = None,
     control_meta: dict[str, ControlMeta] | None = None,
+    filter_control_meta: dict[str, FilterControlMeta] | None = None,
     interactive: bool = False,
 ) -> str:
     """Translate a DashboardSpec to a complete HTML page.
@@ -81,6 +83,7 @@ def translate_dashboard(
         asset_url_prefix=asset_url_prefix,
         legend_links=legend_links or {},
         control_meta=control_meta or {},
+        filter_control_meta=filter_control_meta or {},
     )
 
     # Flatten first (unless a caller already did): resolve style + component refs
@@ -102,7 +105,7 @@ def translate_dashboard(
         sheet_show_titles=ctx.sheet_show_titles,
         sheet_content_dims=ctx.sheet_content_dims,
         has_legends=bool(ctx.legend_links),
-        has_controls=bool(ctx.control_meta),
+        has_controls=bool(ctx.control_meta) or bool(ctx.filter_control_meta),
         vega_src_base=vega_src_base,
         interactive=interactive,
     )
@@ -293,14 +296,36 @@ def _render_blank(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_
     return f'<div style="{safe_outer}"><div style="{safe_inner}"></div></div>'
 
 
-def _render_filter(
-    node: ResolvedNode, _ctx: RenderContext, safe_outer: str, safe_inner: str
-) -> str:
-    """Render a filter placeholder — interactive filter UI is not yet implemented."""
-    dom_id = node.dom_id or "filter"
+def _render_filter(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe_inner: str) -> str:
+    """Render a filter control placeholder with data-* attributes."""
+    assert node.dom_id is not None, "filter node missing dom_id"
+    safe_name = html.escape(node.dom_id, quote=True)
+
+    meta = ctx.filter_control_meta.get(node.dom_id)
+    if meta is None:
+        return (
+            f'<div style="{safe_outer}">'
+            f'<div id="filter-{safe_name}" style="{safe_inner}"></div>'
+            f"</div>"
+        )
+
+    data_attrs = (
+        f' data-type="filter"'
+        f' data-control="{html.escape(meta.widget, quote=True)}"'
+        f' data-field="{html.escape(meta.field, quote=True)}"'
+        f' data-model="{html.escape(meta.model, quote=True)}"'
+        f' data-mode="{html.escape(meta.mode, quote=True)}"'
+        f' data-operator="{html.escape(meta.operator, quote=True)}"'
+        f' data-title="{html.escape(meta.title, quote=True)}"'
+        f" data-targets='{html.escape(json.dumps(meta.targets), quote=True)}'"
+        f" data-options='null'"
+    )
+    if meta.default is not None:
+        data_attrs += f" data-default='{html.escape(json.dumps(meta.default), quote=True)}'"
+
     return (
         f'<div style="{safe_outer}">'
-        f'<div id="filter-{html.escape(dom_id, quote=True)}" style="{safe_inner}"></div>'
+        f'<div id="filter-{safe_name}"{data_attrs} style="{safe_inner}"></div>'
         f"</div>"
     )
 

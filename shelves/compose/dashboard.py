@@ -34,7 +34,7 @@ from shelves.theme.merge import load_theme
 from shelves.theme.theme_schema import ThemeSpec
 from shelves.translator.layout import translate_dashboard
 from shelves.translator.layout_flatten import FlatNode, flatten_dashboard
-from shelves.translator.layout_styles import ControlMeta, LegendLink
+from shelves.translator.layout_styles import ControlMeta, FilterControlMeta, LegendLink
 
 
 def compose_dashboard(
@@ -90,14 +90,27 @@ def compose_dashboard(
 
     # SHE-79: validate filter declarations against models and sheets.
     filters = _discover_filters(flat_tree)
+    sheet_models = _get_sheet_models(sheets, base) if filters else {}
     if filters:
         filter_errors = _validate_filters(
-            filters, sheets=sheets, charts_dir=base, models_dir=models_dir
+            filters,
+            sheets=sheets,
+            charts_dir=base,
+            models_dir=models_dir,
+            sheet_models=sheet_models,
         )
         if filter_errors:
             raise ValueError(
                 "Filter validation failed:\n" + "\n".join(f"  - {e}" for e in filter_errors)
             )
+
+    # SHE-80: build filter injections and control metadata.
+    filter_injections = (
+        _build_filter_injections(filters, sheets, sheet_models, models_dir) if filters else {}
+    )
+    filter_control_meta = (
+        _build_filter_control_meta(flat_tree, sheets, sheet_models, models_dir) if filters else {}
+    )
 
     resolved_data_dir = Path(data_dir) if data_dir else Path.cwd()
 
@@ -110,6 +123,7 @@ def compose_dashboard(
         no_theme=no_theme,
         fail_fast=True,
         parameters=parameters,
+        filter_injections=filter_injections,
     )
     for msg in chart_warnings:
         warnings.warn(msg, stacklevel=2)
@@ -131,6 +145,7 @@ def compose_dashboard(
         legend_links=legend_links,
         flat_tree=flat_tree,
         control_meta=control_meta,
+        filter_control_meta=filter_control_meta,
     )
     return html
 
@@ -146,6 +161,7 @@ def compile_dashboard_charts(
     fail_fast: bool = False,
     restrict_links: bool = False,
     parameters: ParameterSet | None = None,
+    filter_injections: dict[str, list[dict]] | None = None,
 ) -> tuple[dict[str, dict], dict[str, FieldTypeResolver], list[str]]:
     """Compile every sheet's chart through the shared pipeline.
 
@@ -180,6 +196,10 @@ def compile_dashboard_charts(
     `chart_specs` and `resolvers` stay in lock-step — a sheet that failed has
     neither, and legend linking never dereferences a resolver that was never
     built.
+
+    `filter_injections` (SHE-80): per-sheet extra filters built from dashboard
+    filter controls. Keyed by sheet dom_id, each value is a list of
+    ShelfFilter-shaped dicts appended to the chart's filters before compilation.
 
     Returns:
         (chart_specs, resolvers, warnings) — chart_specs/resolvers keyed by
@@ -216,12 +236,14 @@ def compile_dashboard_charts(
         try:
             with capture_warnings(warnings_out, prefix=f"Sheet '{name}': "):
                 yaml_string = chart_path.read_text()
+                extra = (filter_injections or {}).get(name)
                 vl, chart_spec = compile_chart(
                     yaml_string,
                     theme=theme,
                     no_theme=no_theme,
                     models_dir=models_dir,
                     parameters=parameters,
+                    extra_filters=extra,
                 )
                 try:
                     vl = resolve_model_data(
@@ -496,6 +518,7 @@ def _validate_filters(
     sheets: dict[str, str],
     charts_dir: Path,
     models_dir: Path | str | None = None,
+    sheet_models: dict[str, str] | None = None,
 ) -> list[str]:
     """Validate filter declarations against models and sheets.
 
@@ -509,15 +532,8 @@ def _validate_filters(
 
     errors: list[str] = []
 
-    sheet_models: dict[str, str] = {}
-    for sheet_id, link in sheets.items():
-        chart_path = charts_dir / link
-        if chart_path.exists():
-            import yaml as _yaml
-
-            raw = _yaml.safe_load(chart_path.read_text())
-            if isinstance(raw, dict) and "data" in raw:
-                sheet_models[sheet_id] = raw["data"]
+    if sheet_models is None:
+        sheet_models = _get_sheet_models(sheets, charts_dir)
 
     for filt in filters:
         try:
@@ -583,3 +599,198 @@ def _validate_filters(
                     )
 
     return errors
+
+
+# ─── Filter Injection (SHE-80) ────────────────────────────────────────
+
+_MODE_TO_OPERATOR: dict[str, str] = {
+    "multi": "in",
+    "single": "eq",
+    "wildcard": "contains",
+    "range": "between",
+    "at_least": "gte",
+    "at_most": "lte",
+    "after": "gte",
+    "before": "lte",
+}
+
+_MODE_TO_WIDGET: dict[str, str] = {
+    "multi": "multi_select",
+    "single": "dropdown",
+    "wildcard": "text",
+    "at_least": "stepper",
+    "at_most": "stepper",
+    "after": "date",
+    "before": "date",
+}
+
+
+def _infer_mode(filt: FilterComponent, models_dir: Path | str | None) -> str:
+    """Infer filter mode from the field's type when mode is None."""
+    from shelves.models.loader import load_model
+    from shelves.models.schema import TemporalDimensionDefinition
+
+    model = load_model(filt.model, models_dir=models_dir)
+    dim = model.dimensions.get(filt.field)
+    if dim is not None:
+        if isinstance(dim, TemporalDimensionDefinition):
+            return "range"
+        return "multi"
+    return "range"
+
+
+def _infer_filter_widget(mode: str, filt: FilterComponent, models_dir: Path | str | None) -> str:
+    """Infer widget type from mode, with field-type awareness for range."""
+    if mode == "range":
+        from shelves.models.loader import load_model
+        from shelves.models.schema import TemporalDimensionDefinition
+
+        model = load_model(filt.model, models_dir=models_dir)
+        dim = model.dimensions.get(filt.field)
+        if isinstance(dim, TemporalDimensionDefinition):
+            return "date_range"
+        return "range"
+    return _MODE_TO_WIDGET[mode]
+
+
+def _resolve_filter_targets(
+    filt: FilterComponent,
+    sheets: dict[str, str],
+    sheet_models: dict[str, str],
+) -> list[str]:
+    """Resolve a filter's targets to a list of sheet DOM IDs."""
+    if filt.targets == "all":
+        return [sid for sid, m in sheet_models.items() if m == filt.model]
+    return [t for t in filt.targets if t in sheets]
+
+
+def _build_shelf_filter_dict(mode: str, field: str, default: object) -> dict:
+    """Build a ShelfFilter-shaped dict from a mode and default value."""
+    operator = _MODE_TO_OPERATOR[mode]
+
+    if mode == "multi":
+        if not isinstance(default, list):
+            raise TypeError(
+                f"Filter mode 'multi' requires a list default, got {type(default).__name__}"
+            )
+        return {"field": field, "operator": operator, "values": default}
+
+    if mode == "range":
+        if not isinstance(default, list) or len(default) != 2:
+            raise TypeError(
+                f"Filter mode 'range' requires a [min, max] list default, "
+                f"got {type(default).__name__}"
+            )
+        return {"field": field, "operator": operator, "range": default}
+
+    return {"field": field, "operator": operator, "value": default}
+
+
+def _build_filter_injections(
+    filters: list[FilterComponent],
+    sheets: dict[str, str],
+    sheet_models: dict[str, str],
+    models_dir: Path | str | None,
+) -> dict[str, list[dict]]:
+    """Build per-sheet filter injection dicts.
+
+    Returns {sheet_dom_id: [ShelfFilter-shaped dicts]} for sheets that need
+    extra filters injected before compilation.
+    """
+    injections: dict[str, list[dict]] = {}
+
+    for filt in filters:
+        mode = filt.mode if filt.mode is not None else _infer_mode(filt, models_dir)
+        targets = _resolve_filter_targets(filt, sheets, sheet_models)
+
+        if filt.default is None:
+            continue
+
+        shelf_filter = _build_shelf_filter_dict(mode, filt.field, filt.default)
+        for target in targets:
+            injections.setdefault(target, []).append(shelf_filter)
+
+    return injections
+
+
+def _discover_filters_with_dom_ids(
+    flat_tree: FlatNode,
+) -> list[tuple[str, FilterComponent]]:
+    """Walk the flat tree and collect (dom_id, FilterComponent) pairs."""
+    result: list[tuple[str, FilterComponent]] = []
+    _walk_filters_with_ids(flat_tree, result)
+    return result
+
+
+def _walk_filters_with_ids(
+    node: FlatNode,
+    result: list[tuple[str, FilterComponent]],
+) -> None:
+    if isinstance(node.component, FilterComponent) and node.dom_id is not None:
+        result.append((node.dom_id, node.component))
+    for child in node.children:
+        _walk_filters_with_ids(child, result)
+
+
+def _get_sheet_models(sheets: dict[str, str], charts_dir: Path) -> dict[str, str]:
+    """Map sheet DOM IDs to their model names by reading chart YAMLs."""
+    import yaml as _yaml
+
+    sheet_models: dict[str, str] = {}
+    for sheet_id, link in sheets.items():
+        chart_path = charts_dir / link
+        if chart_path.exists():
+            raw = _yaml.safe_load(chart_path.read_text())
+            if isinstance(raw, dict) and "data" in raw:
+                sheet_models[sheet_id] = raw["data"]
+    return sheet_models
+
+
+def _build_filter_control_meta(
+    flat_tree: FlatNode,
+    sheets: dict[str, str],
+    sheet_models: dict[str, str],
+    models_dir: Path | str | None,
+) -> dict[str, FilterControlMeta]:
+    """Build FilterControlMeta for each filter control in the layout tree."""
+    from shelves.models.loader import load_model
+
+    filter_nodes = _discover_filters_with_dom_ids(flat_tree)
+    if not filter_nodes:
+        return {}
+
+    meta: dict[str, FilterControlMeta] = {}
+    for dom_id, filt in filter_nodes:
+        mode = filt.mode if filt.mode is not None else _infer_mode(filt, models_dir)
+        operator = _MODE_TO_OPERATOR[mode]
+        widget = _infer_filter_widget(mode, filt, models_dir)
+        targets = _resolve_filter_targets(filt, sheets, sheet_models)
+        target_ids = [f"sheet-{t}" for t in targets]
+
+        title = filt.label
+        if title is None:
+            try:
+                model = load_model(filt.model, models_dir=models_dir)
+                dim = model.dimensions.get(filt.field)
+                measure = model.measures.get(filt.field)
+                field_def = dim or measure
+                if field_def is not None:
+                    title = field_def.label
+            except FileNotFoundError:
+                pass
+        if title is None:
+            title = filt.field
+
+        meta[dom_id] = FilterControlMeta(
+            field=filt.field,
+            model=filt.model,
+            mode=mode,
+            operator=operator,
+            widget=widget,
+            title=title,
+            targets=target_ids,
+            default=filt.default,
+            options=None,
+        )
+
+    return meta

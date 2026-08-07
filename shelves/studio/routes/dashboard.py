@@ -111,9 +111,12 @@ async def run_dashboard_pipeline(
     # Discover sheets (name → link) — reuse the already-flattened tree.
     from shelves.compose.dashboard import (
         _build_control_meta,
+        _build_filter_control_meta,
+        _build_filter_injections,
         _discover_controls,
         _discover_filters,
         _discover_sheets,
+        _get_sheet_models,
         _validate_filters,
         compile_dashboard_charts,
         link_legends,
@@ -123,9 +126,14 @@ async def run_dashboard_pipeline(
 
     # SHE-79: validate filter declarations against models and sheets.
     filters = _discover_filters(flat_root)
+    sheet_models = _get_sheet_models(sheets, charts_dir) if filters else {}
     if filters:
         filter_errors = _validate_filters(
-            filters, sheets=sheets, charts_dir=charts_dir, models_dir=effective_models_dir
+            filters,
+            sheets=sheets,
+            charts_dir=charts_dir,
+            models_dir=effective_models_dir,
+            sheet_models=sheet_models,
         )
         if filter_errors:
             return {
@@ -134,6 +142,18 @@ async def run_dashboard_pipeline(
                 "warnings": [],
                 "component_tree": component_tree,
             }
+
+    # SHE-80: build filter injections and control metadata.
+    filter_injections = (
+        _build_filter_injections(filters, sheets, sheet_models, effective_models_dir)
+        if filters
+        else {}
+    )
+    filter_control_meta = (
+        _build_filter_control_meta(flat_root, sheets, sheet_models, effective_models_dir)
+        if filters
+        else {}
+    )
 
     # Load theme
     try:
@@ -158,6 +178,7 @@ async def run_dashboard_pipeline(
         fail_fast=False,
         restrict_links=True,
         parameters=parameters,
+        filter_injections=filter_injections,
     )
 
     # SHE-27: link legends to sheet scales + suppress in-sheet legends via the
@@ -199,6 +220,7 @@ async def run_dashboard_pipeline(
         flat_tree=flat_root,
         vega_src_base="/static/vendor",
         control_meta=control_meta,
+        filter_control_meta=filter_control_meta,
         interactive=True,
     )
 
