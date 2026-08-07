@@ -75,7 +75,6 @@ class Domain:
     values: list[Any] | None = None
     min: Any = None
     max: Any = None
-    truncated: bool = False
 
 
 _ISO_PREFIX_RE = re.compile(r"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?")
@@ -260,15 +259,11 @@ def resolve_field_domain(
                 )
             warnings.warn(msg, stacklevel=2)
             values = values[:MAX_DOMAIN_CARDINALITY]
-            was_truncated = True
-        else:
-            was_truncated = False
         domain = Domain(
             kind="values",
             param_type=param_type,
             source=source,
             values=values,
-            truncated=was_truncated,
         )
     else:
         low, high = raw
@@ -341,8 +336,6 @@ def check_value_in_domain(
     normalized = _normalize(value, domain.param_type, domain.param_type == "date")
 
     if domain.kind == "values":
-        if domain.truncated:
-            return
         values = domain.values or []
         if normalized in values:
             return
