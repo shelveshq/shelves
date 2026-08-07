@@ -348,7 +348,7 @@ def _render_control(
         f' data-title="{html.escape(meta.title, quote=True)}"'
     )
     if meta.default is not None:
-        data_attrs += f' data-default="{html.escape(str(meta.default), quote=True)}"'
+        data_attrs += f" data-default='{html.escape(json.dumps(meta.default), quote=True)}'"
     if meta.options is not None:
         data_attrs += f" data-options='{html.escape(json.dumps(meta.options), quote=True)}'"
     if meta.min is not None:

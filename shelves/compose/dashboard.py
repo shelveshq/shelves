@@ -574,6 +574,26 @@ def _validate_filters(
                     f"field '{filt.field}'. Valid modes: {sorted(valid_modes)}"
                 )
 
+        if filt.default is not None and filt.mode is not None:
+            mode = filt.mode
+            if mode in ("multi", "range"):
+                if not isinstance(filt.default, list):
+                    errors.append(
+                        f"Filter on '{filt.field}': mode '{mode}' requires a list "
+                        f"default, got {type(filt.default).__name__}"
+                    )
+                elif mode == "range" and len(filt.default) != 2:
+                    errors.append(
+                        f"Filter on '{filt.field}': mode 'range' requires a "
+                        f"[min, max] default (2 elements), got {len(filt.default)}"
+                    )
+            else:
+                if isinstance(filt.default, list):
+                    errors.append(
+                        f"Filter on '{filt.field}': mode '{mode}' requires a "
+                        f"scalar default, got list"
+                    )
+
         if filt.targets == "all":
             matching = [sid for sid, m in sheet_models.items() if m == filt.model]
             if not matching:
@@ -740,7 +760,10 @@ def _get_sheet_models(sheets: dict[str, str], charts_dir: Path) -> dict[str, str
     for sheet_id, link in sheets.items():
         chart_path = charts_dir / link
         if chart_path.exists():
-            raw = _yaml.safe_load(chart_path.read_text())
+            try:
+                raw = _yaml.safe_load(chart_path.read_text())
+            except _yaml.YAMLError:
+                continue
             if isinstance(raw, dict) and "data" in raw:
                 sheet_models[sheet_id] = raw["data"]
     return sheet_models

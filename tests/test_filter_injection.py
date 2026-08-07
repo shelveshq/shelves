@@ -432,15 +432,15 @@ class TestFilterEdgeCases:
 
 class TestFilterInjectionErrors:
     def test_multi_mode_scalar_default_raises(self, tmp_path: Path):
-        """mode: multi with a scalar default (not a list) → error."""
-        with pytest.raises((ValueError, TypeError)):
+        """mode: multi with a scalar default (not a list) → validation error."""
+        with pytest.raises(ValueError, match="requires a list default"):
             _compose_with_filter(
                 tmp_path, field="region", model="orders", mode="multi", default="scalar"
             )
 
     def test_range_mode_non_list_default_raises(self, tmp_path: Path):
-        """mode: range with a non-list default → error."""
-        with pytest.raises((ValueError, TypeError)):
+        """mode: range with a non-list default → validation error."""
+        with pytest.raises(ValueError, match="requires a list default"):
             _compose_with_filter(
                 tmp_path, field="revenue", model="orders", mode="range", default="not-a-range"
             )

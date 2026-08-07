@@ -39,7 +39,8 @@ from shelves.params.substitute import ParameterReferenceError, ParameterSet, sub
 # Additive → minor.
 # 0.11.0: control leaf type added to the layout DSL (SHE-92). Additive → minor.
 # 0.12.0: control → parameter leaf type rename (SHE-97). Breaking → minor (pre-1.0).
-DSL_VERSION = "0.13.0"  # Filter leaf type + contains operator (SHE-79)
+# 0.13.0: filter leaf type + contains operator + compose-time filter injection (SHE-79/80).
+DSL_VERSION = "0.13.0"
 
 # ─── Primitives ────────────────────────────────────────────────────
 

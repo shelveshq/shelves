@@ -113,6 +113,11 @@
     return '';
   }
 
+  function _parseAttr(raw) {
+    if (raw == null) return raw;
+    try { return JSON.parse(raw); } catch (e) { return raw; }
+  }
+
   // Browser-only: fill every control div, wire change listeners.
   function render(doc) {
     doc = doc || (typeof document !== 'undefined' ? document : null);
@@ -125,7 +130,7 @@
         param: div.getAttribute('data-param'),
         control: div.getAttribute('data-control'),
         title: div.getAttribute('data-title') || '',
-        default: div.getAttribute('data-default'),
+        default: _parseAttr(div.getAttribute('data-default')),
         options: div.getAttribute('data-options'),
         min: div.getAttribute('data-min'),
         max: div.getAttribute('data-max'),

@@ -144,16 +144,24 @@ async def run_dashboard_pipeline(
             }
 
     # SHE-80: build filter injections and control metadata.
-    filter_injections = (
-        _build_filter_injections(filters, sheets, sheet_models, effective_models_dir)
-        if filters
-        else {}
-    )
-    filter_control_meta = (
-        _build_filter_control_meta(flat_root, sheets, sheet_models, effective_models_dir)
-        if filters
-        else {}
-    )
+    try:
+        filter_injections = (
+            _build_filter_injections(filters, sheets, sheet_models, effective_models_dir)
+            if filters
+            else {}
+        )
+        filter_control_meta = (
+            _build_filter_control_meta(flat_root, sheets, sheet_models, effective_models_dir)
+            if filters
+            else {}
+        )
+    except (TypeError, ValueError) as exc:
+        return {
+            "html": None,
+            "errors": [f"Filter injection failed: {exc}"],
+            "warnings": [],
+            "component_tree": component_tree,
+        }
 
     # Load theme
     try:
