@@ -12,6 +12,7 @@ import datetime as dt
 import json
 import re
 import time
+import warnings
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -47,12 +48,10 @@ def clear_domain_cache() -> None:
     _domain_cache.clear()
 
 
-_CARDINALITY_MESSAGE = (
-    "field {source!r} has {limit} or more distinct values — too many for a "
-    "parameter domain. List the values you want explicitly:\n"
-    "  values:\n"
-    "    - first\n"
-    "    - second"
+_CARDINALITY_WARNING = (
+    "field {source!r} has {count} distinct values — truncated to the first "
+    "{limit}. Consider mode: wildcard for free-text search, or a calculated "
+    "dimension that buckets the values."
 )
 
 _EMPTY_MESSAGE = (
@@ -242,9 +241,13 @@ def resolve_field_domain(
         if not values:
             raise ParameterDomainError(_EMPTY_MESSAGE.format(source=source))
         if len(values) > MAX_DOMAIN_CARDINALITY:
-            raise ParameterDomainError(
-                _CARDINALITY_MESSAGE.format(source=source, limit=MAX_DOMAIN_CARDINALITY + 1)
+            warnings.warn(
+                _CARDINALITY_WARNING.format(
+                    source=source, count=len(values), limit=MAX_DOMAIN_CARDINALITY
+                ),
+                stacklevel=2,
             )
+            values = values[:MAX_DOMAIN_CARDINALITY]
         domain = Domain(kind="values", param_type=param_type, source=source, values=values)
     else:
         low, high = raw

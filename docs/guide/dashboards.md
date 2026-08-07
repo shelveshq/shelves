@@ -663,7 +663,9 @@ A dashboard-level filter bound to a semantic model field. Filters inject Vega-Li
 
 **Compose-time validation:** the dashboard build validates that the filter's model and field exist, that the mode is compatible with the field type, that target sheets exist, and that target sheets use the same model as the filter. Validation errors are reported at build time.
 
-**Placeholder rendering:** each filter emits an HTML placeholder `<div>` with `data-*` attributes (`data-field`, `data-model`, `data-mode`, `data-operator`, `data-targets`, `data-default`, `data-options`). These placeholders will be wired to interactive widgets in a future release (SHE-81+).
+**Compile-time options resolution:** at compose time, filter option sets are resolved from the data layer — sorted distinct values for categorical modes (`multi`, `single`), `[min, max]` bounds for quantitative/temporal modes (`range`, `at_least`, `at_most`, `after`, `before`), and `null` for `wildcard` mode. Options are cached with the same 60-second TTL as parameter domains. If a field has more than 500 distinct values, the list is truncated to 500 and a warning is emitted. If resolution fails (e.g., missing data source), options fall back to `null` with a warning.
+
+**Placeholder rendering:** each filter emits an HTML placeholder `<div>` with `data-*` attributes (`data-field`, `data-model`, `data-mode`, `data-operator`, `data-targets`, `data-default`, `data-options`). Categorical modes emit `data-options` as a JSON array of `{value, label}` objects; bounds modes emit a `[min, max]` pair; wildcard mode emits `null`.
 
 ### Blank (spacer)
 

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from shelves.data.domains import clear_domain_cache
 from tests.conftest import DATA_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
 
 # ─── Helpers ──────────────────────────────────────────────────────────
@@ -23,6 +24,7 @@ from tests.conftest import DATA_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
 def _compose(fixture_name: str, **kwargs) -> str:
     from shelves.compose.dashboard import compose_dashboard
 
+    clear_domain_cache()
     return compose_dashboard(
         dashboard_path=LAYOUT_DIR / fixture_name,
         chart_base_dir=YAML_DIR,

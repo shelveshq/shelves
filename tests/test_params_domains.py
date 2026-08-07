@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import json
+import warnings
 from pathlib import Path
 from unittest.mock import patch
 
@@ -647,7 +648,7 @@ parameters:
         domains = resolve_parameter_domains(params, models_dir=tmp_path, data_base_dir=tmp_path)
         assert len(domains["big"].values or []) == MAX_DOMAIN_CARDINALITY
 
-    def test_501_distinct_values_raises_on_inline(self, tmp_path):
+    def test_501_distinct_values_truncates_on_inline(self, tmp_path):
         _write_inline_model(
             tmp_path,
             "gen",
@@ -666,12 +667,15 @@ parameters:
     default: null
 """,
         )
-        with pytest.raises(ParameterDomainError) as exc:
-            resolve_parameter_domains(params, models_dir=tmp_path, data_base_dir=tmp_path)
-        assert "parameters.big:" in str(exc.value)
-        assert "501 or more distinct values" in str(exc.value)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            domains = resolve_parameter_domains(params, models_dir=tmp_path, data_base_dir=tmp_path)
+        assert len(domains["big"].values or []) == MAX_DOMAIN_CARDINALITY
+        cardinality_warnings = [x for x in w if "distinct values" in str(x.message)]
+        assert len(cardinality_warnings) >= 1
+        assert "501" in str(cardinality_warnings[0].message)
 
-    def test_501_distinct_values_raises_on_duckdb(self, tmp_path):
+    def test_501_distinct_values_truncates_on_duckdb(self, tmp_path):
         """The DuckDB LIMIT must be 501, not 500 — off-by-one silently accepts 501."""
         rows = "\n".join(f"v{i:04d},1" for i in range(MAX_DOMAIN_CARDINALITY + 1))
         _write_file_model(
@@ -692,8 +696,12 @@ parameters:
     default: null
 """,
         )
-        with pytest.raises(ParameterDomainError, match="501 or more distinct values"):
-            resolve_parameter_domains(params, models_dir=tmp_path, data_base_dir=tmp_path)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            domains = resolve_parameter_domains(params, models_dir=tmp_path, data_base_dir=tmp_path)
+        assert len(domains["big"].values or []) == MAX_DOMAIN_CARDINALITY
+        cardinality_warnings = [x for x in w if "distinct values" in str(x.message)]
+        assert len(cardinality_warnings) >= 1
 
     def test_500_distinct_values_passes_on_duckdb(self, tmp_path):
         rows = "\n".join(f"v{i:04d},1" for i in range(MAX_DOMAIN_CARDINALITY))

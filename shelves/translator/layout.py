@@ -318,7 +318,7 @@ def _render_filter(node: ResolvedNode, ctx: RenderContext, safe_outer: str, safe
         f' data-operator="{html.escape(meta.operator, quote=True)}"'
         f' data-title="{html.escape(meta.title, quote=True)}"'
         f" data-targets='{html.escape(json.dumps(meta.targets), quote=True)}'"
-        f" data-options='null'"
+        f" data-options='{html.escape(json.dumps(meta.options), quote=True)}'"
     )
     if meta.default is not None:
         data_attrs += f" data-default='{html.escape(json.dumps(meta.default), quote=True)}'"

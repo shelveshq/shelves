@@ -1,0 +1,11 @@
+dashboard: "Filter Options Wildcard"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - filter: country
+      model: orders
+      mode: wildcard
+      height: 48
+    - sheet: simple_bar.yaml
+      name: chart_1

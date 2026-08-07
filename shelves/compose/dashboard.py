@@ -108,11 +108,15 @@ def compose_dashboard(
     filter_injections = (
         _build_filter_injections(filters, sheets, sheet_models, models_dir) if filters else {}
     )
-    filter_control_meta = (
-        _build_filter_control_meta(flat_tree, sheets, sheet_models, models_dir) if filters else {}
-    )
-
     resolved_data_dir = Path(data_dir) if data_dir else Path.cwd()
+
+    filter_control_meta = (
+        _build_filter_control_meta(
+            flat_tree, sheets, sheet_models, models_dir, data_base_dir=resolved_data_dir
+        )
+        if filters
+        else {}
+    )
 
     chart_specs, resolvers, chart_warnings = compile_dashboard_charts(
         sheets,
@@ -769,11 +773,109 @@ def _get_sheet_models(sheets: dict[str, str], charts_dir: Path) -> dict[str, str
     return sheet_models
 
 
+def _resolve_filter_options(
+    filt: FilterComponent,
+    mode: str,
+    *,
+    models_dir: Path | str | None,
+    data_base_dir: Path | None,
+) -> list | None:
+    """Resolve filter options from the data layer at compose time.
+
+    Returns a list of {value, label} dicts for categorical modes,
+    a [min, max] pair for bounds modes, or None for wildcard.
+    """
+    if mode == "wildcard":
+        return None
+
+    from shelves.data.domains import (
+        LiteralParamType,
+        _domain_adapter,
+        _inline_domain,
+        _normalize,
+        resolve_field_domain,
+    )
+    from shelves.models.loader import load_model
+    from shelves.models.resolver import ModelResolver
+    from shelves.models.schema import InlineSource, TemporalDimensionDefinition
+    from shelves.params.schema import FieldRef
+
+    model = load_model(filt.model, models_dir=models_dir)
+    resolver = ModelResolver(model)
+    is_measure = resolver.is_measure(filt.field)
+
+    dim = model.dimensions.get(filt.field)
+    is_temporal = isinstance(dim, TemporalDimensionDefinition)
+
+    param_type: LiteralParamType
+    if mode in ("multi", "single"):
+        param_type = "string"
+    elif is_temporal or mode in ("after", "before"):
+        param_type = "date"
+    else:
+        param_type = "number"
+
+    if is_measure:
+        if model.source is None:
+            raise ValueError(f"model {filt.model!r} has no source — cannot resolve filter options")
+        if isinstance(model.source, InlineSource):
+            raw = _inline_domain(
+                model, filt.field, resolver, kind="bounds", data_base_dir=data_base_dir
+            )
+        else:
+            adapter = _domain_adapter(model.source.type, data_base_dir)
+            raw = adapter.fetch_domain_bounds(model, filt.field, resolver)
+        low, high = raw
+        if low is None or high is None:
+            raise ValueError(f"filter field {filt.field!r} resolved to an empty domain")
+        return [
+            _normalize(low, param_type, False),
+            _normalize(high, param_type, False),
+        ]
+
+    ref = FieldRef(model=filt.model, field=filt.field)
+    domain = resolve_field_domain(
+        ref, param_type, models_dir=models_dir, data_base_dir=data_base_dir
+    )
+
+    if domain.kind == "values":
+        return [{"value": v, "label": str(v)} for v in (domain.values or [])]
+    return [domain.min, domain.max]
+
+
+def _validate_filter_default(filt: FilterComponent, mode: str, options: list | None) -> None:
+    """Validate that a filter's default value is within resolved options."""
+    if filt.default is None or options is None:
+        return
+
+    if mode in ("multi", "single"):
+        values = {o["value"] for o in options}
+        if mode == "multi":
+            defaults = filt.default if isinstance(filt.default, list) else [filt.default]
+        else:
+            defaults = [filt.default]
+        for d in defaults:
+            if d not in values:
+                raise ValueError(
+                    f"filter default {d!r} is not in the resolved domain for field {filt.field!r}"
+                )
+    elif mode in ("range", "at_least", "at_most", "after", "before"):
+        lo, hi = options[0], options[1]
+        check_vals = filt.default if isinstance(filt.default, list) else [filt.default]
+        for v in check_vals:
+            if v < lo or v > hi:
+                raise ValueError(
+                    f"filter default {v!r} is outside the resolved domain for "
+                    f"field {filt.field!r} (min: {lo}, max: {hi})"
+                )
+
+
 def _build_filter_control_meta(
     flat_tree: FlatNode,
     sheets: dict[str, str],
     sheet_models: dict[str, str],
     models_dir: Path | str | None,
+    data_base_dir: Path | None = None,
 ) -> dict[str, FilterControlMeta]:
     """Build FilterControlMeta for each filter control in the layout tree."""
     from shelves.models.loader import load_model
@@ -804,6 +906,18 @@ def _build_filter_control_meta(
         if title is None:
             title = filt.field
 
+        try:
+            options = _resolve_filter_options(
+                filt, mode, models_dir=models_dir, data_base_dir=data_base_dir
+            )
+        except Exception as e:
+            warnings.warn(
+                f"Filter options for '{filt.field}' could not be resolved: {e}",
+                stacklevel=2,
+            )
+            options = None
+        _validate_filter_default(filt, mode, options)
+
         meta[dom_id] = FilterControlMeta(
             field=filt.field,
             model=filt.model,
@@ -813,7 +927,7 @@ def _build_filter_control_meta(
             title=title,
             targets=target_ids,
             default=filt.default,
-            options=None,
+            options=options,
         )
 
     return meta
