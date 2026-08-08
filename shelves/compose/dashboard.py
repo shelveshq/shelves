@@ -799,14 +799,17 @@ def _resolve_filter_options(
     *,
     models_dir: Path | str | None,
     data_base_dir: Path | None,
-) -> list | None:
+) -> tuple[list | None, bool]:
     """Resolve filter options from the data layer at compose time.
 
-    Returns a list of {value, label} dicts for categorical modes,
-    a [min, max] pair for bounds modes, or None for wildcard.
+    Returns `(options, truncated)` — the options being a list of {value, label}
+    dicts for categorical modes, a [min, max] pair for bounds modes, or None for
+    wildcard. `truncated` is True when the domain hit MAX_DOMAIN_CARDINALITY and
+    the list is only a prefix of the real one, in which case a `default:` outside
+    it cannot be judged invalid.
     """
     if mode == "wildcard":
-        return None
+        return None, False
 
     from shelves.data.domains import (
         LiteralParamType,
@@ -852,7 +855,7 @@ def _resolve_filter_options(
         if cached is not None:
             domain, ts = cached
             if time.monotonic() - ts <= DOMAIN_CACHE_TTL:
-                return [domain.min, domain.max]
+                return [domain.min, domain.max], False
 
         if isinstance(model.source, InlineSource):
             raw = _inline_domain(
@@ -885,7 +888,7 @@ def _resolve_filter_options(
             ),
             time.monotonic(),
         )
-        return result
+        return result, False
 
     ref = FieldRef(model=filt.model, field=filt.field)
     domain = resolve_field_domain(
@@ -893,16 +896,23 @@ def _resolve_filter_options(
     )
 
     if domain.kind == "values":
-        return [{"value": v, "label": str(v)} for v in (domain.values or [])]
-    return [domain.min, domain.max]
+        options = [{"value": v, "label": str(v)} for v in (domain.values or [])]
+        return options, domain.truncated
+    return [domain.min, domain.max], False
 
 
-def _validate_filter_default(filt: FilterComponent, mode: str, options: list | None) -> None:
-    """Validate that a filter's default value is within resolved options."""
+def _validate_filter_default(
+    filt: FilterComponent, mode: str, options: list | None, *, truncated: bool = False
+) -> None:
+    """Validate that a filter's default value is within resolved options.
+
+    A truncated domain is only a prefix of the real value set, so membership
+    cannot be disproved — warn instead of rejecting a possibly-valid default.
+    """
     if filt.default is None or options is None:
         return
 
-    from shelves.data.domains import _normalize
+    from shelves.data.domains import MAX_DOMAIN_CARDINALITY, _normalize
 
     if mode in ("multi", "single"):
         values = {o["value"] for o in options}
@@ -912,10 +922,19 @@ def _validate_filter_default(filt: FilterComponent, mode: str, options: list | N
             defaults = [filt.default]
         for d in defaults:
             nd = _normalize(d, "string", False)
-            if nd not in values:
-                raise ValueError(
-                    f"filter default {d!r} is not in the resolved domain for field {filt.field!r}"
+            if nd in values:
+                continue
+            if truncated:
+                warnings.warn(
+                    f"filter default {d!r} for field {filt.field!r} was not checked — "
+                    f"the domain was truncated at {MAX_DOMAIN_CARDINALITY} values, "
+                    "so membership is unknown.",
+                    stacklevel=2,
                 )
+                continue
+            raise ValueError(
+                f"filter default {d!r} is not in the resolved domain for field {filt.field!r}"
+            )
     elif mode in ("range", "at_least", "at_most", "after", "before"):
         lo, hi = options[0], options[1]
         is_temporal = isinstance(lo, str) and len(lo) == 10 and "-" in lo
@@ -967,7 +986,7 @@ def _build_filter_control_meta(
             title = filt.field
 
         try:
-            options = _resolve_filter_options(
+            options, truncated = _resolve_filter_options(
                 filt, mode, models_dir=models_dir, data_base_dir=data_base_dir
             )
         except (ValueError, FileNotFoundError, ParameterDomainError) as e:
@@ -975,8 +994,8 @@ def _build_filter_control_meta(
                 f"Filter options for '{filt.field}' could not be resolved: {e}",
                 stacklevel=2,
             )
-            options = None
-        _validate_filter_default(filt, mode, options)
+            options, truncated = None, False
+        _validate_filter_default(filt, mode, options, truncated=truncated)
 
         meta[dom_id] = FilterControlMeta(
             field=filt.field,

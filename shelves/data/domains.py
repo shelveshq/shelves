@@ -75,6 +75,7 @@ class Domain:
     values: list[Any] | None = None
     min: Any = None
     max: Any = None
+    truncated: bool = False
 
 
 _ISO_PREFIX_RE = re.compile(r"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?")
@@ -259,11 +260,15 @@ def resolve_field_domain(
                 )
             warnings.warn(msg, stacklevel=2)
             values = values[:MAX_DOMAIN_CARDINALITY]
+            was_truncated = True
+        else:
+            was_truncated = False
         domain = Domain(
             kind="values",
             param_type=param_type,
             source=source,
             values=values,
+            truncated=was_truncated,
         )
     else:
         low, high = raw
@@ -336,6 +341,17 @@ def check_value_in_domain(
     normalized = _normalize(value, domain.param_type, domain.param_type == "date")
 
     if domain.kind == "values":
+        if domain.truncated:
+            # A prefix cannot disprove membership, so accept — but say so, or a
+            # typo'd value silently resolves to nothing on a wide field.
+            if normalized not in (domain.values or []):
+                warnings.warn(
+                    f"parameters.{param_name}: {label} {_fmt(value)} was not checked "
+                    f"against {domain.source!r} — its domain was truncated at "
+                    f"{MAX_DOMAIN_CARDINALITY} values, so membership is unknown.",
+                    stacklevel=2,
+                )
+            return
         values = domain.values or []
         if normalized in values:
             return

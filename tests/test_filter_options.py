@@ -450,6 +450,97 @@ class TestDefaultValidation:
                 models_dir=tmp_path,
             )
 
+    def test_default_beyond_truncation_is_accepted(self, tmp_path: Path):
+        """A truncated domain is a prefix — a default past the cut is still valid.
+
+        501 values truncate to v0000..v0499, so v0500 is absent from the
+        resolved options but present in the data. Rejecting it would fail a
+        correct dashboard.
+        """
+        rows = [{"id": f"v{i:04d}"} for i in range(MAX_DOMAIN_CARDINALITY + 1)]
+        _write_inline_model(tmp_path, "gen", {"id": {"label": "Id"}}, rows)
+        _write_chart(tmp_path, "chart.yaml", "gen")
+        _write_dashboard(
+            tmp_path,
+            "dash.yaml",
+            {
+                "dashboard": "Truncated Default",
+                "canvas": {"width": 800, "height": 600},
+                "root": {
+                    "orientation": "vertical",
+                    "contains": [
+                        {
+                            "filter": "id",
+                            "model": "gen",
+                            "mode": "single",
+                            "default": f"v{MAX_DOMAIN_CARDINALITY:04d}",
+                            "height": 48,
+                        },
+                        {"sheet": "chart.yaml", "name": "s1"},
+                    ],
+                },
+            },
+        )
+        clear_domain_cache()
+        from shelves.compose.dashboard import compose_dashboard
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            html = compose_dashboard(
+                dashboard_path=tmp_path / "dash.yaml",
+                chart_base_dir=tmp_path,
+                data_dir=tmp_path,
+                models_dir=tmp_path,
+            )
+
+        attrs = _parse_filter_div(html, "auto-1")
+        options = json.loads(attrs["options"])
+        assert len(options) == MAX_DOMAIN_CARDINALITY
+        assert f"v{MAX_DOMAIN_CARDINALITY:04d}" not in {o["value"] for o in options}
+        assert json.loads(attrs["default"]) == f"v{MAX_DOMAIN_CARDINALITY:04d}"
+        assert [x for x in w if "distinct values" in str(x.message)]
+        # Accepted, but not silently — an unverifiable default says so.
+        unchecked = [x for x in w if "was not checked" in str(x.message)]
+        assert len(unchecked) == 1
+        assert f"v{MAX_DOMAIN_CARDINALITY:04d}" in str(unchecked[0].message)
+
+    def test_bad_default_still_raises_when_not_truncated(self, tmp_path: Path):
+        """The truncation skip must not disarm validation on normal domains."""
+        rows = [{"id": f"v{i:04d}"} for i in range(MAX_DOMAIN_CARDINALITY)]
+        _write_inline_model(tmp_path, "gen", {"id": {"label": "Id"}}, rows)
+        _write_chart(tmp_path, "chart.yaml", "gen")
+        _write_dashboard(
+            tmp_path,
+            "dash.yaml",
+            {
+                "dashboard": "At Limit Bad Default",
+                "canvas": {"width": 800, "height": 600},
+                "root": {
+                    "orientation": "vertical",
+                    "contains": [
+                        {
+                            "filter": "id",
+                            "model": "gen",
+                            "mode": "single",
+                            "default": "ZZ",
+                            "height": 48,
+                        },
+                        {"sheet": "chart.yaml", "name": "s1"},
+                    ],
+                },
+            },
+        )
+        clear_domain_cache()
+        from shelves.compose.dashboard import compose_dashboard
+
+        with pytest.raises(ValueError, match="ZZ"):
+            compose_dashboard(
+                dashboard_path=tmp_path / "dash.yaml",
+                chart_base_dir=tmp_path,
+                data_dir=tmp_path,
+                models_dir=tmp_path,
+            )
+
     def test_null_default_skips_validation(self):
         html = _compose("compose_filter_options.yaml")
         attrs = _parse_filter_div(html, "auto-1")

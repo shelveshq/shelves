@@ -8,7 +8,9 @@ pruning, and the diagnostic contract (collected, never raised inside the walk).
 
 from __future__ import annotations
 
+import dataclasses
 import re
+import warnings
 
 import pytest
 import yaml
@@ -571,6 +573,34 @@ class TestParameterSetDomains:
         """Pins the SHE-91 seam: no domains passed means no domain check."""
         ps = ParameterSet(self._declared(), overrides={"region": "LATAM"}, domains=None)
         assert ps.values["region"] == "LATAM"
+
+    def test_override_outside_truncated_domain_accepted_with_warning(self):
+        """A truncated domain is a prefix — accept the override, but say so."""
+        truncated = dataclasses.replace(self.REGION_DOMAIN, truncated=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            ps = ParameterSet(
+                self._declared(),
+                overrides={"region": "LATAM"},
+                domains={"region": truncated},
+            )
+        assert ps.values["region"] == "LATAM"
+        unchecked = [x for x in w if "was not checked" in str(x.message)]
+        assert len(unchecked) == 1
+        assert "LATAM" in str(unchecked[0].message)
+
+    def test_override_inside_truncated_domain_is_quiet(self):
+        """Present in the visible prefix — verified, so no warning."""
+        truncated = dataclasses.replace(self.REGION_DOMAIN, truncated=True)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            ps = ParameterSet(
+                self._declared(),
+                overrides={"region": "EMEA"},
+                domains={"region": truncated},
+            )
+        assert ps.values["region"] == "EMEA"
+        assert [x for x in w if "was not checked" in str(x.message)] == []
 
     def test_literal_values_unaffected_by_domains(self):
         ps = ParameterSet(
