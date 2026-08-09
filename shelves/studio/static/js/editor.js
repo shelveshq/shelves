@@ -297,6 +297,18 @@ async function initMonacoEditor() {
     updateStatusBar();
   });
 
+  document.addEventListener('shelves:dashboard-result', (e) => {
+    // Dashboard warnings (filter options that would not resolve, truncated
+    // domains, per-sheet compile notices) carry no line info, so they land as
+    // file-level markers — same treatment applyCompileMarkers gives chart
+    // warnings. Dashboard errors are plain strings and are skipped by that
+    // function's object guard; they stay in the preview overlay.
+    // The status bar is NOT touched here: dashboard.js owns the counters for
+    // dashboard results (SHE-50) and feeds them straight from the payload.
+    if (!resultIsForCurrentFile(e.detail)) return;
+    applyCompileMarkers(e.detail);
+  });
+
   document.addEventListener('shelves:non-chart-file', () => {
     // No compile runs for non-chart YAML, so nothing else clears the previous
     // file's compile markers from the shared model — clear them here or the

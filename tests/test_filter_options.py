@@ -718,3 +718,122 @@ class TestParameterCardinalityParity:
         assert len(domains["big"].values or []) == MAX_DOMAIN_CARDINALITY
         cardinality_warnings = [x for x in w if "distinct values" in str(x.message)]
         assert len(cardinality_warnings) >= 1
+
+
+# ─── Part 8: Warnings reach the Studio client ───────────────────────
+
+
+class TestStudioWarningSurfacing:
+    """`warnings.warn` only reaches stderr — Studio users read the payload.
+
+    Filter options resolution and parameter-domain truncation both warn
+    instead of raising, so every one of those notices must land in the
+    route's `warnings: [...]` list or the failure is silent in Studio.
+    """
+
+    @staticmethod
+    def _pipeline(project: Path, dashboard_name: str = "dash.yaml") -> dict:
+        import asyncio
+
+        from shelves.studio.routes.dashboard import run_dashboard_pipeline
+
+        clear_domain_cache()
+        return asyncio.run(
+            run_dashboard_pipeline(
+                (project / dashboard_name).read_text(),
+                project_dir=project,
+                charts_dir=project,
+                theme_path=None,
+                models_dir=project,
+                parameters_path=project / "parameters.yaml",
+            )
+        )
+
+    def test_unresolvable_options_warning_reaches_payload(self, tmp_path: Path):
+        (tmp_path / "nosrc.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "model": "nosrc",
+                    "label": "No Source",
+                    "dimensions": {"id": {"label": "Id"}},
+                    "measures": {"m": {"label": "M"}},
+                }
+            )
+        )
+        _write_chart(tmp_path, "chart.yaml", "nosrc")
+        _write_dashboard(
+            tmp_path,
+            "dash.yaml",
+            {
+                "dashboard": "No Source",
+                "canvas": {"width": 800, "height": 600},
+                "root": {
+                    "orientation": "vertical",
+                    "contains": [
+                        {"filter": "id", "model": "nosrc", "mode": "multi", "height": 48},
+                        {"sheet": "chart.yaml", "name": "s1"},
+                    ],
+                },
+            },
+        )
+        result = self._pipeline(tmp_path)
+
+        assert result["errors"] == [], result["errors"]
+        matched = [w for w in result["warnings"] if "could not be resolved" in w]
+        assert len(matched) == 1, result["warnings"]
+        assert "id" in matched[0]
+
+    def test_truncation_and_unchecked_default_reach_payload(self, tmp_path: Path):
+        rows = [{"id": f"v{i:04d}"} for i in range(MAX_DOMAIN_CARDINALITY + 1)]
+        _write_inline_model(tmp_path, "gen", {"id": {"label": "Id"}}, rows)
+        _write_chart(tmp_path, "chart.yaml", "gen")
+        _write_dashboard(
+            tmp_path,
+            "dash.yaml",
+            {
+                "dashboard": "Truncated",
+                "canvas": {"width": 800, "height": 600},
+                "root": {
+                    "orientation": "vertical",
+                    "contains": [
+                        {
+                            "filter": "id",
+                            "model": "gen",
+                            "mode": "single",
+                            "default": f"v{MAX_DOMAIN_CARDINALITY:04d}",
+                            "height": 48,
+                        },
+                        {"sheet": "chart.yaml", "name": "s1"},
+                    ],
+                },
+            },
+        )
+        result = self._pipeline(tmp_path)
+
+        assert result["errors"] == [], result["errors"]
+        assert [w for w in result["warnings"] if "distinct values" in w], result["warnings"]
+        assert [w for w in result["warnings"] if "was not checked" in w], result["warnings"]
+
+    def test_clean_dashboard_reports_no_warnings(self, tmp_path: Path):
+        """Guard against the capture turning every compile noisy."""
+        _write_inline_model(tmp_path, "gen", {"id": {"label": "Id"}}, [{"id": "a"}, {"id": "b"}])
+        _write_chart(tmp_path, "chart.yaml", "gen")
+        _write_dashboard(
+            tmp_path,
+            "dash.yaml",
+            {
+                "dashboard": "Clean",
+                "canvas": {"width": 800, "height": 600},
+                "root": {
+                    "orientation": "vertical",
+                    "contains": [
+                        {"filter": "id", "model": "gen", "mode": "multi", "height": 48},
+                        {"sheet": "chart.yaml", "name": "s1"},
+                    ],
+                },
+            },
+        )
+        result = self._pipeline(tmp_path)
+
+        assert result["errors"] == [], result["errors"]
+        assert result["warnings"] == []

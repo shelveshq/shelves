@@ -72,6 +72,7 @@ async def run_dashboard_pipeline(
     overrides: dict[str, str] | None = None,
 ) -> dict:
     """Run the dashboard compilation pipeline and return a result dict."""
+    from shelves.diagnostics import capture_warnings
     from shelves.params.resolve import load_parameter_set
     from shelves.schema.layout_schema import parse_dashboard
     from shelves.theme.merge import load_theme
@@ -83,27 +84,40 @@ async def run_dashboard_pipeline(
     # halves of a compile can never read different model directories.
     effective_models_dir = models_dir if models_dir and models_dir.exists() else None
 
+    # Python warnings emitted BEFORE the per-sheet loop (parameter-domain
+    # truncation, unverifiable defaults, filter options that would not resolve)
+    # are invisible to Studio unless captured — the chart route and the watcher
+    # already wrap their equivalents. Collected here and prepended to the loop's
+    # own warnings so the payload stays chronological.
+    pre_warnings: list[str] = []
+
     # SHE-96: parameters must be loaded BEFORE parse_dashboard so ${name}
     # references in text components are substituted before model_validate.
     try:
-        parameters = load_parameter_set(
-            parameters_path,
-            models_dir=effective_models_dir,
-            data_base_dir=project_dir,
-            overrides=overrides,
-        )
+        with capture_warnings(pre_warnings):
+            parameters = load_parameter_set(
+                parameters_path,
+                models_dir=effective_models_dir,
+                data_base_dir=project_dir,
+                overrides=overrides,
+            )
     except ValueError as e:
         return {
             "html": None,
             "errors": [str(e)],
-            "warnings": [],
+            "warnings": pre_warnings,
             "component_tree": [],
         }
 
     try:
         spec = parse_dashboard(yaml_body, parameters=parameters)
     except Exception as e:
-        return {"html": None, "errors": [str(e)], "warnings": [], "component_tree": []}
+        return {
+            "html": None,
+            "errors": [str(e)],
+            "warnings": pre_warnings,
+            "component_tree": [],
+        }
 
     flat_root = flatten_dashboard(spec)
     component_tree = build_component_tree(flat_root)
@@ -139,33 +153,36 @@ async def run_dashboard_pipeline(
             return {
                 "html": None,
                 "errors": filter_errors,
-                "warnings": [],
+                "warnings": pre_warnings,
                 "component_tree": component_tree,
             }
 
-    # SHE-80: build filter injections and control metadata.
+    # SHE-80: build filter injections and control metadata. Options resolution
+    # warns (unresolvable options, truncated domains, unchecked defaults)
+    # instead of raising, so capture or those notices never reach the client.
     try:
-        filter_injections = (
-            _build_filter_injections(filters, sheets, sheet_models, effective_models_dir)
-            if filters
-            else {}
-        )
-        filter_control_meta = (
-            _build_filter_control_meta(
-                flat_root,
-                sheets,
-                sheet_models,
-                effective_models_dir,
-                data_base_dir=project_dir,
+        with capture_warnings(pre_warnings):
+            filter_injections = (
+                _build_filter_injections(filters, sheets, sheet_models, effective_models_dir)
+                if filters
+                else {}
             )
-            if filters
-            else {}
-        )
+            filter_control_meta = (
+                _build_filter_control_meta(
+                    flat_root,
+                    sheets,
+                    sheet_models,
+                    effective_models_dir,
+                    data_base_dir=project_dir,
+                )
+                if filters
+                else {}
+            )
     except (TypeError, ValueError) as exc:
         return {
             "html": None,
             "errors": [f"Filter injection failed: {exc}"],
-            "warnings": [],
+            "warnings": pre_warnings,
             "component_tree": component_tree,
         }
 
@@ -194,6 +211,8 @@ async def run_dashboard_pipeline(
         parameters=parameters,
         filter_injections=filter_injections,
     )
+    # Chronological: everything resolved before the per-sheet loop ran first.
+    warnings[:0] = pre_warnings
 
     # SHE-27: link legends to sheet scales + suppress in-sheet legends via the
     # shared helper (same path as compose_dashboard), routing the bad-source
