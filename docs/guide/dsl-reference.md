@@ -1,6 +1,6 @@
 # Shelves DSL Reference
 
-**DSL Version: 0.13.0**
+**DSL Version: 0.14.0**
 
 This document is the authoritative reference for the Shelves YAML DSL. It covers every field, what is currently supported, and what is planned but not yet compiled.
 
@@ -1475,7 +1475,8 @@ See the DSL version history below for what shipped in each version.
 
 | Version | Status | Summary |
 |---|---|---|
-| **0.13.0** | Current | Filter leaf type (`filter:`) added to the layout DSL for interactive dashboard filters. `contains` filter operator added for case-insensitive substring matching. Filters are schema-validated and compose-time validated (mode↔field-type, model/field existence, target sheet constraints). Compose-time filter injection: `filter:` leaves with a non-null `default` inject transforms into target sheets before compilation. Mode→operator mapping, mode inference, and filter placeholder divs with `data-*` attributes for future client-side rendering. |
+| **0.14.0** | Current | Filter `dropdown` boolean (default `true`) for `single`/`multi` (dimension) filter modes: `true` renders a compact dropdown widget (native `<select>` for `single`, native `<select multiple>` for `multi`) to fit tight filter bars; `false` renders a top-aligned, scrollable open list (radio buttons for `single`, checkboxes for `multi`) that stays contained within its box. Ignored for other modes. |
+| **0.13.0** | Previous | Filter leaf type (`filter:`) added to the layout DSL for interactive dashboard filters. `contains` filter operator added for case-insensitive substring matching. Filters are schema-validated and compose-time validated (mode↔field-type, model/field existence, target sheet constraints). Compose-time filter injection: `filter:` leaves with a non-null `default` inject transforms into target sheets before compilation. Mode→operator mapping, mode inference, and filter placeholder divs with `data-*` attributes for future client-side rendering. |
 | **0.12.0** | Previous | **Breaking:** `control:` layout leaf type renamed to `parameter:`. No deprecation alias — `control:` is now an unknown type. The rendered widget contract (`data-control`, `control_render.js`, `layout.control` theme block) is unchanged. |
 | **0.11.0** | Previous | Dashboard parameter controls: `{control: <param_name>}` layout leaf renders interactive widgets (dropdown, stepper, date, text) inferred from the parameter type. In Studio, changing a control recompiles the dashboard; in exported HTML, controls render disabled. New `layout.control` theme block. Renamed to `parameter:` in 0.12.0. |
 | **0.10.0** | Previous | Project-level parameters: a `models/parameters.yaml` file declaring `string`/`number`/`date`/`field` parameters, referenced from charts with `$name` in field slots and filter values, and `${name}` in title text. Resolved before parsing, so a parameterized spec compiles identically to the hand-written equivalent. |

@@ -228,6 +228,10 @@ class FilterComponent(BaseModel):
     mode: FilterMode | None = None
     default: Any = None
     label: str | None = None
+    # For `single`/`multi` (dimension) modes only: True (default) renders a
+    # compact dropdown widget; False renders a top-aligned, scrollable open
+    # list. Ignored for other modes. (SHE-8x)
+    dropdown: bool = True
     width: SizeValue = None
     height: SizeValue = None
     margin: int | str | None = None

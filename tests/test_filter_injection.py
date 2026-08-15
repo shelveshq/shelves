@@ -344,6 +344,38 @@ class TestFilterPlaceholderAttributes:
         assert attrs["title"] == "My Region Filter"
 
 
+class TestFilterDropdownWidget:
+    """SHE-8x: the `dropdown` flag picks the widget for single/multi modes."""
+
+    def test_single_defaults_to_dropdown(self, tmp_path: Path):
+        html = _compose_with_filter(
+            tmp_path, field="region", model="orders", mode="single", default=None
+        )
+        attrs = _parse_filter_div(html, "auto-1")
+        assert attrs["control"] == "dropdown"
+
+    def test_single_dropdown_false_uses_single_list(self, tmp_path: Path):
+        html = _compose_with_filter(
+            tmp_path, field="region", model="orders", mode="single", default=None, dropdown=False
+        )
+        attrs = _parse_filter_div(html, "auto-1")
+        assert attrs["control"] == "single_list"
+
+    def test_multi_defaults_to_native_dropdown(self, tmp_path: Path):
+        html = _compose_with_filter(
+            tmp_path, field="region", model="orders", mode="multi", default=None
+        )
+        attrs = _parse_filter_div(html, "auto-1")
+        assert attrs["control"] == "multi_dropdown"
+
+    def test_multi_dropdown_false_uses_open_list(self, tmp_path: Path):
+        html = _compose_with_filter(
+            tmp_path, field="region", model="orders", mode="multi", default=None, dropdown=False
+        )
+        attrs = _parse_filter_div(html, "auto-1")
+        assert attrs["control"] == "multi_select"
+
+
 # ─── Part 3: Edge Cases ──────────────────────────────────────────────
 
 
@@ -358,7 +390,8 @@ class TestFilterEdgeCases:
         html = _compose("filter_null_default.yaml")
         attrs = _parse_filter_div(html, "auto-1")
         assert attrs["mode"] == "multi"
-        assert attrs["control"] == "multi_select"
+        # dropdown defaults to True → compact native multi-select widget.
+        assert attrs["control"] == "multi_dropdown"
 
     def test_mode_inferred_quantitative(self, tmp_path: Path):
         html = _compose_with_filter(
@@ -507,6 +540,7 @@ def _compose_with_filter(
     default: object,
     targets: list[str] | str = "all",
     label: str | None = None,
+    dropdown: bool | None = None,
 ) -> str:
     """Build a minimal dashboard YAML with one filter and compose it."""
     import yaml
@@ -520,6 +554,8 @@ def _compose_with_filter(
         filter_def["targets"] = targets
     if label is not None:
         filter_def["label"] = label
+    if dropdown is not None:
+        filter_def["dropdown"] = dropdown
 
     dashboard = {
         "dashboard": "Inline Filter Test",
@@ -542,3 +578,113 @@ def _compose_with_filter(
     return compose_dashboard(
         dashboard_path, chart_base_dir=YAML_DIR, data_dir=DATA_DIR, models_dir=MODELS_DIR
     )
+
+
+# ─── Part 5: Filter Overrides (_build_filter_injections) ──────────────
+
+
+class TestFilterOverrides:
+    """SHE-82: filter_overrides change the injected value at recompile time."""
+
+    def test_override_replaces_default(self):
+        """An override changes the injected filter value."""
+        from shelves.compose.dashboard import _build_filter_injections
+        from shelves.schema.layout_schema import FilterComponent
+
+        filt = FilterComponent(field="region", model="orders", mode="single", default="EMEA")
+        sheets = {"sheet-chart_1": "simple_bar.yaml"}
+        sheet_models = {"sheet-chart_1": "orders"}
+        overrides = {"orders.region": "APAC"}
+
+        injections = _build_filter_injections(
+            [filt], sheets, sheet_models, MODELS_DIR, filter_overrides=overrides
+        )
+        assert "sheet-chart_1" in injections
+        assert injections["sheet-chart_1"][0]["value"] == "APAC"
+
+    def test_override_null_skips_injection(self):
+        """A null override means 'unfiltered' — no injection emitted."""
+        from shelves.compose.dashboard import _build_filter_injections
+        from shelves.schema.layout_schema import FilterComponent
+
+        filt = FilterComponent(field="region", model="orders", mode="single", default="EMEA")
+        sheets = {"sheet-chart_1": "simple_bar.yaml"}
+        sheet_models = {"sheet-chart_1": "orders"}
+        overrides = {"orders.region": None}
+
+        injections = _build_filter_injections(
+            [filt], sheets, sheet_models, MODELS_DIR, filter_overrides=overrides
+        )
+        assert injections.get("sheet-chart_1", []) == []
+
+    def test_override_not_matching_uses_default(self):
+        """Overrides for unrelated fields don't affect other filters."""
+        from shelves.compose.dashboard import _build_filter_injections
+        from shelves.schema.layout_schema import FilterComponent
+
+        filt = FilterComponent(field="region", model="orders", mode="single", default="EMEA")
+        sheets = {"sheet-chart_1": "simple_bar.yaml"}
+        sheet_models = {"sheet-chart_1": "orders"}
+        overrides = {"orders.product": "Widget"}
+
+        injections = _build_filter_injections(
+            [filt], sheets, sheet_models, MODELS_DIR, filter_overrides=overrides
+        )
+        assert injections["sheet-chart_1"][0]["value"] == "EMEA"
+
+    def test_override_multi_mode_with_list(self):
+        """Multi-mode override with a list value injects oneOf."""
+        from shelves.compose.dashboard import _build_filter_injections
+        from shelves.schema.layout_schema import FilterComponent
+
+        filt = FilterComponent(field="region", model="orders", mode="multi", default=["US", "UK"])
+        sheets = {"sheet-chart_1": "simple_bar.yaml"}
+        sheet_models = {"sheet-chart_1": "orders"}
+        overrides = {"orders.region": ["DE", "FR"]}
+
+        injections = _build_filter_injections(
+            [filt], sheets, sheet_models, MODELS_DIR, filter_overrides=overrides
+        )
+        assert injections["sheet-chart_1"][0]["values"] == ["DE", "FR"]
+
+    def test_no_overrides_param_uses_default(self):
+        """When filter_overrides is None, behaviour is unchanged."""
+        from shelves.compose.dashboard import _build_filter_injections
+        from shelves.schema.layout_schema import FilterComponent
+
+        filt = FilterComponent(field="region", model="orders", mode="single", default="EMEA")
+        sheets = {"sheet-chart_1": "simple_bar.yaml"}
+        sheet_models = {"sheet-chart_1": "orders"}
+
+        injections = _build_filter_injections(
+            [filt], sheets, sheet_models, MODELS_DIR, filter_overrides=None
+        )
+        assert injections["sheet-chart_1"][0]["value"] == "EMEA"
+
+
+class TestFilterOverrideHeaderParsing:
+    """SHE-82: the Studio route parses X-Shelves-Filters header."""
+
+    def test_parse_valid_header(self):
+        from shelves.studio.routes.dashboard import _parse_filter_header
+
+        result = _parse_filter_header('{"orders.region": "APAC"}')
+        assert result == {"orders.region": "APAC"}
+
+    def test_parse_null_value_in_header(self):
+        from shelves.studio.routes.dashboard import _parse_filter_header
+
+        result = _parse_filter_header('{"orders.region": null}')
+        assert result == {"orders.region": None}
+
+    def test_parse_malformed_header_returns_none(self):
+        from shelves.studio.routes.dashboard import _parse_filter_header
+
+        result = _parse_filter_header("not json at all")
+        assert result is None
+
+    def test_parse_non_object_header_returns_none(self):
+        from shelves.studio.routes.dashboard import _parse_filter_header
+
+        result = _parse_filter_header("[1, 2, 3]")
+        assert result is None

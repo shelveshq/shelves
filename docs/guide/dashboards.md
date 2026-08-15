@@ -625,6 +625,7 @@ A dashboard-level filter bound to a semantic model field. Filters inject Vega-Li
 | `mode` | No | inferred | Filter interaction mode (see table below) |
 | `default` | No | `null` (unfiltered) | Default filter value |
 | `label` | No | field label | Display label for the filter widget |
+| `dropdown` | No | `true` | `single`/`multi` modes only: `true` = compact dropdown widget; `false` = top-aligned scrollable open list. Ignored for other modes. |
 | `width` | No | `auto` | Outer box width |
 | `height` | No | `auto` | Outer box height |
 | `padding` | No | `0` | Inner spacing |
@@ -641,6 +642,15 @@ A dashboard-level filter bound to a semantic model field. Filters inject Vega-Li
 | Temporal | `range`, `after`, `before` | Date range or boundary |
 
 **Mode inference:** when `mode` is omitted, it is inferred from the field type: dimensions default to `multi`, quantitative fields to `range`, and temporal fields to `range`.
+
+**Dimension widget style (`dropdown`):** for `single` and `multi` modes, the `dropdown` flag (default `true`) picks the widget — use it to keep filters inside a tight filter bar:
+
+| Mode | `dropdown: true` (default) | `dropdown: false` |
+|---|---|---|
+| `single` | Compact native `<select>` with an "All" option | Top-aligned, scrollable radio list (with "All") |
+| `multi` | Compact native `<select multiple>` listbox | Top-aligned, scrollable checkbox list (with "All") |
+
+Open lists (`dropdown: false`) are top-aligned and scroll **within their own box**, so a long option list stays contained instead of overflowing neighbouring components. Give the filter's container enough `height` for the list you want visible. The flag is ignored for `wildcard` and all quantitative/temporal modes.
 
 **Mode → operator mapping:** each mode maps to a chart-level filter operator used in the injected Vega-Lite transform:
 

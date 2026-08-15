@@ -50,6 +50,11 @@ async def compile_dashboard_yaml(request: Request) -> JSONResponse:
     if raw_header:
         overrides = _parse_override_header(raw_header)
 
+    filter_overrides: dict[str, object] | None = None
+    raw_filter_header = request.headers.get("x-shelves-filters")
+    if raw_filter_header:
+        filter_overrides = _parse_filter_header(raw_filter_header)
+
     result = await run_dashboard_pipeline(
         yaml_body,
         project_dir,
@@ -58,6 +63,7 @@ async def compile_dashboard_yaml(request: Request) -> JSONResponse:
         models_dir=models_dir,
         parameters_path=parameters_path,
         overrides=overrides,
+        filter_overrides=filter_overrides,
     )
     return JSONResponse(result)
 
@@ -70,6 +76,7 @@ async def run_dashboard_pipeline(
     models_dir: Path | None = None,
     parameters_path: Path | None = None,
     overrides: dict[str, str] | None = None,
+    filter_overrides: dict[str, object] | None = None,
 ) -> dict:
     """Run the dashboard compilation pipeline and return a result dict."""
     from shelves.diagnostics import capture_warnings
@@ -163,7 +170,13 @@ async def run_dashboard_pipeline(
     try:
         with capture_warnings(pre_warnings):
             filter_injections = (
-                _build_filter_injections(filters, sheets, sheet_models, effective_models_dir)
+                _build_filter_injections(
+                    filters,
+                    sheets,
+                    sheet_models,
+                    effective_models_dir,
+                    filter_overrides=filter_overrides,
+                )
                 if filters
                 else {}
             )
@@ -288,6 +301,26 @@ def _parse_override_header(raw: str) -> dict[str, str] | None:
         )
         return None
     return {str(k): str(v) for k, v in parsed.items()}
+
+
+def _parse_filter_header(raw: str) -> dict[str, object] | None:
+    """Parse X-Shelves-Filters header: ``{"model.field": value | null}``."""
+    import json as _json
+    import logging
+
+    logger = logging.getLogger("shelves.studio")
+    try:
+        parsed = _json.loads(raw)
+    except (ValueError, TypeError) as exc:
+        logger.warning("Malformed X-Shelves-Filters header (ignored): %s", exc)
+        return None
+    if not isinstance(parsed, dict):
+        logger.warning(
+            "X-Shelves-Filters header is not a JSON object (got %s, ignored)",
+            type(parsed).__name__,
+        )
+        return None
+    return dict(parsed)
 
 
 def build_component_tree(flat_root: Any) -> list[dict]:

@@ -666,7 +666,16 @@ def _infer_mode(filt: FilterComponent, models_dir: Path | str | None) -> str:
 
 
 def _infer_filter_widget(mode: str, filt: FilterComponent, models_dir: Path | str | None) -> str:
-    """Infer widget type from mode, with field-type awareness for range."""
+    """Infer widget type from mode, with field-type awareness for range.
+
+    For the dimension modes `single`/`multi`, the `dropdown` flag picks between a
+    compact dropdown widget (True, the default) and a top-aligned, scrollable
+    open list (False).
+    """
+    if mode == "single":
+        return "dropdown" if filt.dropdown else "single_list"
+    if mode == "multi":
+        return "multi_dropdown" if filt.dropdown else "multi_select"
     if mode == "range":
         from shelves.models.loader import load_model
         from shelves.models.schema import TemporalDimensionDefinition
@@ -717,22 +726,33 @@ def _build_filter_injections(
     sheets: dict[str, str],
     sheet_models: dict[str, str],
     models_dir: Path | str | None,
+    *,
+    filter_overrides: dict[str, Any] | None = None,
 ) -> dict[str, list[dict]]:
     """Build per-sheet filter injection dicts.
 
     Returns {sheet_dom_id: [ShelfFilter-shaped dicts]} for sheets that need
     extra filters injected before compilation.
+
+    ``filter_overrides`` maps ``"model.field"`` → value; when present for a
+    filter, the override replaces ``filt.default``.  A ``None`` override
+    means "unfiltered" — the filter is skipped (same as a null default).
     """
     injections: dict[str, list[dict]] = {}
+    overrides = filter_overrides or {}
 
     for filt in filters:
         mode = filt.mode if filt.mode is not None else _infer_mode(filt, models_dir)
         targets = _resolve_filter_targets(filt, sheets, sheet_models)
 
-        if filt.default is None:
+        override_key = f"{filt.model}.{filt.field}"
+        # .get() would swallow None overrides (None = unfiltered, not "use default")
+        value = overrides[override_key] if override_key in overrides else filt.default  # noqa: SIM401
+
+        if value is None:
             continue
 
-        shelf_filter = _build_shelf_filter_dict(mode, filt.field, filt.default)
+        shelf_filter = _build_shelf_filter_dict(mode, filt.field, value)
         for target in targets:
             injections.setdefault(target, []).append(shelf_filter)
 
@@ -1007,6 +1027,7 @@ def _build_filter_control_meta(
             targets=target_ids,
             default=filt.default,
             options=options,
+            dropdown=filt.dropdown,
         )
 
     return meta

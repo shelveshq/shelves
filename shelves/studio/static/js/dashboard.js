@@ -28,6 +28,11 @@ const paramOverrides = {};
 const PARAM_DEBOUNCE_MS = 300;
 let paramDebounceTimer = null;
 
+// SHE-82: filter overrides accumulated from filter control changes in the iframe.
+// Keyed by "model.field" → value (string | array | null). Cleared on file switch.
+const filterOverrides = {};
+let filterDebounceTimer = null;
+
 // ─── Rendered Signal (SHE-67) ─────────────────────────────
 // A dashboard result only means the HTML *string* exists — the iframe still
 // has to parse it, fetch Vega from the CDN, and render every sheet. The
@@ -88,6 +93,9 @@ export async function compileDashboardContent() {
     const headers = {};
     if (Object.keys(paramOverrides).length > 0) {
       headers['X-Shelves-Params'] = JSON.stringify(paramOverrides);
+    }
+    if (Object.keys(filterOverrides).length > 0) {
+      headers['X-Shelves-Filters'] = JSON.stringify(filterOverrides);
     }
     const resp = await fetch('/compile-dashboard', { method: 'POST', body: content, headers });
     if (seq !== compileSeq) return;
@@ -190,6 +198,9 @@ function clearParamOverrides() {
   for (const k of Object.keys(paramOverrides)) delete paramOverrides[k];
   clearTimeout(paramDebounceTimer);
   paramDebounceTimer = null;
+  for (const k of Object.keys(filterOverrides)) delete filterOverrides[k];
+  clearTimeout(filterDebounceTimer);
+  filterDebounceTimer = null;
 }
 
 // ─── Init ──────────────────────────────────────────────────
@@ -237,6 +248,17 @@ export function initDashboard() {
       paramOverrides[e.data.param] = String(e.data.value ?? '');
       clearTimeout(paramDebounceTimer);
       paramDebounceTimer = setTimeout(() => {
+        state.compiling = true;
+        updateStatusBar();
+        document.dispatchEvent(new CustomEvent('shelves:compile-start'));
+        compileDashboardContent();
+      }, PARAM_DEBOUNCE_MS);
+    }
+    if (e.data?.type === 'shelves:filter-change' && e.data.field) {
+      const key = (e.data.model || '') + '.' + e.data.field;
+      filterOverrides[key] = e.data.value;
+      clearTimeout(filterDebounceTimer);
+      filterDebounceTimer = setTimeout(() => {
         state.compiling = true;
         updateStatusBar();
         document.dispatchEvent(new CustomEvent('shelves:compile-start'));

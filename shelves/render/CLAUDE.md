@@ -15,6 +15,53 @@ intent, a browser-side vegaEmbed `patch` does placement.
   `load_label_patch_js()`.
 - `compound_fit.js` — browser-side sizer for **compound** Vega-Lite specs
   (`window.compoundFit`). See "Compound-spec sizing" below.
+- `control_render.js` — browser-side rendering for parameter and filter controls
+  (`window.controlRender`). See "Control rendering" below.
+
+## Control rendering (control_render.js)
+
+Shared renderer for both parameter (`data-type` absent) and filter
+(`data-type="filter"`) controls. Python emits placeholder divs with `data-*`
+attributes; JS builds interactive widgets or static value displays.
+
+**Dispatch:** `render()` selects `div[data-control]` and branches on `data-type`:
+- **Parameter** (default): reads `data-param`, wires `shelves:param-change` events.
+- **Filter**: reads `data-field`, `data-model`, `data-mode`, `data-operator`;
+  wires `shelves:filter-change` events. Filters add null/clear ("All") affordances
+  and debounced text input for wildcard mode.
+
+**Widget builders:** `buildDropdown`, `buildStepper`, `buildDateInput`,
+`buildTextInput` (shared), `buildMultiSelect` (filter-only: checkboxes + "All"
+toggle), `buildRangeStub` (placeholder for SHE-84).
+
+**Dimension `dropdown` flag (single/multi):** the compose layer picks the widget
+name from the filter's `dropdown` bool (default `true`), and the JS dispatches on
+it:
+- `single` → `dropdown` (`<select>`, dropdown:true) or `single_list`
+  (`buildSingleList`, radio list, dropdown:false).
+- `multi` → `multi_dropdown` (`buildNativeMultiSelect`, native `<select multiple>`,
+  dropdown:true) or `multi_select` (`buildMultiSelect`, checkbox list,
+  dropdown:false).
+
+Open lists (`single_list`, `multi_select`) use `LIST_WRAP_STYLE`/`LIST_BOX_STYLE`
+so the list flexes to fill the box height and scrolls internally (`flex:1 1 auto;
+min-height:0; overflow-y:auto`). This pairs with the filter node's inner div,
+which `layout_styles.resolve_inner_styles` gives `flex-direction:column;
+justify-content:flex-start; overflow:hidden` — so a long list scrolls **inside**
+its own box instead of bleeding over neighbours. A true collapsing multi-select
+dropdown (HTML has no native one — `<select multiple>` is always an open listbox)
+and wildcard typeahead are tracked as UI-widget upgrades (see the range-slider
+ticket, SHE-84).
+
+**Static value display:** When `!window.__SHELVES_INTERACTIVE__` (exported HTML),
+`buildStaticValue` renders label + text value — no `<select>`, `<input>`, or
+`disabled` attributes. Mode-specific formatting: multi → comma-joined labels or
+"All", wildcard → `contains "text"` or "All", range → `min – max`,
+at_least → `≥ value`, etc.
+
+**Event contract:**
+- `shelves:param-change`: `{ param, value }` (unchanged from SHE-92)
+- `shelves:filter-change`: `{ field, model, value, mode, operator }`
 
 ## Compound-spec sizing (compound_fit.js)
 

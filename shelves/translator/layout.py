@@ -625,10 +625,11 @@ def wrap_html_page(
     legend_block = f"  <script>\n{legend_js}\n  </script>\n" if legend_js else ""
     control_block = f"  <script>\n{control_js}\n  </script>\n" if control_js else ""
 
-    # SHE-92: emit CSS custom properties for control theming.
+    # SHE-92: emit CSS custom properties for control/filter theming.
     control_css = ""
     if has_controls:
         ct = theme.layout.control
+        ft = theme.layout.filter
         control_css = (
             f"\n    :root {{"
             f" --shelves-control-surface: {ct.surface};"
@@ -636,6 +637,11 @@ def wrap_html_page(
             f" --shelves-control-radius: {ct.radius}px;"
             f" --shelves-control-font-size: {ct.font_size}px;"
             f" --shelves-control-height: {ct.height}px;"
+            f" --shelves-filter-surface: {ft.surface};"
+            f" --shelves-filter-border: {ft.border};"
+            f" --shelves-filter-radius: {ft.radius}px;"
+            f" --shelves-filter-font-size: {ft.font_size}px;"
+            f" --shelves-filter-height: {ft.height}px;"
             f" }}"
         )
 

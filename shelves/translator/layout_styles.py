@@ -74,6 +74,7 @@ class FilterControlMeta:
     targets: list[str]
     default: Any = None
     options: Any = None
+    dropdown: bool = True
 
 
 @dataclass(frozen=True)
@@ -363,9 +364,18 @@ def resolve_inner_styles(
         css["display"] = "flex"
         css["flex-direction"] = "column"
         css["justify-content"] = "center"
-    elif isinstance(component, (ParameterComponent, FilterComponent)):
+    elif isinstance(component, ParameterComponent):
         css["display"] = "flex"
         css["align-items"] = "center"
+    elif isinstance(component, FilterComponent):
+        # A filter may render an open list taller than its box (dropdown:false);
+        # stack top-aligned and clip so the list scrolls inside its own div
+        # instead of bleeding over neighbouring components (the multi-select
+        # overflow bug).  Compact widgets (dropdown:true) simply sit at the top.
+        css["display"] = "flex"
+        css["flex-direction"] = "column"
+        css["justify-content"] = "flex-start"
+        css["overflow"] = "hidden"
     else:
         # Container/Image/Blank: clip child content at the content box.  The
         # outer wrapper dropped overflow when clipping moved to the inner div,
