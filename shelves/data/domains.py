@@ -41,7 +41,12 @@ MAX_DOMAIN_CARDINALITY = 500
 
 DOMAIN_CACHE_TTL: float = 60.0
 
-_domain_cache: dict[tuple[str, str, str, str], tuple[Domain, float]] = {}
+# Cached value carries the domain, the insert time, and any warnings emitted
+# while it was resolved (e.g. cardinality truncation). The warnings are re-emitted
+# on every cache hit — otherwise a condition that still holds (a >500-value field
+# truncated on the first compile) goes silent on the next recompile within the
+# TTL, and its Studio marker is cleared while the truncation is still in effect.
+_domain_cache: dict[tuple[str, str, str, str], tuple[Domain, float, tuple[str, ...]]] = {}
 
 
 def clear_domain_cache() -> None:
@@ -201,8 +206,11 @@ def resolve_field_domain(
     cache_key = (source_type, ref.model, ref.field, param_type)
     cached = _domain_cache.get(cache_key)
     if cached is not None:
-        domain, ts = cached
+        domain, ts, cached_warnings = cached
         if time.monotonic() - ts <= DOMAIN_CACHE_TTL:
+            # Re-emit warnings so a truncation notice survives across recompiles.
+            for msg in cached_warnings:
+                warnings.warn(msg, stacklevel=2)
             return domain
 
     resolver = ModelResolver(model)
@@ -242,6 +250,9 @@ def resolve_field_domain(
             else adapter.fetch_domain_bounds(model, ref.field, resolver)
         )
 
+    # Warnings emitted while resolving are cached with the domain so a later
+    # cache hit can replay them (see the cache-hit block above).
+    emitted_warnings: list[str] = []
     if kind == "values":
         assert isinstance(raw, list)
         values = sorted({_normalize(v, param_type, is_temporal) for v in raw if v is not None})
@@ -259,6 +270,7 @@ def resolve_field_domain(
                     source=source, count=len(values), limit=MAX_DOMAIN_CARDINALITY
                 )
             warnings.warn(msg, stacklevel=2)
+            emitted_warnings.append(msg)
             values = values[:MAX_DOMAIN_CARDINALITY]
             was_truncated = True
         else:
@@ -282,7 +294,7 @@ def resolve_field_domain(
             max=_normalize(high, param_type, is_temporal),
         )
 
-    _domain_cache[cache_key] = (domain, time.monotonic())
+    _domain_cache[cache_key] = (domain, time.monotonic(), tuple(emitted_warnings))
     return domain
 
 

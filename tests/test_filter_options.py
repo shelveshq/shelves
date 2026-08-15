@@ -286,6 +286,31 @@ class TestCardinalityGuard:
         assert len(options) == MAX_DOMAIN_CARDINALITY
         assert attrs["mode"] == "multi"
 
+    def test_truncation_warning_survives_cache_hit(self, tmp_path: Path):
+        """SHE-82 review, finding 7: the truncation warning is cached with the
+        domain and replayed on a cache hit, so a recompile within the TTL does
+        not silently drop the notice (which would clear its Studio marker while
+        the field is still over-cardinality)."""
+        from shelves.data.domains import resolve_field_domain
+        from shelves.params.schema import FieldRef
+
+        rows = [{"id": f"v{i:04d}"} for i in range(MAX_DOMAIN_CARDINALITY + 1)]
+        _write_inline_model(tmp_path, "gen", {"id": {"label": "Id"}}, rows)
+        clear_domain_cache()
+        ref = FieldRef(model="gen", field="id")
+
+        def _resolve_and_count() -> int:
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                resolve_field_domain(ref, "string", models_dir=tmp_path, data_base_dir=tmp_path)
+            return len([x for x in w if "distinct values" in str(x.message)])
+
+        # First call resolves from data and warns; subsequent calls hit the cache
+        # and must still warn.
+        assert _resolve_and_count() == 1  # resolved
+        assert _resolve_and_count() == 1  # cache hit — still warns
+        assert _resolve_and_count() == 1  # cache hit — still warns
+
     def test_500_values_no_warning(self, tmp_path: Path):
         rows = [{"id": f"v{i:04d}"} for i in range(MAX_DOMAIN_CARDINALITY)]
         _write_inline_model(tmp_path, "gen", {"id": {"label": "Id"}}, rows)

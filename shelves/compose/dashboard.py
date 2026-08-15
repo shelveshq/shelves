@@ -905,7 +905,7 @@ def _resolve_filter_options(
         )
         cached = _domain_cache.get(cache_key)
         if cached is not None:
-            domain, ts = cached
+            domain, ts, _cached_warnings = cached
             if time.monotonic() - ts <= DOMAIN_CACHE_TTL:
                 return [domain.min, domain.max], False
 
@@ -939,6 +939,7 @@ def _resolve_filter_options(
                 max=result[1],
             ),
             time.monotonic(),
+            (),  # measure-bounds resolution emits no cacheable warnings
         )
         return result, False
 
