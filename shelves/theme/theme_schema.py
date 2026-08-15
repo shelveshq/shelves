@@ -87,6 +87,7 @@ class ControlTokens(BaseModel):
     accent: str = "#4A90D9"
     font_size: int = 13
     height: int = 32
+    text: str = "#1a1a1a"
     focus_ring: str = "0 0 0 2px rgba(74, 144, 217, 0.3)"
 
 
@@ -97,6 +98,7 @@ class FilterTokens(BaseModel):
     accent: str = "#4A90D9"
     font_size: int = 13
     height: int = 32
+    text: str = "#1a1a1a"
     focus_ring: str = "0 0 0 2px rgba(74, 144, 217, 0.3)"
 
 
