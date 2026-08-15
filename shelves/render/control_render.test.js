@@ -229,6 +229,29 @@ test('buildNativeMultiSelect: renders <select multiple> with options', () => {
   assert.ok(!html.includes('selected'));
 });
 
+test('buildNativeMultiSelect: sizes the listbox to show multiple rows', () => {
+  // A one-row-tall fixed height clips its own options; the widget must request
+  // a few rows via `size` (clamped to [2, 6]) so it reads as a multi-select.
+  const two = cr.buildNativeMultiSelect({
+    field: 'x',
+    options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }, { value: 'c', label: 'C' }],
+    default: null,
+  });
+  assert.ok(two.includes('size="3"'));
+  // Fewer than 2 options still asks for 2 rows.
+  const one = cr.buildNativeMultiSelect({ field: 'x', options: [{ value: 'a', label: 'A' }], default: null });
+  assert.ok(one.includes('size="2"'));
+  // More than 6 clamps to 6.
+  const many = cr.buildNativeMultiSelect({
+    field: 'x',
+    options: Array.from({ length: 10 }, (_, i) => ({ value: String(i), label: String(i) })),
+    default: null,
+  });
+  assert.ok(many.includes('size="6"'));
+  // No fixed pixel height that would clip the rows.
+  assert.ok(!two.includes('height:var(--shelves'));
+});
+
 test('buildNativeMultiSelect: default array selects matching options', () => {
   const html = cr.buildNativeMultiSelect({
     field: 'category',

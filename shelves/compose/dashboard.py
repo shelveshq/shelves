@@ -975,9 +975,19 @@ def _build_filter_control_meta(
     sheet_models: dict[str, str],
     models_dir: Path | str | None,
     data_base_dir: Path | None = None,
+    *,
+    filter_overrides: dict[str, Any] | None = None,
 ) -> dict[str, FilterControlMeta]:
-    """Build FilterControlMeta for each filter control in the layout tree."""
+    """Build FilterControlMeta for each filter control in the layout tree.
+
+    ``filter_overrides`` maps ``"model.field"`` → value; when present for a
+    filter, the override replaces ``filt.default`` in the rendered widget so the
+    control shows the same value the injection applied (a recompile must not
+    reset the widget to the YAML default while the chart stays filtered).
+    """
     from shelves.models.loader import load_model
+
+    overrides = filter_overrides or {}
 
     filter_nodes = _discover_filters_with_dom_ids(flat_tree)
     if not filter_nodes:
@@ -1017,6 +1027,14 @@ def _build_filter_control_meta(
             options, truncated = None, False
         _validate_filter_default(filt, mode, options, truncated=truncated)
 
+        # The rendered widget follows the active override (if any), so a recompile
+        # keeps the control in sync with the value injected into the chart.
+        # .get() would swallow None overrides (None = unfiltered, not "use default").
+        override_key = f"{filt.model}.{filt.field}"
+        effective_default = (
+            overrides[override_key] if override_key in overrides else filt.default  # noqa: SIM401
+        )
+
         meta[dom_id] = FilterControlMeta(
             field=filt.field,
             model=filt.model,
@@ -1025,7 +1043,7 @@ def _build_filter_control_meta(
             widget=widget,
             title=title,
             targets=target_ids,
-            default=filt.default,
+            default=effective_default,
             options=options,
             dropdown=filt.dropdown,
         )

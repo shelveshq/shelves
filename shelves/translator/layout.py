@@ -640,6 +640,7 @@ def wrap_html_page(
             f" --shelves-filter-surface: {ft.surface};"
             f" --shelves-filter-border: {ft.border};"
             f" --shelves-filter-radius: {ft.radius}px;"
+            f" --shelves-filter-accent: {ft.accent};"
             f" --shelves-filter-font-size: {ft.font_size}px;"
             f" --shelves-filter-height: {ft.height}px;"
             f" }}"

@@ -187,6 +187,7 @@ async def run_dashboard_pipeline(
                     sheet_models,
                     effective_models_dir,
                     data_base_dir=project_dir,
+                    filter_overrides=filter_overrides,
                 )
                 if filters
                 else {}

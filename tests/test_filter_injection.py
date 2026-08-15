@@ -662,6 +662,64 @@ class TestFilterOverrides:
         assert injections["sheet-chart_1"][0]["value"] == "EMEA"
 
 
+class TestFilterOverrideWidgetSync:
+    """SHE-82: a recompile must keep the rendered widget in sync with the
+    injected value — the widget's `data-default` follows the override, not the
+    YAML default, or the control snaps back to "All" while the chart stays
+    filtered (and re-picking "All" fires no change event, wedging the filter)."""
+
+    @staticmethod
+    def _pipeline(yaml_body: str, filter_overrides: dict | None) -> str:
+        import asyncio
+
+        from shelves.studio.routes.dashboard import run_dashboard_pipeline
+
+        clear_domain_cache()
+        result = asyncio.run(
+            run_dashboard_pipeline(
+                yaml_body,
+                DATA_DIR.parent,
+                YAML_DIR,
+                None,
+                models_dir=MODELS_DIR,
+                filter_overrides=filter_overrides,
+            )
+        )
+        assert result["errors"] == [], result["errors"]
+        return result["html"]
+
+    _DASH = (
+        "dashboard: D\n"
+        "canvas: {width: 800, height: 600}\n"
+        "root:\n"
+        "  orientation: vertical\n"
+        "  contains:\n"
+        "    - filter: region\n"
+        "      model: orders\n"
+        "      mode: single\n"
+        "      height: 60\n"
+        "    - sheet: revenue_by_region.yaml\n"
+        "      name: chart_1\n"
+        "      height: '70%'\n"
+    )
+
+    def test_override_sets_widget_default(self):
+        html = self._pipeline(self._DASH, {"orders.region": "APAC"})
+        attrs = _parse_filter_div(html, "auto-1")
+        assert json.loads(attrs["default"]) == "APAC"
+
+    def test_no_override_leaves_widget_unfiltered(self):
+        html = self._pipeline(self._DASH, None)
+        attrs = _parse_filter_div(html, "auto-1")
+        # No YAML default and no override → the widget renders "All" (null default).
+        assert attrs.get("default") in (None, "null")
+
+    def test_null_override_clears_widget_default(self):
+        html = self._pipeline(self._DASH, {"orders.region": None})
+        attrs = _parse_filter_div(html, "auto-1")
+        assert attrs.get("default") in (None, "null")
+
+
 class TestFilterOverrideHeaderParsing:
     """SHE-82: the Studio route parses X-Shelves-Filters header."""
 

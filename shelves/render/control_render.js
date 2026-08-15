@@ -17,37 +17,54 @@
       .replace(/"/g, '&quot;');
   }
 
-  var LABEL_STYLE = 'font-size:var(--shelves-control-font-size,13px);' +
-    'font-weight:500;margin-bottom:4px;white-space:nowrap';
-  var INPUT_STYLE = 'font-size:var(--shelves-control-font-size,13px);' +
-    'height:var(--shelves-control-height,32px);' +
-    'border:1px solid var(--shelves-control-border,#e5e7eb);' +
-    'border-radius:var(--shelves-control-radius,4px);' +
-    'background:var(--shelves-control-surface,#ffffff);' +
-    'padding:0 8px;box-sizing:border-box;width:100%';
+  // Input-like widgets read the control token set by default, or the filter
+  // token set (`--shelves-filter-*`, from the `layout.filter` theme block) when
+  // the widget belongs to a filter control. `p` is the var-name prefix.
+  function _labelStyle(p) {
+    return 'font-size:var(--shelves-' + p + '-font-size,13px);' +
+      'font-weight:500;margin-bottom:4px;white-space:nowrap';
+  }
+  function _inputStyle(p) {
+    return 'font-size:var(--shelves-' + p + '-font-size,13px);' +
+      'height:var(--shelves-' + p + '-height,32px);' +
+      'border:1px solid var(--shelves-' + p + '-border,#e5e7eb);' +
+      'border-radius:var(--shelves-' + p + '-radius,4px);' +
+      'background:var(--shelves-' + p + '-surface,#ffffff);' +
+      'padding:0 8px;box-sizing:border-box;width:100%';
+  }
+  var LABEL_STYLE = _labelStyle('control');
+  var FILTER_LABEL_STYLE = _labelStyle('filter');
+  var INPUT_STYLE = _inputStyle('control');
+  var FILTER_INPUT_STYLE = _inputStyle('filter');
   var WRAP_STYLE = 'display:flex;flex-direction:column';
   // Open-list widgets (dropdown:false) fill the height their box gives them and
   // scroll internally, so a long option list stays contained instead of bleeding
-  // over neighbouring components.
+  // over neighbouring components. These are filter-only, so they read the filter
+  // token set.
   var LIST_WRAP_STYLE = 'display:flex;flex-direction:column;height:100%;min-height:0';
-  var LIST_BOX_STYLE = 'border:1px solid var(--shelves-control-border,#e5e7eb);' +
-    'border-radius:var(--shelves-control-radius,4px);' +
-    'background:var(--shelves-control-surface,#ffffff);' +
+  var LIST_BOX_STYLE = 'border:1px solid var(--shelves-filter-border,#e5e7eb);' +
+    'border-radius:var(--shelves-filter-radius,4px);' +
+    'background:var(--shelves-filter-surface,#ffffff);' +
     'padding:4px 8px;flex:1 1 auto;min-height:0;overflow-y:auto';
-  // Native <select multiple> as a compact, fixed-height scrollable listbox
-  // (dropdown:true for multi mode). One-row tall by default; scroll for more.
-  var NATIVE_MULTI_STYLE = 'font-size:var(--shelves-control-font-size,13px);' +
-    'height:var(--shelves-control-height,32px);' +
-    'border:1px solid var(--shelves-control-border,#e5e7eb);' +
-    'border-radius:var(--shelves-control-radius,4px);' +
-    'background:var(--shelves-control-surface,#ffffff);' +
-    'padding:2px 4px;box-sizing:border-box;width:100%;overflow-y:auto';
+  var LIST_ITEM_STYLE = 'display:block;padding:2px 0;font-size:var(--shelves-filter-font-size,13px)';
+  var LIST_ITEM_ALL_STYLE = LIST_ITEM_STYLE + ';font-weight:500';
+  // Native <select multiple> as a scrollable listbox (dropdown:true for multi
+  // mode). Height comes from the option `size` attribute (a few rows) — a
+  // one-row-tall fixed height clips its own options with no scroll affordance.
+  var NATIVE_MULTI_STYLE = 'font-size:var(--shelves-filter-font-size,13px);' +
+    'border:1px solid var(--shelves-filter-border,#e5e7eb);' +
+    'border-radius:var(--shelves-filter-radius,4px);' +
+    'background:var(--shelves-filter-surface,#ffffff);' +
+    'padding:2px 4px;box-sizing:border-box;width:100%;max-height:100%;overflow-y:auto';
   var STATIC_VALUE_STYLE = 'font-size:var(--shelves-control-font-size,13px);' +
     'color:var(--shelves-control-accent,#4A90D9)';
+  var FILTER_STATIC_VALUE_STYLE = 'font-size:var(--shelves-filter-font-size,13px);' +
+    'color:var(--shelves-filter-accent,#4A90D9)';
 
-  function titleMarkup(title) {
+  function titleMarkup(title, isFilter) {
     if (!title) return '';
-    return '<label style="' + LABEL_STYLE + '">' + escapeAttr(title) + '</label>';
+    var style = isFilter ? FILTER_LABEL_STYLE : LABEL_STYLE;
+    return '<label style="' + style + '">' + escapeAttr(title) + '</label>';
   }
 
   function _parseOptions(options) {
@@ -61,10 +78,11 @@
     opts = opts || {};
     var options = _parseOptions(opts.options);
     var isFilter = opts.type === 'filter';
+    var inputStyle = isFilter ? FILTER_INPUT_STYLE : INPUT_STYLE;
     var parts = [];
     parts.push('<div class="shelves-control" style="' + WRAP_STYLE + '">');
-    parts.push(titleMarkup(opts.title));
-    parts.push('<select data-param="' + escapeAttr(opts.param || opts.field) + '" style="' + INPUT_STYLE + '">');
+    parts.push(titleMarkup(opts.title, isFilter));
+    parts.push('<select data-param="' + escapeAttr(opts.param || opts.field) + '" style="' + inputStyle + '">');
     if (isFilter) {
       var allSel = (opts.default == null) ? ' selected' : '';
       parts.push('<option value=""' + allSel + '>All</option>');
@@ -82,12 +100,13 @@
 
   function buildStepper(opts) {
     opts = opts || {};
+    var isFilter = opts.type === 'filter';
     var parts = [];
     parts.push('<div class="shelves-control" style="' + WRAP_STYLE + '">');
-    parts.push(titleMarkup(opts.title));
+    parts.push(titleMarkup(opts.title, isFilter));
     parts.push('<input type="number"' +
       ' data-param="' + escapeAttr(opts.param || opts.field) + '"' +
-      ' style="' + INPUT_STYLE + '"' +
+      ' style="' + (isFilter ? FILTER_INPUT_STYLE : INPUT_STYLE) + '"' +
       ' value="' + escapeAttr(opts.default) + '"' +
       (opts.min != null ? ' min="' + escapeAttr(opts.min) + '"' : '') +
       (opts.max != null ? ' max="' + escapeAttr(opts.max) + '"' : '') +
@@ -99,12 +118,13 @@
 
   function buildDateInput(opts) {
     opts = opts || {};
+    var isFilter = opts.type === 'filter';
     var parts = [];
     parts.push('<div class="shelves-control" style="' + WRAP_STYLE + '">');
-    parts.push(titleMarkup(opts.title));
+    parts.push(titleMarkup(opts.title, isFilter));
     parts.push('<input type="date"' +
       ' data-param="' + escapeAttr(opts.param || opts.field) + '"' +
-      ' style="' + INPUT_STYLE + '"' +
+      ' style="' + (isFilter ? FILTER_INPUT_STYLE : INPUT_STYLE) + '"' +
       ' value="' + escapeAttr(opts.default) + '"' +
       (opts.min != null ? ' min="' + escapeAttr(opts.min) + '"' : '') +
       (opts.max != null ? ' max="' + escapeAttr(opts.max) + '"' : '') +
@@ -115,12 +135,13 @@
 
   function buildTextInput(opts) {
     opts = opts || {};
+    var isFilter = opts.type === 'filter';
     var parts = [];
     parts.push('<div class="shelves-control" style="' + WRAP_STYLE + '">');
-    parts.push(titleMarkup(opts.title));
+    parts.push(titleMarkup(opts.title, isFilter));
     parts.push('<input type="text"' +
       ' data-param="' + escapeAttr(opts.param || opts.field) + '"' +
-      ' style="' + INPUT_STYLE + '"' +
+      ' style="' + (isFilter ? FILTER_INPUT_STYLE : INPUT_STYLE) + '"' +
       ' value="' + escapeAttr(opts.default) + '"' +
       '>');
     parts.push('</div>');
@@ -139,15 +160,15 @@
 
     var parts = [];
     parts.push('<div class="shelves-control" style="' + LIST_WRAP_STYLE + '">');
-    parts.push(titleMarkup(opts.title));
+    parts.push(titleMarkup(opts.title, true));
     parts.push('<div class="shelves-multi-select" style="' + LIST_BOX_STYLE + '">');
     // All toggle
-    parts.push('<label style="display:block;padding:2px 0;font-size:var(--shelves-control-font-size,13px);font-weight:500">' +
+    parts.push('<label style="' + LIST_ITEM_ALL_STYLE + '">' +
       '<input type="checkbox" value="__all__"' + (allChecked ? ' checked' : '') + '> All</label>');
     for (var i = 0; i < options.length; i++) {
       var o = options[i];
       var checked = allChecked || (defaultArr && defaultArr.indexOf(String(o.value)) >= 0);
-      parts.push('<label style="display:block;padding:2px 0;font-size:var(--shelves-control-font-size,13px)">' +
+      parts.push('<label style="' + LIST_ITEM_STYLE + '">' +
         '<input type="checkbox" value="' + escapeAttr(o.value) + '"' + (checked ? ' checked' : '') + '> ' +
         escapeAttr(o.label) + '</label>');
     }
@@ -167,10 +188,13 @@
     }
     var defaultArr = Array.isArray(defaults) ? defaults.map(String) : null;
 
+    // Show a few rows so the listbox reads as a multi-select, not a clipped
+    // one-liner; scroll for the rest. Clamp to [2, 6].
+    var size = Math.min(Math.max(options.length, 2), 6);
     var parts = [];
     parts.push('<div class="shelves-control" style="' + WRAP_STYLE + '">');
-    parts.push(titleMarkup(opts.title));
-    parts.push('<select multiple data-param="' + escapeAttr(opts.param || opts.field) +
+    parts.push(titleMarkup(opts.title, true));
+    parts.push('<select multiple size="' + size + '" data-param="' + escapeAttr(opts.param || opts.field) +
       '" style="' + NATIVE_MULTI_STYLE + '">');
     for (var i = 0; i < options.length; i++) {
       var o = options[i];
@@ -193,15 +217,15 @@
 
     var parts = [];
     parts.push('<div class="shelves-control" style="' + LIST_WRAP_STYLE + '">');
-    parts.push(titleMarkup(opts.title));
+    parts.push(titleMarkup(opts.title, true));
     parts.push('<div class="shelves-single-list" style="' + LIST_BOX_STYLE + '">');
     var allChecked = (current == null) ? ' checked' : '';
-    parts.push('<label style="display:block;padding:2px 0;font-size:var(--shelves-control-font-size,13px);font-weight:500">' +
+    parts.push('<label style="' + LIST_ITEM_ALL_STYLE + '">' +
       '<input type="radio" name="' + name + '" value=""' + allChecked + '> All</label>');
     for (var i = 0; i < options.length; i++) {
       var o = options[i];
       var checked = (current != null && String(o.value) === String(current)) ? ' checked' : '';
-      parts.push('<label style="display:block;padding:2px 0;font-size:var(--shelves-control-font-size,13px)">' +
+      parts.push('<label style="' + LIST_ITEM_STYLE + '">' +
         '<input type="radio" name="' + name + '" value="' + escapeAttr(o.value) + '"' + checked + '> ' +
         escapeAttr(o.label) + '</label>');
     }
@@ -215,10 +239,10 @@
     var widget = opts.control || 'range';
     var parts = [];
     parts.push('<div class="shelves-control" style="' + WRAP_STYLE + '">');
-    parts.push(titleMarkup(opts.title));
+    parts.push(titleMarkup(opts.title, true));
     parts.push('<div style="' +
-      'font-size:var(--shelves-control-font-size,13px);' +
-      'color:var(--shelves-control-border,#9ca3af);' +
+      'font-size:var(--shelves-filter-font-size,13px);' +
+      'color:var(--shelves-filter-border,#9ca3af);' +
       'padding:6px 0">' + escapeAttr(widget) + ' widget — requires SHE-84</div>');
     parts.push('</div>');
     return parts.join('');
@@ -293,10 +317,12 @@
 
   function buildStaticValue(opts) {
     opts = opts || {};
+    var isFilter = opts.type === 'filter';
     var parts = [];
     parts.push('<div class="shelves-control" style="' + WRAP_STYLE + '">');
-    parts.push(titleMarkup(opts.title));
-    parts.push('<span style="' + STATIC_VALUE_STYLE + '">' + _formatStaticValue(opts) + '</span>');
+    parts.push(titleMarkup(opts.title, isFilter));
+    parts.push('<span style="' + (isFilter ? FILTER_STATIC_VALUE_STYLE : STATIC_VALUE_STYLE) + '">' +
+      _formatStaticValue(opts) + '</span>');
     parts.push('</div>');
     return parts.join('');
   }
@@ -388,11 +414,14 @@
     if (widget === 'multi_select') {
       var container = div.querySelector('.shelves-multi-select');
       if (!container) return;
-      container.addEventListener('change', function () {
+      container.addEventListener('change', function (e) {
         var allToggle = container.querySelector('input[value="__all__"]');
         var checkboxes = container.querySelectorAll('input[type="checkbox"]:not([value="__all__"])');
-        if (allToggle && allToggle.checked) {
-          Array.prototype.forEach.call(checkboxes, function (cb) { cb.checked = true; });
+        // Toggling "All" itself drives every box to match and means unfiltered.
+        // Toggling an individual box must NOT be overridden by "All" still being
+        // checked — otherwise the first narrowing click snaps straight back.
+        if (allToggle && e.target === allToggle) {
+          Array.prototype.forEach.call(checkboxes, function (cb) { cb.checked = allToggle.checked; });
           _postFilterChange(attrs, null);
           return;
         }
@@ -400,8 +429,10 @@
         Array.prototype.forEach.call(checkboxes, function (cb) {
           if (cb.checked) selected.push(cb.value);
         });
-        if (allToggle) allToggle.checked = false;
-        _postFilterChange(attrs, selected.length > 0 ? selected : null);
+        // Everything checked (or nothing) is equivalent to "All" → unfiltered.
+        var everyChecked = checkboxes.length > 0 && selected.length === checkboxes.length;
+        if (allToggle) allToggle.checked = everyChecked;
+        _postFilterChange(attrs, (everyChecked || selected.length === 0) ? null : selected);
       });
       return;
     }

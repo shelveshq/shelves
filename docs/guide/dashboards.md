@@ -598,9 +598,9 @@ An interactive widget for a declared parameter. The widget type is inferred from
 
 **Label precedence:** inline `label:` on the `parameter:` component > `label:` on the parameter declaration > parameter name.
 
-**Studio interactivity:** In Shelves Studio, changing a parameter widget recompiles the dashboard with the new value. In exported HTML (`shelves-render`), parameter widgets render as disabled read-only controls — parameters are compile-time and there is no server to recompile against.
+**Studio interactivity:** In Shelves Studio, changing a parameter widget recompiles the dashboard with the new value. In exported HTML (`shelves-render`), parameter widgets render as a **static value display** — the label plus the resolved value as read-only text, not a disabled input — because parameters are compile-time and there is no server to recompile against.
 
-**Theming:** the rendered widgets are styled via the `layout.control` theme block. This theming is shared with the upcoming `filter:` leaf type — both parameter and filter widgets use the same control styling tokens.
+**Theming:** parameter widgets are styled via the `layout.control` theme block. Filter widgets have their own `layout.filter` block (same token shape — `surface`, `border`, `radius`, `accent`, `font_size`, `height`), so a filter bar can be themed independently of parameter controls.
 
 The `parameter:` component must reference a declared parameter (from `parameters.yaml`). An unknown parameter name produces a build error, identical to an unresolved legend source.
 
@@ -676,6 +676,8 @@ Open lists (`dropdown: false`) are top-aligned and scroll **within their own box
 **Compile-time options resolution:** at compose time, filter option sets are resolved from the data layer — sorted distinct values for categorical modes (`multi`, `single`), `[min, max]` bounds for quantitative/temporal modes (`range`, `at_least`, `at_most`, `after`, `before`), and `null` for `wildcard` mode. Options are cached with the same 60-second TTL as parameter domains. If a field has more than 500 distinct values, the list is truncated to 500 and a warning is emitted. If resolution fails (e.g., missing data source), options fall back to `null` with a warning.
 
 **Placeholder rendering:** each filter emits an HTML placeholder `<div>` with `data-*` attributes (`data-field`, `data-model`, `data-mode`, `data-operator`, `data-targets`, `data-default`, `data-options`). Categorical modes emit `data-options` as a JSON array of `{value, label}` objects; bounds modes emit a `[min, max]` pair; wildcard mode emits `null`.
+
+**Studio interactivity:** In Shelves Studio, changing a filter widget recompiles the dashboard with the new value — the injected transform and the widget both follow the selection. In exported HTML (`shelves-render`), a filter renders as a **static value display** (label + the current selection as read-only text, e.g. `Region: EMEA, APAC` or `All`), matching the parameter behaviour — there is no server to recompile the filtered chart against.
 
 ### Blank (spacer)
 
