@@ -236,6 +236,22 @@ export function initDashboard() {
     awaitingRendered = true;
     awaitingRenderedPath = e.detail.path ?? state.currentFile?.path ?? null;
     renderDashboardPreview(lastDashboardResult);
+
+    // SHE-82 review, finding 8: a watcher broadcast (file save) recompiles from
+    // disk with no knowledge of the selections the user made in the preview, so
+    // it resets filters/params to their YAML defaults. If we're holding
+    // overrides, re-apply them with a local compile (which sends the override
+    // headers). Watcher results carry `path`; local results don't, so this
+    // cannot recurse.
+    const isWatcherResult = (e.detail.path ?? null) !== null;
+    const hasOverrides =
+      Object.keys(filterOverrides).length > 0 || Object.keys(paramOverrides).length > 0;
+    if (isWatcherResult && hasOverrides) {
+      state.compiling = true;
+      updateStatusBar();
+      document.dispatchEvent(new CustomEvent('shelves:compile-start'));
+      compileDashboardContent();
+    }
   });
 
   window.addEventListener('message', (e) => {
