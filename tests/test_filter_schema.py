@@ -258,6 +258,57 @@ class TestFilterValidation:
         )
         assert any("week" in e for e in errors)
 
+    # --- Duplicate (model, field, mode) uniqueness (SHE-82 review) ---
+
+    def test_duplicate_model_field_mode_rejected(self, _chart_dir: Path):
+        from shelves.compose.dashboard import _validate_filters
+        from shelves.schema.layout_schema import FilterComponent
+
+        filts = [
+            FilterComponent(field="region", model="orders", mode="single"),
+            FilterComponent(field="region", model="orders", mode="single"),
+        ]
+        errors = _validate_filters(
+            filts,
+            sheets={"chart_1": "revenue_by_region.yaml"},
+            charts_dir=_chart_dir,
+            models_dir=MODELS_DIR,
+        )
+        assert any("Duplicate filter" in e for e in errors)
+
+    def test_same_field_different_mode_allowed(self, _chart_dir: Path):
+        from shelves.compose.dashboard import _validate_filters
+        from shelves.schema.layout_schema import FilterComponent
+
+        filts = [
+            FilterComponent(field="region", model="orders", mode="single"),
+            FilterComponent(field="region", model="orders", mode="wildcard"),
+        ]
+        errors = _validate_filters(
+            filts,
+            sheets={"chart_1": "revenue_by_region.yaml"},
+            charts_dir=_chart_dir,
+            models_dir=MODELS_DIR,
+        )
+        assert not any("Duplicate filter" in e for e in errors)
+
+    def test_duplicate_inferred_mode_rejected(self, _chart_dir: Path):
+        """Two mode-less filters on one dimension both infer 'multi' → clash."""
+        from shelves.compose.dashboard import _validate_filters
+        from shelves.schema.layout_schema import FilterComponent
+
+        filts = [
+            FilterComponent(field="region", model="orders"),
+            FilterComponent(field="region", model="orders"),
+        ]
+        errors = _validate_filters(
+            filts,
+            sheets={"chart_1": "revenue_by_region.yaml"},
+            charts_dir=_chart_dir,
+            models_dir=MODELS_DIR,
+        )
+        assert any("Duplicate filter" in e for e in errors)
+
     # --- Model / field existence ---
 
     def test_nonexistent_model(self, _chart_dir: Path):

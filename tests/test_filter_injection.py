@@ -594,7 +594,7 @@ class TestFilterOverrides:
         filt = FilterComponent(field="region", model="orders", mode="single", default="EMEA")
         sheets = {"sheet-chart_1": "simple_bar.yaml"}
         sheet_models = {"sheet-chart_1": "orders"}
-        overrides = {"orders.region": "APAC"}
+        overrides = {"orders.region.single": "APAC"}
 
         injections = _build_filter_injections(
             [filt], sheets, sheet_models, MODELS_DIR, filter_overrides=overrides
@@ -610,7 +610,7 @@ class TestFilterOverrides:
         filt = FilterComponent(field="region", model="orders", mode="single", default="EMEA")
         sheets = {"sheet-chart_1": "simple_bar.yaml"}
         sheet_models = {"sheet-chart_1": "orders"}
-        overrides = {"orders.region": None}
+        overrides = {"orders.region.single": None}
 
         injections = _build_filter_injections(
             [filt], sheets, sheet_models, MODELS_DIR, filter_overrides=overrides
@@ -625,12 +625,31 @@ class TestFilterOverrides:
         filt = FilterComponent(field="region", model="orders", mode="single", default="EMEA")
         sheets = {"sheet-chart_1": "simple_bar.yaml"}
         sheet_models = {"sheet-chart_1": "orders"}
-        overrides = {"orders.product": "Widget"}
+        overrides = {"orders.product.single": "Widget"}
 
         injections = _build_filter_injections(
             [filt], sheets, sheet_models, MODELS_DIR, filter_overrides=overrides
         )
         assert injections["sheet-chart_1"][0]["value"] == "EMEA"
+
+    def test_override_same_field_different_mode_is_isolated(self):
+        """Two filters on one field but different modes get separate slots."""
+        from shelves.compose.dashboard import _build_filter_injections
+        from shelves.schema.layout_schema import FilterComponent
+
+        single = FilterComponent(field="region", model="orders", mode="single", default="EMEA")
+        wildcard = FilterComponent(field="region", model="orders", mode="wildcard", default=None)
+        sheets = {"sheet-chart_1": "simple_bar.yaml"}
+        sheet_models = {"sheet-chart_1": "orders"}
+        # Only the wildcard box is overridden; the single dropdown keeps its default.
+        overrides = {"orders.region.wildcard": "AP"}
+
+        injections = _build_filter_injections(
+            [single, wildcard], sheets, sheet_models, MODELS_DIR, filter_overrides=overrides
+        )
+        values = [f.get("value") for f in injections["sheet-chart_1"]]
+        assert "EMEA" in values  # single dropdown untouched
+        assert "AP" in values  # wildcard override applied
 
     def test_override_multi_mode_with_list(self):
         """Multi-mode override with a list value injects oneOf."""
@@ -640,7 +659,7 @@ class TestFilterOverrides:
         filt = FilterComponent(field="region", model="orders", mode="multi", default=["US", "UK"])
         sheets = {"sheet-chart_1": "simple_bar.yaml"}
         sheet_models = {"sheet-chart_1": "orders"}
-        overrides = {"orders.region": ["DE", "FR"]}
+        overrides = {"orders.region.multi": ["DE", "FR"]}
 
         injections = _build_filter_injections(
             [filt], sheets, sheet_models, MODELS_DIR, filter_overrides=overrides
@@ -704,7 +723,7 @@ class TestFilterOverrideWidgetSync:
     )
 
     def test_override_sets_widget_default(self):
-        html = self._pipeline(self._DASH, {"orders.region": "APAC"})
+        html = self._pipeline(self._DASH, {"orders.region.single": "APAC"})
         attrs = _parse_filter_div(html, "auto-1")
         assert json.loads(attrs["default"]) == "APAC"
 
@@ -715,7 +734,7 @@ class TestFilterOverrideWidgetSync:
         assert attrs.get("default") in (None, "null")
 
     def test_null_override_clears_widget_default(self):
-        html = self._pipeline(self._DASH, {"orders.region": None})
+        html = self._pipeline(self._DASH, {"orders.region.single": None})
         attrs = _parse_filter_div(html, "auto-1")
         assert attrs.get("default") in (None, "null")
 

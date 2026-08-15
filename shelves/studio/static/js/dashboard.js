@@ -255,7 +255,9 @@ export function initDashboard() {
       }, PARAM_DEBOUNCE_MS);
     }
     if (e.data?.type === 'shelves:filter-change' && e.data.field) {
-      const key = (e.data.model || '') + '.' + e.data.field;
+      // Key by model.field.mode — matches _filter_override_key on the server, so
+      // two filters on one field (different modes) don't share an override slot.
+      const key = (e.data.model || '') + '.' + e.data.field + '.' + (e.data.mode || '');
       filterOverrides[key] = e.data.value;
       clearTimeout(filterDebounceTimer);
       filterDebounceTimer = setTimeout(() => {

@@ -624,10 +624,42 @@ def _validate_filters(
                         f"'{sheet_models[target]}'."
                     )
 
+    # Each (model, field, mode) filter must be unique across the dashboard: the
+    # interactive override map is keyed by "model.field.mode", so two filters
+    # that resolve to the same triple would share one override slot and clobber
+    # each other on recompile (SHE-82 review, finding 2).
+    seen: set[tuple[str, str, str]] = set()
+    for filt in filters:
+        try:
+            resolved_mode = filt.mode if filt.mode is not None else _infer_mode(filt, models_dir)
+        except FileNotFoundError:
+            continue  # model-not-found is already reported above
+        key = (filt.model, filt.field, resolved_mode)
+        if key in seen:
+            errors.append(
+                f"Duplicate filter: model '{filt.model}', field '{filt.field}', "
+                f"mode '{resolved_mode}' appears more than once. Each "
+                f"model/field/mode filter must be unique within a dashboard "
+                f"(interactive overrides are keyed by that triple)."
+            )
+        else:
+            seen.add(key)
+
     return errors
 
 
 # ─── Filter Injection (SHE-80) ────────────────────────────────────────
+
+
+def _filter_override_key(model: str, field: str, mode: str) -> str:
+    """Key for the interactive filter-override map: ``"model.field.mode"``.
+
+    Includes the resolved mode so two filters on the same field but different
+    modes (e.g. a wildcard search box and a multi-select list) each get their
+    own override slot instead of clobbering one another (SHE-82 review).
+    """
+    return f"{model}.{field}.{mode}"
+
 
 _MODE_TO_OPERATOR: dict[str, str] = {
     "multi": "in",
@@ -745,7 +777,7 @@ def _build_filter_injections(
         mode = filt.mode if filt.mode is not None else _infer_mode(filt, models_dir)
         targets = _resolve_filter_targets(filt, sheets, sheet_models)
 
-        override_key = f"{filt.model}.{filt.field}"
+        override_key = _filter_override_key(filt.model, filt.field, mode)
         # .get() would swallow None overrides (None = unfiltered, not "use default")
         value = overrides[override_key] if override_key in overrides else filt.default  # noqa: SIM401
 
@@ -1030,7 +1062,7 @@ def _build_filter_control_meta(
         # The rendered widget follows the active override (if any), so a recompile
         # keeps the control in sync with the value injected into the chart.
         # .get() would swallow None overrides (None = unfiltered, not "use default").
-        override_key = f"{filt.model}.{filt.field}"
+        override_key = _filter_override_key(filt.model, filt.field, mode)
         effective_default = (
             overrides[override_key] if override_key in overrides else filt.default  # noqa: SIM401
         )
