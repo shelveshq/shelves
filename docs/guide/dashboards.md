@@ -203,6 +203,9 @@ The type key's value is always the component's **primary field**. Additional pro
 - parameter: status                      # parameter with label override
   label: "Order Status"
 
+- filter: region                         # interactive filter
+  model: orders
+
 - blank:                                 # empty spacer
 - blank:                                 # spacer with explicit size
   height: 16
@@ -219,6 +222,7 @@ The type key's value is always the component's **primary field**. Additional pro
 | `link` | display text | `link: "Details"` |
 | `legend` | source (chart path) | `legend: revenue.yaml` |
 | `parameter` | parameter name | `parameter: metric` |
+| `filter` | field name | `filter: region` |
 | `blank` | *(none)* | `blank:` |
 
 ---
@@ -594,11 +598,86 @@ An interactive widget for a declared parameter. The widget type is inferred from
 
 **Label precedence:** inline `label:` on the `parameter:` component > `label:` on the parameter declaration > parameter name.
 
-**Studio interactivity:** In Shelves Studio, changing a parameter widget recompiles the dashboard with the new value. In exported HTML (`shelves-render`), parameter widgets render as disabled read-only controls — parameters are compile-time and there is no server to recompile against.
+**Studio interactivity:** In Shelves Studio, changing a parameter widget recompiles the dashboard with the new value. In exported HTML (`shelves-render`), parameter widgets render as a **static value display** — the label plus the resolved value as read-only text, not a disabled input — because parameters are compile-time and there is no server to recompile against.
 
-**Theming:** the rendered widgets are styled via the `layout.control` theme block. This theming is shared with the upcoming `filter:` leaf type — both parameter and filter widgets use the same control styling tokens.
+**Theming:** parameter widgets are styled via the `layout.control` theme block. Filter widgets have their own `layout.filter` block (same token shape — `surface`, `border`, `radius`, `accent`, `font_size`, `height`), so a filter bar can be themed independently of parameter controls.
 
 The `parameter:` component must reference a declared parameter (from `parameters.yaml`). An unknown parameter name produces a build error, identical to an unresolved legend source.
+
+### Filter (interactive filter)
+
+A dashboard-level filter bound to a semantic model field. Filters inject Vega-Lite transforms into target sheets at compile time, filtering the data before it reaches the chart.
+
+```yaml
+- filter: region                     # field name from the model
+  model: orders                      # required: which semantic model
+  mode: multi                        # optional: filter interaction mode
+  targets: all                       # optional: which sheets to filter (default: all)
+  default: "EMEA"                    # optional: default filter value
+  label: "Region Filter"             # optional: display label
+```
+
+| Property | Required | Default | Description |
+|---|---|---|---|
+| *(value)* | Yes | — | `field`: the model field this filter controls |
+| `model` | Yes | — | Semantic model name (must match a model in the models directory) |
+| `targets` | No | `"all"` | `"all"` (every sheet using this model) or a list of sheet names |
+| `mode` | No | inferred | Filter interaction mode (see table below) |
+| `default` | No | `null` (unfiltered) | Default filter value |
+| `label` | No | field label | Display label for the filter widget |
+| `dropdown` | No | `true` | `single`/`multi` modes only: `true` = compact dropdown widget; `false` = top-aligned scrollable open list. Ignored for other modes. |
+| `width` | No | `auto` | Outer box width |
+| `height` | No | `auto` | Outer box height |
+| `padding` | No | `0` | Inner spacing |
+| `margin` | No | `0` | Outer spacing |
+| `style` | No | — | Reference to a shared style |
+| `html` | No | — | Raw CSS escape hatch |
+
+**Filter modes by field type:**
+
+| Field type | Valid modes | Description |
+|---|---|---|
+| Dimension (nominal/ordinal) | `multi`, `single`, `wildcard` | Select one or more categorical values |
+| Quantitative (measure) | `range`, `at_least`, `at_most` | Numeric range or threshold |
+| Temporal | `range`, `after`, `before` | Date range or boundary |
+
+**Mode inference:** when `mode` is omitted, it is inferred from the field type: dimensions default to `multi`, quantitative fields to `range`, and temporal fields to `range`.
+
+**Dimension widget style (`dropdown`):** for `single` and `multi` modes, the `dropdown` flag (default `true`) picks the widget — use it to keep filters inside a tight filter bar:
+
+| Mode | `dropdown: true` (default) | `dropdown: false` |
+|---|---|---|
+| `single` | Compact native `<select>` with an "All" option | Top-aligned, scrollable radio list (with "All") |
+| `multi` | Compact native `<select multiple>` listbox | Top-aligned, scrollable checkbox list (with "All") |
+
+Open lists (`dropdown: false`) are top-aligned and scroll **within their own box**, so a long option list stays contained instead of overflowing neighbouring components. Give the filter's container enough `height` for the list you want visible. The flag is ignored for `wildcard` and all quantitative/temporal modes.
+
+**Mode → operator mapping:** each mode maps to a chart-level filter operator used in the injected Vega-Lite transform:
+
+| Mode | Operator | Value field |
+|---|---|---|
+| `multi` | `in` | `values` (list) |
+| `single` | `eq` | `value` (scalar) |
+| `wildcard` | `contains` | `value` (string) |
+| `range` | `between` | `range` (2-element list) |
+| `at_least` | `gte` | `value` (number) |
+| `at_most` | `lte` | `value` (number) |
+| `after` | `gte` | `value` (date/string) |
+| `before` | `lte` | `value` (date/string) |
+
+**Compile-time behavior:**
+
+- **`default: null`** (or omitted): no filter transform is injected — the chart renders unfiltered. The filter placeholder is still emitted in the dashboard HTML for future client-side interactivity.
+- **`default:` with a value**: a `ShelfFilter` transform is injected into every target sheet before compilation, using the operator from the mode→operator table above. The filter coexists with any filters declared directly in the chart YAML — both are AND-ed together.
+- **`targets: all`** (default): the filter is injected into every sheet whose chart references the same model. **`targets:` with a list**: only the named sheets receive the injection.
+
+**Compose-time validation:** the dashboard build validates that the filter's model and field exist, that the mode is compatible with the field type, that target sheets exist, and that target sheets use the same model as the filter. Validation errors are reported at build time.
+
+**Compile-time options resolution:** at compose time, filter option sets are resolved from the data layer — sorted distinct values for categorical modes (`multi`, `single`), `[min, max]` bounds for quantitative/temporal modes (`range`, `at_least`, `at_most`, `after`, `before`), and `null` for `wildcard` mode. Options are cached with the same 60-second TTL as parameter domains. If a field has more than 500 distinct values, the list is truncated to 500 and a warning is emitted. If resolution fails (e.g., missing data source), options fall back to `null` with a warning.
+
+**Placeholder rendering:** each filter emits an HTML placeholder `<div>` with `data-*` attributes (`data-field`, `data-model`, `data-mode`, `data-operator`, `data-targets`, `data-default`, `data-options`). Categorical modes emit `data-options` as a JSON array of `{value, label}` objects; bounds modes emit a `[min, max]` pair; wildcard mode emits `null`.
+
+**Studio interactivity:** In Shelves Studio, changing a filter widget recompiles the dashboard with the new value — the injected transform and the widget both follow the selection. In exported HTML (`shelves-render`), a filter renders as a **static value display** (label + the current selection as read-only text, e.g. `Region: EMEA, APAC` or `All`), matching the parameter behaviour — there is no server to recompile the filtered chart against.
 
 ### Blank (spacer)
 
@@ -1105,4 +1184,4 @@ Key theme tokens used by dashboards:
 
 All preset values come from the theme — they are never hardcoded. This means your charts and dashboard chrome share a coherent visual identity from a single theme file.
 
-The `layout.control` block styles interactive widgets rendered by both `parameter:` and the upcoming `filter:` leaf types. Customize these tokens in your `theme.yaml` to match your brand:
+The `layout.control` block styles interactive widgets rendered by both `parameter:` and `filter:` leaf types. Customize these tokens in your `theme.yaml` to match your brand:

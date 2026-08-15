@@ -140,6 +140,7 @@ _FILTER_DISPATCH: dict[str, Callable[[str, ShelfFilter], list[dict[str, Any]]]] 
     "in": _cube_in,
     "not_in": _cube_not_in,
     "between": _cube_between,
+    "contains": _make_cube_value_handler("contains"),
 }
 
 

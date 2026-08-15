@@ -50,6 +50,11 @@ async def compile_dashboard_yaml(request: Request) -> JSONResponse:
     if raw_header:
         overrides = _parse_override_header(raw_header)
 
+    filter_overrides: dict[str, object] | None = None
+    raw_filter_header = request.headers.get("x-shelves-filters")
+    if raw_filter_header:
+        filter_overrides = _parse_filter_header(raw_filter_header)
+
     result = await run_dashboard_pipeline(
         yaml_body,
         project_dir,
@@ -58,6 +63,7 @@ async def compile_dashboard_yaml(request: Request) -> JSONResponse:
         models_dir=models_dir,
         parameters_path=parameters_path,
         overrides=overrides,
+        filter_overrides=filter_overrides,
     )
     return JSONResponse(result)
 
@@ -70,8 +76,10 @@ async def run_dashboard_pipeline(
     models_dir: Path | None = None,
     parameters_path: Path | None = None,
     overrides: dict[str, str] | None = None,
+    filter_overrides: dict[str, object] | None = None,
 ) -> dict:
     """Run the dashboard compilation pipeline and return a result dict."""
+    from shelves.diagnostics import capture_warnings
     from shelves.params.resolve import load_parameter_set
     from shelves.schema.layout_schema import parse_dashboard
     from shelves.theme.merge import load_theme
@@ -83,27 +91,40 @@ async def run_dashboard_pipeline(
     # halves of a compile can never read different model directories.
     effective_models_dir = models_dir if models_dir and models_dir.exists() else None
 
+    # Python warnings emitted BEFORE the per-sheet loop (parameter-domain
+    # truncation, unverifiable defaults, filter options that would not resolve)
+    # are invisible to Studio unless captured — the chart route and the watcher
+    # already wrap their equivalents. Collected here and prepended to the loop's
+    # own warnings so the payload stays chronological.
+    pre_warnings: list[str] = []
+
     # SHE-96: parameters must be loaded BEFORE parse_dashboard so ${name}
     # references in text components are substituted before model_validate.
     try:
-        parameters = load_parameter_set(
-            parameters_path,
-            models_dir=effective_models_dir,
-            data_base_dir=project_dir,
-            overrides=overrides,
-        )
+        with capture_warnings(pre_warnings):
+            parameters = load_parameter_set(
+                parameters_path,
+                models_dir=effective_models_dir,
+                data_base_dir=project_dir,
+                overrides=overrides,
+            )
     except ValueError as e:
         return {
             "html": None,
             "errors": [str(e)],
-            "warnings": [],
+            "warnings": pre_warnings,
             "component_tree": [],
         }
 
     try:
         spec = parse_dashboard(yaml_body, parameters=parameters)
     except Exception as e:
-        return {"html": None, "errors": [str(e)], "warnings": [], "component_tree": []}
+        return {
+            "html": None,
+            "errors": [str(e)],
+            "warnings": pre_warnings,
+            "component_tree": [],
+        }
 
     flat_root = flatten_dashboard(spec)
     component_tree = build_component_tree(flat_root)
@@ -111,13 +132,73 @@ async def run_dashboard_pipeline(
     # Discover sheets (name → link) — reuse the already-flattened tree.
     from shelves.compose.dashboard import (
         _build_control_meta,
+        _build_filter_control_meta,
+        _build_filter_injections,
         _discover_controls,
+        _discover_filters,
         _discover_sheets,
+        _get_sheet_models,
+        _validate_filters,
         compile_dashboard_charts,
         link_legends,
     )
 
     sheets = _discover_sheets(flat_root)
+
+    # SHE-79: validate filter declarations against models and sheets.
+    filters = _discover_filters(flat_root)
+    sheet_models = _get_sheet_models(sheets, charts_dir) if filters else {}
+    if filters:
+        filter_errors = _validate_filters(
+            filters,
+            sheets=sheets,
+            charts_dir=charts_dir,
+            models_dir=effective_models_dir,
+            sheet_models=sheet_models,
+        )
+        if filter_errors:
+            return {
+                "html": None,
+                "errors": filter_errors,
+                "warnings": pre_warnings,
+                "component_tree": component_tree,
+            }
+
+    # SHE-80: build filter injections and control metadata. Options resolution
+    # warns (unresolvable options, truncated domains, unchecked defaults)
+    # instead of raising, so capture or those notices never reach the client.
+    try:
+        with capture_warnings(pre_warnings):
+            filter_injections = (
+                _build_filter_injections(
+                    filters,
+                    sheets,
+                    sheet_models,
+                    effective_models_dir,
+                    filter_overrides=filter_overrides,
+                )
+                if filters
+                else {}
+            )
+            filter_control_meta = (
+                _build_filter_control_meta(
+                    flat_root,
+                    sheets,
+                    sheet_models,
+                    effective_models_dir,
+                    data_base_dir=project_dir,
+                    filter_overrides=filter_overrides,
+                )
+                if filters
+                else {}
+            )
+    except (TypeError, ValueError) as exc:
+        return {
+            "html": None,
+            "errors": [f"Filter injection failed: {exc}"],
+            "warnings": pre_warnings,
+            "component_tree": component_tree,
+        }
 
     # Load theme
     try:
@@ -142,7 +223,10 @@ async def run_dashboard_pipeline(
         fail_fast=False,
         restrict_links=True,
         parameters=parameters,
+        filter_injections=filter_injections,
     )
+    # Chronological: everything resolved before the per-sheet loop ran first.
+    warnings[:0] = pre_warnings
 
     # SHE-27: link legends to sheet scales + suppress in-sheet legends via the
     # shared helper (same path as compose_dashboard), routing the bad-source
@@ -183,6 +267,7 @@ async def run_dashboard_pipeline(
         flat_tree=flat_root,
         vega_src_base="/static/vendor",
         control_meta=control_meta,
+        filter_control_meta=filter_control_meta,
         interactive=True,
     )
 
@@ -217,6 +302,26 @@ def _parse_override_header(raw: str) -> dict[str, str] | None:
         )
         return None
     return {str(k): str(v) for k, v in parsed.items()}
+
+
+def _parse_filter_header(raw: str) -> dict[str, object] | None:
+    """Parse X-Shelves-Filters header: ``{"model.field": value | null}``."""
+    import json as _json
+    import logging
+
+    logger = logging.getLogger("shelves.studio")
+    try:
+        parsed = _json.loads(raw)
+    except (ValueError, TypeError) as exc:
+        logger.warning("Malformed X-Shelves-Filters header (ignored): %s", exc)
+        return None
+    if not isinstance(parsed, dict):
+        logger.warning(
+            "X-Shelves-Filters header is not a JSON object (got %s, ignored)",
+            type(parsed).__name__,
+        )
+        return None
+    return dict(parsed)
 
 
 def build_component_tree(flat_root: Any) -> list[dict]:

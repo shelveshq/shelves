@@ -198,7 +198,7 @@ class TestFilterSchemaInvalid:
                 _make_yaml("""
 filters:
   - field: country
-    operator: contains
+    operator: starts_with
     value: "US"
 """)
             )

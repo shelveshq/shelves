@@ -554,7 +554,7 @@ class TestStudioDashboardControls:
         assert result["errors"] == []
         html = result["html"]
         # Default value for metric is "revenue"
-        assert 'data-default="revenue"' in html
+        assert "data-default='&quot;revenue&quot;'" in html
 
         # Now recompile with an override
         overrides = {"metric": "cost"}
@@ -562,7 +562,7 @@ class TestStudioDashboardControls:
         assert result2["errors"] == [], result2["errors"]
         html2 = result2["html"]
         assert html2 is not None
-        assert 'data-default="cost"' in html2
+        assert "data-default='&quot;cost&quot;'" in html2
 
     def test_undeclared_parameter_returns_error(self):
         """A parameter referencing a non-existent parameter returns an error."""

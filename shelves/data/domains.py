@@ -12,6 +12,7 @@ import datetime as dt
 import json
 import re
 import time
+import warnings
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -40,19 +41,28 @@ MAX_DOMAIN_CARDINALITY = 500
 
 DOMAIN_CACHE_TTL: float = 60.0
 
-_domain_cache: dict[tuple[str, str, str, str], tuple[Domain, float]] = {}
+# Cached value carries the domain, the insert time, and any warnings emitted
+# while it was resolved (e.g. cardinality truncation). The warnings are re-emitted
+# on every cache hit — otherwise a condition that still holds (a >500-value field
+# truncated on the first compile) goes silent on the next recompile within the
+# TTL, and its Studio marker is cleared while the truncation is still in effect.
+_domain_cache: dict[tuple[str, str, str, str], tuple[Domain, float, tuple[str, ...]]] = {}
 
 
 def clear_domain_cache() -> None:
     _domain_cache.clear()
 
 
-_CARDINALITY_MESSAGE = (
-    "field {source!r} has {limit} or more distinct values — too many for a "
-    "parameter domain. List the values you want explicitly:\n"
-    "  values:\n"
-    "    - first\n"
-    "    - second"
+_CARDINALITY_WARNING = (
+    "field {source!r} has {count} distinct values — truncated to the first "
+    "{limit}. Consider mode: wildcard for free-text search, or a calculated "
+    "dimension that buckets the values."
+)
+
+_CARDINALITY_WARNING_APPROX = (
+    "field {source!r} has more than {limit} distinct values — truncated to the first "
+    "{limit}. Consider mode: wildcard for free-text search, or a calculated "
+    "dimension that buckets the values."
 )
 
 _EMPTY_MESSAGE = (
@@ -70,6 +80,7 @@ class Domain:
     values: list[Any] | None = None
     min: Any = None
     max: Any = None
+    truncated: bool = False
 
 
 _ISO_PREFIX_RE = re.compile(r"^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?")
@@ -195,8 +206,11 @@ def resolve_field_domain(
     cache_key = (source_type, ref.model, ref.field, param_type)
     cached = _domain_cache.get(cache_key)
     if cached is not None:
-        domain, ts = cached
+        domain, ts, cached_warnings = cached
         if time.monotonic() - ts <= DOMAIN_CACHE_TTL:
+            # Re-emit warnings so a truncation notice survives across recompiles.
+            for msg in cached_warnings:
+                warnings.warn(msg, stacklevel=2)
             return domain
 
     resolver = ModelResolver(model)
@@ -236,16 +250,38 @@ def resolve_field_domain(
             else adapter.fetch_domain_bounds(model, ref.field, resolver)
         )
 
+    # Warnings emitted while resolving are cached with the domain so a later
+    # cache hit can replay them (see the cache-hit block above).
+    emitted_warnings: list[str] = []
     if kind == "values":
         assert isinstance(raw, list)
         values = sorted({_normalize(v, param_type, is_temporal) for v in raw if v is not None})
         if not values:
             raise ParameterDomainError(_EMPTY_MESSAGE.format(source=source))
         if len(values) > MAX_DOMAIN_CARDINALITY:
-            raise ParameterDomainError(
-                _CARDINALITY_MESSAGE.format(source=source, limit=MAX_DOMAIN_CARDINALITY + 1)
-            )
-        domain = Domain(kind="values", param_type=param_type, source=source, values=values)
+            if len(values) == MAX_DOMAIN_CARDINALITY + 1 and not isinstance(
+                model.source, InlineSource
+            ):
+                msg = _CARDINALITY_WARNING_APPROX.format(
+                    source=source, limit=MAX_DOMAIN_CARDINALITY
+                )
+            else:
+                msg = _CARDINALITY_WARNING.format(
+                    source=source, count=len(values), limit=MAX_DOMAIN_CARDINALITY
+                )
+            warnings.warn(msg, stacklevel=2)
+            emitted_warnings.append(msg)
+            values = values[:MAX_DOMAIN_CARDINALITY]
+            was_truncated = True
+        else:
+            was_truncated = False
+        domain = Domain(
+            kind="values",
+            param_type=param_type,
+            source=source,
+            values=values,
+            truncated=was_truncated,
+        )
     else:
         low, high = raw
         if low is None or high is None:
@@ -258,7 +294,7 @@ def resolve_field_domain(
             max=_normalize(high, param_type, is_temporal),
         )
 
-    _domain_cache[cache_key] = (domain, time.monotonic())
+    _domain_cache[cache_key] = (domain, time.monotonic(), tuple(emitted_warnings))
     return domain
 
 
@@ -317,6 +353,17 @@ def check_value_in_domain(
     normalized = _normalize(value, domain.param_type, domain.param_type == "date")
 
     if domain.kind == "values":
+        if domain.truncated:
+            # A prefix cannot disprove membership, so accept — but say so, or a
+            # typo'd value silently resolves to nothing on a wide field.
+            if normalized not in (domain.values or []):
+                warnings.warn(
+                    f"parameters.{param_name}: {label} {_fmt(value)} was not checked "
+                    f"against {domain.source!r} — its domain was truncated at "
+                    f"{MAX_DOMAIN_CARDINALITY} values, so membership is unknown.",
+                    stacklevel=2,
+                )
+            return
         values = domain.values or []
         if normalized in values:
             return

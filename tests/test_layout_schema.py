@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from shelves.schema.layout_schema import (
     ButtonComponent,
     ContainerComponent,
+    FilterComponent,
     ImageComponent,
     LegendComponent,
     LinkComponent,
@@ -1130,3 +1131,181 @@ root:
         """SHE-97: the old `control:` key is an unknown type — no deprecation alias."""
         with pytest.raises((ValueError, KeyError)):
             resolve_child({"control": "metric"}, {})
+
+
+# ─── Filter Component (SHE-79) ────────────────────────────────────────
+
+
+class TestFilterComponent:
+    """SHE-79: filter leaf component — schema parse/resolve/defaults + errors."""
+
+    def test_filter_parses_with_defaults(self):
+        entry = {"filter": "region", "model": "orders"}
+        name, comp = resolve_child(entry, {})
+        assert name is None
+        assert isinstance(comp, FilterComponent)
+        assert comp.type == "filter"
+        assert comp.field == "region"
+        assert comp.model == "orders"
+        assert comp.targets == "all"
+        assert comp.mode is None
+        assert comp.default is None
+        assert comp.label is None
+
+    def test_filter_with_all_properties(self):
+        entry = {
+            "filter": "region",
+            "model": "orders",
+            "targets": ["sheet_a"],
+            "mode": "multi",
+            "default": "EMEA",
+            "label": "Region Filter",
+            "width": 200,
+            "height": 40,
+            "style": "card",
+        }
+        name, comp = resolve_child(entry, {})
+        assert name is None
+        assert isinstance(comp, FilterComponent)
+        assert comp.field == "region"
+        assert comp.model == "orders"
+        assert comp.targets == ["sheet_a"]
+        assert comp.mode == "multi"
+        assert comp.default == "EMEA"
+        assert comp.label == "Region Filter"
+        assert comp.width == 200
+        assert comp.height == 40
+        assert comp.style == "card"
+
+    def test_filter_in_dashboard_yaml(self):
+        spec = parse_dashboard(load_layout_yaml("filter_dashboard.yaml"))
+        assert spec.dashboard == "Filter Dashboard"
+        assert len(spec.root.contains) == 2
+
+    def test_filter_in_components_block(self):
+        yaml_str = """\
+dashboard: "Filter Component"
+canvas: { width: 1440, height: 900 }
+components:
+  region_filter:
+    filter: region
+    model: orders
+root:
+  orientation: vertical
+  contains:
+    - region_filter
+"""
+        spec = parse_dashboard(yaml_str)
+        assert spec.components is not None
+        comp = spec.components["region_filter"]
+        assert isinstance(comp, FilterComponent)
+        assert comp.field == "region"
+        assert comp.model == "orders"
+
+    def test_filter_coexists_with_parameter(self):
+        yaml_str = """\
+dashboard: "Filter + Parameter"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - parameter: metric
+    - filter: region
+      model: orders
+"""
+        spec = parse_dashboard(yaml_str)
+        assert len(spec.root.contains) == 2
+
+    def test_parameter_controls_parse_unchanged(self):
+        spec = parse_dashboard(load_layout_yaml("control_dashboard.yaml"))
+        assert len(spec.root.contains) == 2
+
+    # --- Edge cases ---
+
+    def test_targets_all_explicit(self):
+        entry = {"filter": "region", "model": "orders", "targets": "all"}
+        _, comp = resolve_child(entry, {})
+        assert isinstance(comp, FilterComponent)
+        assert comp.targets == "all"
+
+    def test_targets_list(self):
+        entry = {"filter": "region", "model": "orders", "targets": ["sheet_a"]}
+        _, comp = resolve_child(entry, {})
+        assert isinstance(comp, FilterComponent)
+        assert comp.targets == ["sheet_a"]
+
+    def test_default_null_explicit(self):
+        entry = {"filter": "region", "model": "orders", "default": None}
+        _, comp = resolve_child(entry, {})
+        assert isinstance(comp, FilterComponent)
+        assert comp.default is None
+
+    def test_default_with_value(self):
+        entry = {"filter": "region", "model": "orders", "default": "EMEA"}
+        _, comp = resolve_child(entry, {})
+        assert isinstance(comp, FilterComponent)
+        assert comp.default == "EMEA"
+
+    def test_filter_with_name(self):
+        entry = {"filter": "region", "model": "orders", "name": "my_filter"}
+        name, comp = resolve_child(entry, {})
+        assert name == "my_filter"
+        assert isinstance(comp, FilterComponent)
+
+    def test_filter_with_html(self):
+        entry = {"filter": "region", "model": "orders", "html": "border: 1px solid red;"}
+        _, comp = resolve_child(entry, {})
+        assert comp.html == "border: 1px solid red;"
+
+    def test_mode_null_explicit(self):
+        entry = {"filter": "region", "model": "orders", "mode": None}
+        _, comp = resolve_child(entry, {})
+        assert isinstance(comp, FilterComponent)
+        assert comp.mode is None
+
+    # --- Error cases ---
+
+    def test_filter_missing_model_raises(self):
+        with pytest.raises(ValidationError, match="model"):
+            resolve_child({"filter": "region"}, {})
+
+    def test_filter_empty_field_raises(self):
+        with pytest.raises(ValidationError):
+            resolve_child({"filter": "", "model": "orders"}, {})
+
+    def test_filter_empty_model_raises(self):
+        with pytest.raises(ValidationError):
+            resolve_child({"filter": "region", "model": ""}, {})
+
+    def test_filter_with_contains_raises(self):
+        yaml_str = """\
+dashboard: "Filter Contains"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - filter: region
+      model: orders
+      contains:
+        - blank:
+"""
+        with pytest.raises(ValueError):
+            parse_dashboard(yaml_str)
+
+    def test_filter_invalid_mode_raises(self):
+        with pytest.raises(ValidationError):
+            resolve_child({"filter": "region", "model": "orders", "mode": "rnge"}, {})
+
+    def test_filter_undefined_style_raises(self):
+        yaml_str = """\
+dashboard: "Bad Filter Style"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - filter: region
+      model: orders
+      style: nonexistent
+"""
+        with pytest.raises((ValueError, KeyError)):
+            parse_dashboard(yaml_str)

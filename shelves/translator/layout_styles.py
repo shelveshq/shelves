@@ -9,11 +9,12 @@ Resolves the style cascade for layout DSL components:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 from shelves.schema.layout_schema import (
     ButtonComponent,
     Component,
+    FilterComponent,
     LinkComponent,
     ParameterComponent,
     RootComponent,
@@ -61,6 +62,22 @@ class ControlMeta:
 
 
 @dataclass(frozen=True)
+class FilterControlMeta:
+    """Compose-time metadata for a filter control, consumed by the translator."""
+
+    field: str
+    model: str
+    mode: str
+    operator: str
+    widget: str
+    title: str
+    targets: list[str]
+    default: Any = None
+    options: Any = None
+    dropdown: bool = True
+
+
+@dataclass(frozen=True)
 class LegendLink:
     """Resolved binding from a legend element to its sheet's encoding (SHE-10/11).
 
@@ -98,6 +115,8 @@ class RenderContext:
     legend_links: dict[tuple[str, str], LegendLink] = field(default_factory=dict)
     # SHE-92: dom_id -> ControlMeta for each control component.
     control_meta: dict[str, ControlMeta] = field(default_factory=dict)
+    # SHE-80: dom_id -> FilterControlMeta for each filter component.
+    filter_control_meta: dict[str, FilterControlMeta] = field(default_factory=dict)
 
 
 # ─── CSS Helpers ─────────────────────────────────────────────────
@@ -348,6 +367,15 @@ def resolve_inner_styles(
     elif isinstance(component, ParameterComponent):
         css["display"] = "flex"
         css["align-items"] = "center"
+    elif isinstance(component, FilterComponent):
+        # A filter may render an open list taller than its box (dropdown:false);
+        # stack top-aligned and clip so the list scrolls inside its own div
+        # instead of bleeding over neighbouring components (the multi-select
+        # overflow bug).  Compact widgets (dropdown:true) simply sit at the top.
+        css["display"] = "flex"
+        css["flex-direction"] = "column"
+        css["justify-content"] = "flex-start"
+        css["overflow"] = "hidden"
     else:
         # Container/Image/Blank: clip child content at the content box.  The
         # outer wrapper dropped overflow when clipping moved to the inner div,

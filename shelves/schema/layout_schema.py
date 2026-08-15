@@ -75,7 +75,17 @@ class Canvas(BaseModel):
 
 # ─── Type Constants ───────────────────────────────────────────────
 
-KNOWN_LEAF_TYPES = {"sheet", "text", "image", "button", "link", "blank", "legend", "parameter"}
+KNOWN_LEAF_TYPES = {
+    "sheet",
+    "text",
+    "image",
+    "button",
+    "link",
+    "blank",
+    "legend",
+    "parameter",
+    "filter",
+}
 KNOWN_CONTAINER_TYPES = {"horizontal", "vertical"}
 KNOWN_TYPES = KNOWN_LEAF_TYPES | KNOWN_CONTAINER_TYPES
 
@@ -197,6 +207,39 @@ class ParameterComponent(BaseModel):
     html: str | None = None
 
 
+FilterMode = Literal[
+    "multi",
+    "single",
+    "wildcard",
+    "range",
+    "at_least",
+    "at_most",
+    "after",
+    "before",
+]
+
+
+class FilterComponent(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    type: Literal["filter"] = "filter"
+    field: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    targets: list[str] | Literal["all"] = "all"
+    mode: FilterMode | None = None
+    default: Any = None
+    label: str | None = None
+    # For `single`/`multi` (dimension) modes only: True (default) renders a
+    # compact dropdown widget; False renders a top-aligned, scrollable open
+    # list. Ignored for other modes. (SHE-8x)
+    dropdown: bool = True
+    width: SizeValue = None
+    height: SizeValue = None
+    margin: int | str | None = None
+    padding: int | str | None = None
+    style: str | None = None
+    html: str | None = None
+
+
 class ContainerComponent(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: Literal["horizontal", "vertical"]
@@ -247,6 +290,7 @@ Component = (
     | BlankComponent
     | LegendComponent
     | ParameterComponent
+    | FilterComponent
 )
 
 
@@ -262,6 +306,7 @@ _LEAF_BUILDERS: dict[str, tuple[type, str]] = {
     "blank": (BlankComponent, ""),  # blank has no primary field
     "legend": (LegendComponent, "source"),
     "parameter": (ParameterComponent, "param"),
+    "filter": (FilterComponent, "field"),
 }
 
 

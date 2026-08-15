@@ -1,0 +1,19 @@
+dashboard: "Filter Dashboard"
+canvas: { width: 1440, height: 900 }
+
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        gap: 16
+        height: 48
+        contains:
+          - filter: region
+            model: orders
+          - filter: product
+            model: orders
+            mode: multi
+            label: "Product Filter"
+    - sheet: revenue_by_region.yaml
+      name: chart_1
+      height: "80%"

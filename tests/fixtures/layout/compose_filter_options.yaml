@@ -1,0 +1,19 @@
+dashboard: "Filter Options Resolution"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - horizontal:
+        gap: 16
+        contains:
+          - filter: country
+            model: orders
+            mode: multi
+            height: 48
+          - filter: region
+            model: orders
+            mode: single
+            default: "EMEA"
+            height: 48
+    - sheet: simple_bar.yaml
+      name: chart_1

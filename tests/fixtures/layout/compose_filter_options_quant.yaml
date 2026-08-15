@@ -1,0 +1,11 @@
+dashboard: "Filter Options Quantitative"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - filter: revenue
+      model: orders
+      mode: range
+      height: 48
+    - sheet: simple_bar.yaml
+      name: chart_1

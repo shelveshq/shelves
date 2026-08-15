@@ -490,7 +490,7 @@ class TestParameterCompose:
             overrides={"metric": "cost"},
         )
         html = _compose("control_dashboard.yaml", parameters=parameters)
-        assert 'data-default="cost"' in html
+        assert "data-default='&quot;cost&quot;'" in html
 
     def test_compose_parameter_undeclared_param_raises(self):
         yaml_str = """\

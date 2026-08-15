@@ -19,6 +19,7 @@ from shelves.schema.layout_schema import (
     Component,
     ContainerComponent,
     DashboardSpec,
+    FilterComponent,
     LegendComponent,
     ParameterComponent,
     RootComponent,
@@ -141,9 +142,10 @@ def _assign_dom_ids(root: FlatNode) -> None:
     sheet_counter = 0
     legend_counter = 0
     control_counter = 0
+    filter_counter = 0
 
     def walk(node: FlatNode) -> None:
-        nonlocal sheet_counter, legend_counter, control_counter
+        nonlocal sheet_counter, legend_counter, control_counter, filter_counter
         comp = node.component
         if isinstance(comp, SheetComponent):
             if node.name is not None:
@@ -163,6 +165,12 @@ def _assign_dom_ids(root: FlatNode) -> None:
             else:
                 control_counter += 1
                 node.dom_id = f"auto-{control_counter}"
+        elif isinstance(comp, FilterComponent):
+            if node.name is not None:
+                node.dom_id = node.name
+            else:
+                filter_counter += 1
+                node.dom_id = f"auto-{filter_counter}"
         for child in node.children:
             walk(child)
 

@@ -90,6 +90,16 @@ class ControlTokens(BaseModel):
     focus_ring: str = "0 0 0 2px rgba(74, 144, 217, 0.3)"
 
 
+class FilterTokens(BaseModel):
+    surface: str = "#ffffff"
+    border: str = "#e5e7eb"
+    radius: int = 4
+    accent: str = "#4A90D9"
+    font_size: int = 13
+    height: int = 32
+    focus_ring: str = "0 0 0 2px rgba(74, 144, 217, 0.3)"
+
+
 class LayoutTheme(BaseModel):
     text: LayoutTextColors = Field(default_factory=LayoutTextColors)
     font: LayoutFont = Field(default_factory=LayoutFont)
@@ -98,6 +108,7 @@ class LayoutTheme(BaseModel):
     border: str = "#e5e7eb"
     presets: dict[str, TextPreset] = Field(default_factory=dict)
     control: ControlTokens = Field(default_factory=ControlTokens)
+    filter: FilterTokens = Field(default_factory=FilterTokens)
 
 
 class ThemeSpec(BaseModel):

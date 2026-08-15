@@ -311,6 +311,18 @@ def _sql_between(col: str, f: ShelfFilter) -> str:
     return f"{col} BETWEEN {_quote_value(f.range[0])} AND {_quote_value(f.range[1])}"
 
 
+def _sql_contains(col: str, f: ShelfFilter) -> str:
+    assert f.value is not None
+    escaped = (
+        str(f.value)
+        .replace("'", "''")
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+    return f"LOWER(CAST({col} AS VARCHAR)) LIKE LOWER('%{escaped}%') ESCAPE '\\'"
+
+
 _FILTER_DISPATCH: dict[str, Callable[[str, ShelfFilter], str]] = {
     "eq": _make_comparison_handler("="),
     "neq": _make_comparison_handler("!="),
@@ -321,6 +333,7 @@ _FILTER_DISPATCH: dict[str, Callable[[str, ShelfFilter], str]] = {
     "in": _sql_in,
     "not_in": _sql_not_in,
     "between": _sql_between,
+    "contains": _sql_contains,
 }
 
 

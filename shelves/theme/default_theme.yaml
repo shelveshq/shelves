@@ -110,6 +110,14 @@ layout:
     font_size: 13
     height: 32
     focus_ring: "0 0 0 2px rgba(74, 144, 217, 0.3)"
+  filter:
+    surface: "#ffffff"
+    border: "#e5e7eb"
+    radius: 4
+    accent: "#4A90D9"
+    font_size: 13
+    height: 32
+    focus_ring: "0 0 0 2px rgba(74, 144, 217, 0.3)"
   presets:
     title:
       font_size: 24
