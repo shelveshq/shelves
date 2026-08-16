@@ -165,10 +165,101 @@ class TestTemporalFilterOptions:
 
 
 class TestWildcardFilterOptions:
-    def test_wildcard_mode_options_null(self):
+    def test_wildcard_mode_resolves_string_domain(self):
+        """SHE-103: wildcard resolves the field's distinct string domain (the
+        same top-matches list single/multi produce) to feed the typeahead."""
         html = _compose("compose_filter_options_wildcard.yaml")
         attrs = _parse_filter_div(html, "auto-1")
-        assert attrs.get("options") == "null"
+        assert attrs.get("options") is not None
+        options = json.loads(attrs["options"])
+        values = [o["value"] for o in options]
+        assert values == ["DE", "FR", "JP", "UK", "US"]
+        for o in options:
+            assert o["value"] == o["label"]
+
+    def test_wildcard_high_cardinality_truncates_no_raise(self, tmp_path: Path):
+        """SHE-103: a wildcard field is high-cardinality by nature, so its
+        option list is the truncated sorted prefix — that is fine for a
+        top-matches typeahead and must not raise. The truncation warning still
+        flows (shared string-domain cache with single/multi)."""
+        rows = [{"id": f"v{i:04d}"} for i in range(MAX_DOMAIN_CARDINALITY + 1)]
+        _write_inline_model(tmp_path, "gen", {"id": {"label": "Id"}}, rows)
+        _write_chart(tmp_path, "chart.yaml", "gen")
+        _write_dashboard(
+            tmp_path,
+            "dash.yaml",
+            {
+                "dashboard": "Wildcard Cardinality",
+                "canvas": {"width": 800, "height": 600},
+                "root": {
+                    "orientation": "vertical",
+                    "contains": [
+                        {"filter": "id", "model": "gen", "mode": "wildcard", "height": 48},
+                        {"sheet": "chart.yaml", "name": "s1"},
+                    ],
+                },
+            },
+        )
+        clear_domain_cache()
+        from shelves.compose.dashboard import compose_dashboard
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            html = compose_dashboard(
+                dashboard_path=tmp_path / "dash.yaml",
+                chart_base_dir=tmp_path,
+                data_dir=tmp_path,
+                models_dir=tmp_path,
+            )
+
+        cardinality_warnings = [x for x in w if "distinct values" in str(x.message)]
+        assert len(cardinality_warnings) >= 1
+
+        attrs = _parse_filter_div(html, "auto-1")
+        assert attrs["mode"] == "wildcard"
+        options = json.loads(attrs["options"])
+        assert len(options) == MAX_DOMAIN_CARDINALITY
+
+    def test_wildcard_free_text_default_not_validated(self, tmp_path: Path):
+        """SHE-103: a wildcard default is a free-text `contains` substring, not a
+        domain member, so it is never rejected for being outside the domain."""
+        rows = [{"id": "alpha"}, {"id": "beta"}, {"id": "gamma"}]
+        _write_inline_model(tmp_path, "gen", {"id": {"label": "Id"}}, rows)
+        _write_chart(tmp_path, "chart.yaml", "gen")
+        _write_dashboard(
+            tmp_path,
+            "dash.yaml",
+            {
+                "dashboard": "Wildcard Default",
+                "canvas": {"width": 800, "height": 600},
+                "root": {
+                    "orientation": "vertical",
+                    "contains": [
+                        {
+                            "filter": "id",
+                            "model": "gen",
+                            "mode": "wildcard",
+                            "default": "lph",
+                            "height": 48,
+                        },
+                        {"sheet": "chart.yaml", "name": "s1"},
+                    ],
+                },
+            },
+        )
+        clear_domain_cache()
+        from shelves.compose.dashboard import compose_dashboard
+
+        # "lph" is not a distinct value but is a valid contains substring — no raise.
+        html = compose_dashboard(
+            dashboard_path=tmp_path / "dash.yaml",
+            chart_base_dir=tmp_path,
+            data_dir=tmp_path,
+            models_dir=tmp_path,
+        )
+        attrs = _parse_filter_div(html, "auto-1")
+        assert attrs["mode"] == "wildcard"
+        assert json.loads(attrs["default"]) == "lph"
 
 
 # ─── Part 2: Adapter Parity ─────────────────────────────────────────
@@ -237,6 +328,72 @@ class TestAdapterParity:
         )
         duckdb_attrs = _parse_filter_div(html_duckdb, "auto-1")
         duckdb_options = json.loads(duckdb_attrs["options"])
+
+        assert inline_options == duckdb_options
+        assert [o["value"] for o in inline_options] == ["a", "b", "c"]
+
+    def test_wildcard_inline_and_duckdb_yield_identical_options(self, tmp_path: Path):
+        """SHE-103: wildcard rides the same string-domain path as multi, so its
+        resolved option list is identical across inline and DuckDB backends."""
+        rows = [{"id": "b"}, {"id": "a"}, {"id": "c"}, {"id": "b"}]
+        _write_inline_model(tmp_path, "gen", {"id": {"label": "Id"}}, rows)
+        _write_chart(tmp_path, "chart.yaml", "gen")
+        _write_dashboard(
+            tmp_path,
+            "dash.yaml",
+            {
+                "dashboard": "Wildcard Parity",
+                "canvas": {"width": 800, "height": 600},
+                "root": {
+                    "orientation": "vertical",
+                    "contains": [
+                        {"filter": "id", "model": "gen", "mode": "wildcard", "height": 48},
+                        {"sheet": "chart.yaml", "name": "s1"},
+                    ],
+                },
+            },
+        )
+        clear_domain_cache()
+        from shelves.compose.dashboard import compose_dashboard
+
+        html_inline = compose_dashboard(
+            dashboard_path=tmp_path / "dash.yaml",
+            chart_base_dir=tmp_path,
+            data_dir=tmp_path,
+            models_dir=tmp_path,
+        )
+        inline_options = json.loads(_parse_filter_div(html_inline, "auto-1")["options"])
+
+        _write_file_model(
+            tmp_path,
+            "genf",
+            {"id": {"column": "id", "label": "Id"}},
+            "id,m\na,1\nb,2\nc,3\nb,4\n",
+        )
+        _write_chart(tmp_path, "chartf.yaml", "genf")
+        _write_dashboard(
+            tmp_path,
+            "dashf.yaml",
+            {
+                "dashboard": "Wildcard Parity File",
+                "canvas": {"width": 800, "height": 600},
+                "root": {
+                    "orientation": "vertical",
+                    "contains": [
+                        {"filter": "id", "model": "genf", "mode": "wildcard", "height": 48},
+                        {"sheet": "chartf.yaml", "name": "s1"},
+                    ],
+                },
+            },
+        )
+        clear_domain_cache()
+        html_duckdb = compose_dashboard(
+            dashboard_path=tmp_path / "dashf.yaml",
+            chart_base_dir=tmp_path,
+            data_dir=tmp_path,
+            models_dir=tmp_path,
+        )
+        duckdb_options = json.loads(_parse_filter_div(html_duckdb, "auto-1")["options"])
 
         assert inline_options == duckdb_options
         assert [o["value"] for o in inline_options] == ["a", "b", "c"]

@@ -641,3 +641,28 @@ test('buildStaticValue: range mode null default shows All', () => {
   });
   assert.ok(html.includes('All'));
 });
+
+// ─── SHE-103: wildcard typeahead seams ──────────────────────────────────────
+
+test('wildcardCommitValue: non-empty string commits that string', () => {
+  assert.strictEqual(cr.wildcardCommitValue('West'), 'West');
+});
+
+test('wildcardCommitValue: empty / cleared selection commits null', () => {
+  assert.strictEqual(cr.wildcardCommitValue(''), null);
+  assert.strictEqual(cr.wildcardCommitValue(null), null);
+  assert.strictEqual(cr.wildcardCommitValue(undefined), null);
+});
+
+test('wildcardUseTypeahead: lib present + options → typeahead', () => {
+  assert.strictEqual(cr.wildcardUseTypeahead(true, [{ value: 'a', label: 'A' }]), true);
+});
+
+test('wildcardUseTypeahead: lib absent → fallback text box', () => {
+  assert.strictEqual(cr.wildcardUseTypeahead(false, [{ value: 'a', label: 'A' }]), false);
+});
+
+test('wildcardUseTypeahead: no options → fallback text box', () => {
+  assert.strictEqual(cr.wildcardUseTypeahead(true, []), false);
+  assert.strictEqual(cr.wildcardUseTypeahead(true, null), false);
+});

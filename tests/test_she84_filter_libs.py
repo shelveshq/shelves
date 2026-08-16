@@ -46,6 +46,8 @@ class TestFilterLibEmission:
         assert ".noUi-connect{background:var(--shelves-filter-accent" in html
         assert ".ts-control" in html
         assert "var(--shelves-filter-text" in html
+        # SHE-103: Tom Select controls are height-matched to the native inputs.
+        assert "min-height:var(--shelves-filter-height" in html
         # Gated: export never ships the restyle.
         assert ".noUi-connect" not in _wrap(interactive=False, has_filters=True)
 

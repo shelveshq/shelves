@@ -242,6 +242,19 @@
   // and export/Studio behave identically when a load fails. Bounds and default
   // ride on the wrapper's data-* so the wiring can read them without re-parsing.
 
+  // Wildcard typeahead (SHE-103) — pure decision + commit-value seams.
+  // The value committed is a `contains` substring: a non-empty string as-is,
+  // empty / cleared → null (unfiltered "All").
+  function wildcardCommitValue(raw) {
+    return raw == null || raw === '' ? null : raw;
+  }
+
+  // Use the Tom Select typeahead only when the lib loaded AND compose resolved
+  // a non-empty option domain; otherwise fall back to the debounced text box.
+  function wildcardUseTypeahead(hasLib, options) {
+    return !!hasLib && Array.isArray(options) && options.length > 0;
+  }
+
   function _hasLib(name) {
     try {
       return typeof global[name] !== 'undefined' && !!global[name];
@@ -596,6 +609,29 @@
     if (widget === 'text') {
       var textInput = div.querySelector('input[type="text"]');
       if (!textInput) return;
+      // Wildcard (SHE-103): enhance to a Tom Select single typeahead over the
+      // resolved string domain when the lib + options are present — commit
+      // `contains` on selection/Enter (change), never per keystroke. The
+      // debounced text box is the degrade-gracefully fallback.
+      var wcOptions = _parseOptions(attrs.options);
+      if (wildcardUseTypeahead(_hasLib('TomSelect'), wcOptions)) {
+        try {
+          var ts = new global.TomSelect(textInput, {
+            create: false,
+            maxItems: 1,
+            dropdownParent: 'body',
+            valueField: 'value',
+            labelField: 'label',
+            searchField: ['label'],
+            options: wcOptions,
+            items: attrs.default ? [attrs.default] : [],
+          });
+          ts.on('change', function (val) {
+            _postFilterChange(attrs, wildcardCommitValue(val));
+          });
+          return;
+        } catch (e) { /* fall through to the debounced text box */ }
+      }
       textInput.addEventListener('input', function () {
         var key = (attrs.model || '') + '.' + (attrs.field || '');
         clearTimeout(_filterDebounceTimers[key]);
@@ -728,6 +764,8 @@
     buildDateRange: buildDateRange,
     serializeRange: serializeRange,
     serializeDateRange: serializeDateRange,
+    wildcardCommitValue: wildcardCommitValue,
+    wildcardUseTypeahead: wildcardUseTypeahead,
     buildStaticValue: buildStaticValue,
     buildControl: buildControl,
     render: render,

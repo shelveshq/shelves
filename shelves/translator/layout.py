@@ -118,6 +118,11 @@ FILTER_LIB_CSS = (
     ".ts-control,.ts-dropdown{border-radius:var(--shelves-filter-radius,4px);"
     "border-color:var(--shelves-filter-border,#e5e7eb);background:var(--shelves-filter-surface,#fff);"
     "color:var(--shelves-filter-text,#1a1a1a)}"
+    # Match the native inputs' height: Tom Select's default 15px font + vertical
+    # padding renders taller than the 32px steppers/dropdowns. Constrain to the
+    # filter height (multi grows past it only when it holds tokens).
+    ".ts-wrapper .ts-control{min-height:var(--shelves-filter-height,32px);"
+    "padding-top:1px;padding-bottom:1px;font-size:var(--shelves-filter-font-size,13px)}"
     ".ts-control input,.ts-dropdown .option{color:var(--shelves-filter-text,#1a1a1a)}"
     ".ts-dropdown .active{"
     "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 16%,#fff);"

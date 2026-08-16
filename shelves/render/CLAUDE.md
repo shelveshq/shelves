@@ -73,9 +73,13 @@ which `layout_styles.resolve_inner_styles` gives `flex-direction:column;
 justify-content:flex-start; overflow:hidden` — so a long list scrolls **inside**
 its own box instead of bleeding over neighbours. The collapsing multi-select
 (HTML has no native one — `<select multiple>` is always an open listbox) now ships
-via Tom Select enhancing the `multi_dropdown` (see "Widget libraries"); wildcard
-typeahead stays a debounced text box until compose resolves the wildcard string
-domain (deferred follow-up — see the SHE-84 plan's "Out of scope").
+via Tom Select enhancing the `multi_dropdown` (see "Widget libraries"). Wildcard
+(SHE-103) resolves its field's distinct string domain at compose time (a
+truncated top-matches prefix for high-cardinality fields) and enhances the
+`text` widget to a **Tom Select single typeahead** over it — committing
+`contains` on selection/Enter (Tom Select `change`), never per keystroke. The
+debounced text box is the degrade-gracefully fallback when the lib is absent or
+no options resolve; the exported (static) HTML is unchanged.
 
 **Text token (SHE-84).** `_inputStyle`/`_labelStyle` set `color` from
 `--shelves-<p>-text` (`p` = `control` | `filter`; default `#1a1a1a`) so widget and
