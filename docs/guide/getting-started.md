@@ -160,6 +160,17 @@ See [Theme](dsl-reference.md#theme) in the DSL reference for the full theme file
 
 Output defaults to `output/<sheet-name-slug>.html`.
 
+## Lint
+
+```bash
+shelves-lint charts/revenue_by_country.yaml --models-dir models/
+```
+
+`shelves-lint` validates specs without rendering. It reports every error at
+once with line numbers, valid options, and "did you mean" suggestions, and
+exits non-zero on any error (CI-friendly). Point it at a file or a directory
+(directories are searched for `*.yaml`).
+
 ## Dashboards
 
 Dashboards compose multiple charts into a single HTML page with layout, text, navigation, and styling:

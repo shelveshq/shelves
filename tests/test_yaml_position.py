@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import shelves.studio.yaml_position as yp
-from shelves.studio.yaml_position import resolve_locs, yaml_loc_to_position
+import shelves.schema.yaml_position as yp
+from shelves.schema.yaml_position import resolve_locs, yaml_loc_to_position
 
 
 class TestYamlLocToPosition:

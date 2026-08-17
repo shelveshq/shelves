@@ -20,9 +20,15 @@ import re
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shelves.params.substitute import ParameterReferenceError, ParameterSet, substitute_parameters
+
+# Reject unknown keys everywhere in the chart grammar (SHE-54). A silently
+# ignored key (e.g. `colour:` for `color:`) is an LLM trap and a human
+# footgun; the validator turns it into a "did you mean" error instead. Shared
+# so every model in this grammar forbids extras identically.
+_STRICT = ConfigDict(extra="forbid")
 
 # DSL version — bump when ANY DSL grammar changes (chart or layout).
 # Follows semver: major = breaking, minor = additive, patch = fixes.
@@ -86,6 +92,8 @@ TimeGrain = Literal["day", "week", "month", "quarter", "year"]
 class MarkObject(BaseModel):
     """Extended mark with style properties."""
 
+    model_config = _STRICT
+
     type: MarkType
     style: Literal["solid", "dashed", "dotted"] | None = None
     point: bool | None = None
@@ -102,6 +110,8 @@ MarkSpec = MarkType | MarkObject
 class ColorFieldMapping(BaseModel):
     """Explicit color field with optional type override."""
 
+    model_config = _STRICT
+
     field: str
     type: Literal["quantitative", "nominal", "ordinal", "temporal"] | None = None
 
@@ -113,6 +123,8 @@ ColorSpec = str | ColorFieldMapping
 
 
 class TooltipField(BaseModel):
+    model_config = _STRICT
+
     field: str
     format: str | None = None
 
@@ -138,6 +150,8 @@ _OPERATOR_RULES: dict[str, tuple[str, list[str]]] = {
 
 
 class ShelfFilter(BaseModel):
+    model_config = _STRICT
+
     field: str
     operator: FilterOperator
     value: str | int | float | None = None
@@ -171,6 +185,8 @@ class ShelfFilter(BaseModel):
 class FieldSort(BaseModel):
     """Sort by a field's values (ascending/descending or custom order)."""
 
+    model_config = _STRICT
+
     field: str
     order: SortOrder | list[str]
     channel: Literal["x", "y"] | None = None
@@ -178,6 +194,8 @@ class FieldSort(BaseModel):
 
 class AxisSort(BaseModel):
     """Sort by another axis's values (e.g., sort x by y values)."""
+
+    model_config = _STRICT
 
     axis: Literal["x", "y"]
     order: SortOrder
@@ -193,6 +211,8 @@ SortSpec = FieldSort | AxisSort
 class RowColumnFacet(BaseModel):
     """Facet by row, column, or both (grid)."""
 
+    model_config = _STRICT
+
     row: str | None = None
     column: str | None = None
     axis: ScaleResolve | None = None
@@ -206,6 +226,8 @@ class RowColumnFacet(BaseModel):
 
 class WrapFacet(BaseModel):
     """Wrapping facet — single dimension wrapped into a grid."""
+
+    model_config = _STRICT
 
     field: str
     columns: int = Field(gt=0)
@@ -230,6 +252,8 @@ class AxisChannelConfig(BaseModel):
     the baseline drawn along the axis. Line *styling* stays theme-only.
     """
 
+    model_config = _STRICT
+
     title: str | None = None
     format: str | None = None
     grid: bool | None = None  # → VL axis.grid
@@ -244,6 +268,8 @@ class AxisConfig(BaseModel):
     #   True   → show the axis with all theme defaults (no overrides)
     #   object → granular per-property toggles
     # Mirrors how LabelSpec accepts ``bool | LabelConfig``.
+    model_config = _STRICT
+
     x: bool | AxisChannelConfig | None = None
     y: bool | AxisChannelConfig | None = None
 
@@ -256,6 +282,8 @@ LabelVertical = Literal["top", "center", "bottom"]
 
 class LabelConfig(BaseModel):
     """Configuration for data labels on a mark."""
+
+    model_config = _STRICT
 
     field: str | None = None
     horizontal: LabelHorizontal | None = None
@@ -282,6 +310,8 @@ LabelSpec = bool | LabelConfig
 class KPIComparison(BaseModel):
     """Configuration for the comparison value displayed beneath the primary KPI metric."""
 
+    model_config = _STRICT
+
     field: str
     mode: Literal[
         "delta_percent",
@@ -302,6 +332,8 @@ class KPIBlock(BaseModel):
     Top-level kpi property on a chart spec.
     When present, the translator routes to the KPI pattern compiler.
     """
+
+    model_config = _STRICT
 
     value: str
     format: str = Field(min_length=1)
@@ -331,6 +363,8 @@ class LayerEntry(BaseModel):
     detail, size, and opacity, or inherit from the parent entry / top-level.
     """
 
+    model_config = _STRICT
+
     measure: str
     mark: MarkSpec | None = None
     color: ColorSpec | None = None
@@ -351,6 +385,8 @@ class MeasureEntry(BaseModel):
     Encoding properties (mark, color, detail, size, opacity) on this
     entry act as defaults for its layer entries.
     """
+
+    model_config = _STRICT
 
     measure: str
     mark: MarkSpec | None = None
@@ -395,6 +431,8 @@ class ChartSpec(BaseModel):
     Top-level marks/color/detail/size act as inheritable defaults for
     measure entries and their layers.
     """
+
+    model_config = _STRICT
 
     version: str | None = Field(
         None,

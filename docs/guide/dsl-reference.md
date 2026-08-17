@@ -46,6 +46,10 @@ kpi:
   format: "$,.0f"
 ```
 
+> **Strict keys.** Unknown keys are rejected with a validation error (and a
+> "did you mean" suggestion), rather than silently ignored. This protects
+> both humans and LLM agents from typos like `colour:`.
+
 ---
 
 ## Shelves (`cols` / `rows`)

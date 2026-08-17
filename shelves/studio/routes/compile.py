@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import Request
@@ -9,35 +7,14 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from shelves.diagnostics import capture_warnings
-from shelves.studio.yaml_position import resolve_locs
+from shelves.schema.yaml_position import resolve_locs
+from shelves.validation import friendly_message as _friendly_msg
 
-_FRIENDLY_MESSAGES: dict[str, str | Callable[[str], str]] = {
-    "missing": "Required field",
-    "extra_forbidden": "Unknown field",
-    "string_type": "Expected a text value",
-    "int_type": "Expected a whole number",
-    "float_type": "Expected a number",
-    "bool_type": "Expected true or false",
-    "model_type": "Expected a name or an object with properties",
-    "less_than_equal": lambda msg: msg.replace("Input should be l", "Value should be l"),
-    "greater_than_equal": lambda msg: msg.replace("Input should be g", "Value should be g"),
-}
-
-_LITERAL_RE = re.compile(r"^Input should be (.+)$")
-
-
-def _friendly_msg(err_type: str, raw_msg: str) -> str:
-    entry = _FRIENDLY_MESSAGES.get(err_type)
-    if entry is not None:
-        return entry(raw_msg) if callable(entry) else entry
-
-    if err_type == "literal_error":
-        m = _LITERAL_RE.match(raw_msg)
-        if m:
-            values = m.group(1).replace("'", "").replace(" or ", ", ")
-            return f"Invalid value. Expected: {values}"
-
-    return raw_msg
+# Error rendering (friendly-message table, literal parsing) is owned by
+# `shelves.validation` (SHE-54) so the CLI, the MCP tool, and this route render
+# Pydantic errors identically. This route keeps its own response *shape* (the
+# `friendly_msg`/`display_loc`/`source` dict the studio frontend consumes); only
+# the message text comes from the shared renderer.
 
 
 def _format_yaml_error(exc: Exception) -> dict:

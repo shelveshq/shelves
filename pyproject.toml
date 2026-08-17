@@ -51,6 +51,7 @@ Repository = "https://github.com/shelveshq/shelves"
 
 [project.scripts]
 shelves-render = "shelves.cli.render:main"
+shelves-lint = "shelves.cli.lint:main"
 shelves-dev = "shelves.cli.dev:main"
 shelves-studio = "shelves.studio.cli:main"
 shelves-import = "shelves.cli.import_cmd:main"
