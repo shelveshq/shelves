@@ -34,6 +34,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ValidationError
 
+from shelves.params.refs import INTERP_RE, WHOLE_REF_RE
 from shelves.schema.chart_schema import HEX_COLOR_RE, ChartSpec
 from shelves.schema.yaml_position import resolve_locs, yaml_loc_to_position
 
@@ -122,6 +123,13 @@ def friendly_message(err_type: str, raw_msg: str) -> str:
 # `str | SomeModel` union, the model arm emits one of these alongside the
 # meaningful error. We drop them when a more specific sibling shares the path.
 _UNION_NOISE_TYPES = frozenset({"model_type", "model_attributes_type", "dict_type"})
+
+# The *scalar* arm of a `str | SomeModel` union emits one of these when the
+# value is actually an object (e.g. `color: {field: .., tpe: ..}` fails the
+# `str` arm with `string_type`). Unlike the model-noise types these can also be
+# genuine standalone errors (`cols: 123`), so we only drop them when a real
+# error lives at the same path or a descendant of it.
+_SCALAR_NOISE_TYPES = frozenset({"string_type", "int_type", "float_type", "bool_type"})
 
 
 def _parse_expected(expected: str) -> list[str]:
@@ -212,17 +220,46 @@ def _dedupe_union_noise(errors: list[ValidationErrorItem]) -> list[ValidationErr
     """Drop union-noise errors (e.g. `model_type`) when a real error shares the path.
 
     A `str | MarkObject` field that gets a bad literal emits BOTH a
-    `literal_error` and a `model_type` at the same display path. Agents only
-    need the informative one; keeping the noise would also break the "3
-    mistakes → 3 errors" contract.
+    `literal_error` and a `model_type` at the same display path; a
+    `str | ColorFieldMapping` field with a nested typo emits a `string_type`
+    (failed str arm) at the field path alongside the real `unknown_key` at the
+    nested key. Agents only need the informative one; keeping the noise would
+    also break the "N mistakes → N errors" contract.
     """
-    paths_with_signal = {
-        e.path for e in errors if e.code not in _UNION_NOISE_TYPES and e.code != "model_type"
+    signal_paths = {
+        e.path
+        for e in errors
+        if e.code not in _UNION_NOISE_TYPES and e.code not in _SCALAR_NOISE_TYPES
     }
-    return [e for e in errors if not (e.code in _UNION_NOISE_TYPES and e.path in paths_with_signal)]
+
+    def _has_signal_at_or_below(path: str) -> bool:
+        return any(
+            s == path or s.startswith(f"{path}.") or s.startswith(f"{path}[") for s in signal_paths
+        )
+
+    kept: list[ValidationErrorItem] = []
+    for e in errors:
+        if e.code in _UNION_NOISE_TYPES and e.path in signal_paths:
+            continue
+        if e.code in _SCALAR_NOISE_TYPES and _has_signal_at_or_below(e.path):
+            continue
+        kept.append(e)
+    return kept
 
 
 # ─── Semantic-model checks ────────────────────────────────────────
+
+
+def _is_param_ref(value: str) -> bool:
+    """True for a `$name` / `${name}` parameter reference.
+
+    Parameters are substituted before the spec is parsed (`parse_chart` →
+    `substitute_parameters`), but `validate_chart_yaml` works on the RAW dict —
+    so an unresolved `$revenue` would otherwise be checked as a field name and
+    wrongly flagged `unknown_field`. We cannot resolve references here (no
+    ParameterSet), so we skip them in the semantic pass instead.
+    """
+    return bool(WHOLE_REF_RE.match(value) or INTERP_RE.search(value))
 
 
 def _model_field_refs(raw: dict) -> list[tuple[str, tuple[str | int, ...]]]:
@@ -230,12 +267,13 @@ def _model_field_refs(raw: dict) -> list[tuple[str, tuple[str | int, ...]]]:
 
     Walks the RAW mapping (not a parsed spec) so positions are available and so
     the pass still runs when schema validation failed. Only pulls values that
-    are genuine field references — hex colors and numeric sizes are skipped.
+    are genuine field references — hex colors, numeric sizes, and unresolved
+    parameter references are skipped.
     """
     pairs: list[tuple[str, tuple[str | int, ...]]] = []
 
     def _add(value: object, loc: tuple[str | int, ...]) -> None:
-        if isinstance(value, str) and value:
+        if isinstance(value, str) and value and not _is_param_ref(value):
             pairs.append((value, loc))
 
     def _shelf(key: str) -> None:

@@ -4,20 +4,33 @@ import re
 
 _TYPED_COLLECTION_RE = re.compile(r"^(list|dict|set)\[")
 
+# Lowercase scalar-arm tags Pydantic inserts for `str | Model`-style unions:
+# a failed str arm yields loc (..., "str"). These aren't user keys either, but
+# they're lowercase so the capitalized-identifier check below misses them.
+_SCALAR_UNION_TAGS = frozenset({"str", "int", "float", "bool", "bytes"})
+
 
 def _is_synthetic_segment(segment: object) -> bool:
     """True if a loc segment is a Pydantic-synthesized label, not a user key.
 
     These appear in ``ValidationError.errors()[*]["loc"]`` for tagged/typed
     unions: literal tags like ``literal['bar',...]``, model-class names like
-    ``MarkObject``, and typed-collection labels like ``list[str]``. None of
-    them correspond to a key the user actually typed.
+    ``MarkObject``, typed-collection labels like ``list[str]``, and scalar-arm
+    tags like ``str``/``int``. None of them correspond to a key the user
+    actually typed.
+
+    Callers that walk the parsed document (``_clean_display_loc``,
+    ``_resolve_position``) only consult this for a segment that is *absent* from
+    the current node, so a real user key that happens to collide (e.g. a
+    dimension literally named ``str``) is preserved.
     """
     if not isinstance(segment, str):
         return False
     if segment.startswith("literal["):
         return True
     if _TYPED_COLLECTION_RE.match(segment):
+        return True
+    if segment in _SCALAR_UNION_TAGS:
         return True
     return bool(segment[0:1].isupper() and segment.isidentifier())
 

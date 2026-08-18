@@ -44,6 +44,7 @@ def test_valid_spec_normalized():
     assert result.kind == "chart"
     assert result.errors == []
     assert result.model_checked is True
+    assert result.normalized is not None
     assert yaml.safe_load(result.normalized) == {
         "sheet": "Revenue by country",
         "data": "orders",
@@ -147,6 +148,7 @@ def test_not_a_mapping():
     assert len(result.errors) == 1
     err = result.errors[0]
     assert err.code == "not_a_mapping"
+    assert err.fix_hint is not None
     assert "sheet:" in err.fix_hint
 
 
@@ -159,6 +161,7 @@ def test_missing_model_file():
     assert len(model_errs) == 1
     err = model_errs[0]
     assert err.source == "model"
+    assert err.valid_options is not None
     assert "orders" in err.valid_options
 
 
@@ -226,3 +229,35 @@ def test_unknown_top_level_key():
     assert len(errs) == 1
     assert errs[0].path == "colour"
     assert errs[0].did_you_mean == "color"
+
+
+def test_parameter_reference_not_flagged_as_unknown_field():
+    # `$name` / `${name}` are resolved before parse; the semantic pass runs on
+    # the RAW dict, so it must skip them rather than flag them unknown_field.
+    yaml_text = (
+        "sheet: ${title}\ndata: orders\ncols: country\nrows: $revenue\nmarks: bar\n"
+        "filters:\n  - field: region\n    operator: eq\n    value: $region\n"
+    )
+    result = validate_chart_yaml(yaml_text, models_dir=MODELS_DIR)
+
+    assert [e for e in result.errors if e.code == "unknown_field"] == []
+    assert result.valid is True
+
+
+def test_nested_union_typo_reports_single_error():
+    # A typo inside a `str | ColorFieldMapping` object fails the str arm
+    # (string_type at color.str) AND the object arm (unknown_key at color.tpe).
+    # Only the informative one should survive — one mistake, one error, with a line.
+    yaml_text = (
+        "sheet: test\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n"
+        "color:\n  field: region\n  tpe: nominal\n"
+    )
+    result = validate_chart_yaml(yaml_text, models_dir=MODELS_DIR)
+
+    assert result.valid is False
+    assert len(result.errors) == 1
+    err = result.errors[0]
+    assert err.code == "unknown_key"
+    assert err.path == "color.tpe"
+    assert err.line == 8
+    assert "str" not in {e.path for e in result.errors}
