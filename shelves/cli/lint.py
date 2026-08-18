@@ -58,12 +58,8 @@ def _collect_files(paths: list[str]) -> list[Path]:
     return files
 
 
-def _is_model_manifest(text: str) -> bool:
-    """True if the YAML looks like a model manifest (has `model` + `measures`)."""
-    try:
-        raw = yaml_lib.safe_load(text)
-    except yaml_lib.YAMLError:
-        return False
+def _is_model_manifest(raw: object) -> bool:
+    """True if the parsed YAML looks like a model manifest (has `model` + `measures`)."""
     return isinstance(raw, dict) and "model" in raw and "measures" in raw
 
 
@@ -79,13 +75,15 @@ def _format_error(file: Path, err: ValidationErrorItem) -> str:
 def _validate_file(path: Path, models_dir: str | None) -> ValidationResult | None:
     """Validate one file, or return None when it is a model manifest (skipped)."""
     text = path.read_text()
-    if _is_model_manifest(text):
-        return None
-
+    # Parse once here; validate_* re-parses internally, but the manifest check
+    # and kind detection share this single load rather than each re-parsing.
     try:
         raw = yaml_lib.safe_load(text)
     except yaml_lib.YAMLError:
         raw = None
+
+    if _is_model_manifest(raw):
+        return None
 
     kind = detect_kind(raw) if isinstance(raw, dict) else None
     if kind == "dashboard":
