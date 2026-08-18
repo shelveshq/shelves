@@ -618,15 +618,32 @@
       var wcOptions = _parseOptions(attrs.options);
       if (wildcardUseTypeahead(_hasLib('TomSelect'), wcOptions)) {
         try {
+          // A wildcard default is a free-text `contains` substring, not a domain
+          // member (compose never validates it against the options). Seed it as
+          // an option so it renders as a token instead of being silently dropped
+          // by create:false — the widget would otherwise show empty over an
+          // already-filtered chart. create:true then lets the user commit any
+          // typed substring, matching the `contains` semantics.
+          var wcItems = [];
+          if (attrs.default != null && attrs.default !== '') {
+            wcItems = [attrs.default];
+            var known = wcOptions.some(function (o) {
+              return String(o.value) === String(attrs.default);
+            });
+            if (!known) {
+              wcOptions = wcOptions.concat([{ value: attrs.default, label: attrs.default }]);
+            }
+          }
           var ts = new global.TomSelect(textInput, {
-            create: false,
+            create: true,
             maxItems: 1,
             dropdownParent: 'body',
             valueField: 'value',
             labelField: 'label',
             searchField: ['label'],
             options: wcOptions,
-            items: attrs.default ? [attrs.default] : [],
+            items: wcItems,
+            plugins: ['remove_button'],
           });
           ts.on('change', function (val) {
             _postFilterChange(attrs, wildcardCommitValue(val));
@@ -656,7 +673,15 @@
 
   function _isoDate(d) {
     if (typeof d === 'string') return d;
-    if (d && typeof d.toISOString === 'function') return d.toISOString().slice(0, 10);
+    // Build the ISO date from LOCAL components. flatpickr hands us Date objects
+    // at local midnight; toISOString() would reproject to UTC and roll the day
+    // back in any positive-offset timezone (committing 2024-01-02 for a
+    // 2024-01-03 pick). getFullYear/getMonth/getDate stay in the local day.
+    if (d && typeof d.getFullYear === 'function') {
+      var m = ('0' + (d.getMonth() + 1)).slice(-2);
+      var day = ('0' + d.getDate()).slice(-2);
+      return d.getFullYear() + '-' + m + '-' + day;
+    }
     return '';
   }
 
@@ -736,7 +761,17 @@
     }
 
     function commit() {
-      _postFilterChange(attrs, serializeDateRange(startEl.value, endEl.value));
+      var s = startEl.value;
+      var e = endEl.value;
+      // Mirror the flatpickr path: commit a range only when both endpoints are
+      // set, and null (unfiltered) only when both are cleared. Exactly one set
+      // is an incomplete range mid-entry — do nothing rather than clear the
+      // filter out from under a half-typed selection.
+      if (s && e) {
+        _postFilterChange(attrs, serializeDateRange(s, e));
+      } else if (!s && !e) {
+        _postFilterChange(attrs, null);
+      }
     }
     startEl.addEventListener('change', commit);
     endEl.addEventListener('change', commit);

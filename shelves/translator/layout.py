@@ -47,53 +47,81 @@ from shelves.translator.layout_styles import (
 _TEXT_HOLDER_STYLE = "overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
 
 # SHE-84: framework-free widget libs for range / date_range / multi-select
-# filter controls, delivered as pinned CDN + SRI (the vegaEmbed precedent).
-# Python never learns which lib renders a control — control_render.js picks noUiSlider
-# / flatpickr / Tom Select behind the data-* contract and degrades to native widgets
-# if a load fails. Loaded only on the interactive (Studio) path where a filter exists;
-# exported HTML renders static values and needs none. `(url, sri)` pairs; a `.css`
-# url emits a <link>, anything else a <script>.
-FILTER_LIB_CDN: tuple[tuple[str, str], ...] = (
+# filter controls. Python never learns which lib renders a control —
+# control_render.js picks noUiSlider / flatpickr / Tom Select behind the data-*
+# contract and degrades to native widgets if a load fails. Loaded only on the
+# interactive (Studio) path where a filter exists; exported HTML renders static
+# values and needs none.
+#
+# Studio serves the vendored copies (shelves/studio/static/vendor/) same-origin,
+# so a CDN blip or content blocker can't silently degrade every filter widget
+# while the vendored Vega libs still load (SHE-77 — the same reason
+# `vega_script_tags` prefers `src_base`). The pinned CDN + SRI URLs stay as the
+# fallback for any surface that emits these without a vendored base.
+#
+# Each record is `(cdn_url, sri, vendor_filename)`; the vendored filenames must
+# stay in lockstep with the CDN versions. A `.css` file emits a <link>,
+# anything else a <script>.
+FILTER_LIB_CDN: tuple[tuple[str, str, str], ...] = (
     (
         "https://cdn.jsdelivr.net/npm/nouislider@15.8.1/dist/nouislider.min.css",
         "sha384-PSZaVsyG9jDu8hFaSJev5s/9poIJlX7cuxSGdqCgXRHpo2DzIaZAyCd2rG/DJJmV",
+        "nouislider-15.8.1.min.css",
     ),
     (
         "https://cdn.jsdelivr.net/npm/nouislider@15.8.1/dist/nouislider.min.js",
         "sha384-EcVTHT5RdDTvzbTIbNOtaNxNALeJYDgmv5Crp3NBmcdrCPrDnqp6I1+ETJ/FCFHI",
+        "nouislider-15.8.1.min.js",
     ),
     (
         "https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css",
         "sha384-RkASv+6KfBMW9eknReJIJ6b3UnjKOKC5bOUaNgIY778NFbQ8MtWq9Lr/khUgqtTt",
+        "flatpickr-4.6.13.min.css",
     ),
     (
         "https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js",
         "sha384-5JqMv4L/Xa0hfvtF06qboNdhvuYXUku9ZrhZh3bSk8VXF0A/RuSLHpLsSV9Zqhl6",
+        "flatpickr-4.6.13.min.js",
     ),
     (
         "https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/plugins/rangePlugin.js",
         "sha384-xVVZahyDKmE4bAn31Qx5rsWQLzyYxJ0oP2FHy58nIjwyYCZbd3iyvB2debdwQMmg",
+        "flatpickr-rangePlugin-4.6.13.js",
     ),
     (
         "https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.min.css",
         "sha384-krui876Mk6M6Lq6uj1SQo+u4MoImxFwCfwzWNU982QBMNci3VMZ3FoYSdUakJD5I",
+        "tom-select-2.3.1.min.css",
     ),
     (
         "https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js",
         "sha384-cnROoUgVILyibe3J0zhzWoJ9p2WmdnK7j/BOTSWqVDbC1pVw2d+i6Q/1ESKJKCYf",
+        "tom-select-2.3.1.complete.min.js",
     ),
 )
 
 
-def filter_lib_script_tags() -> str:
-    """`<link>`/`<script>` tags for the filter widget libs (pinned CDN + SRI)."""
+def filter_lib_script_tags(src_base: str | None = None) -> str:
+    """`<link>`/`<script>` tags for the filter widget libs.
+
+    Vendored same-origin under `src_base` (Studio passes "/static/vendor") with
+    no SRI; else the pinned CDN URLs with SRI as the fallback.
+    """
     lines = []
-    for url, sri in FILTER_LIB_CDN:
-        common = f'integrity="{sri}" crossorigin="anonymous" referrerpolicy="no-referrer"'
-        if url.endswith(".css"):
-            lines.append(f'  <link rel="stylesheet" href="{url}" {common} />')
+    for url, sri, fname in FILTER_LIB_CDN:
+        is_css = fname.endswith(".css")
+        if src_base:
+            href = f"{src_base}/{fname}"
+            if is_css:
+                lines.append(f'  <link rel="stylesheet" href="{href}" />')
+            else:
+                lines.append(f'  <script src="{href}"></script>')
         else:
-            lines.append(f'  <script src="{url}" {common}></script>')
+            common = f'integrity="{sri}" crossorigin="anonymous" referrerpolicy="no-referrer"'
+            if is_css:
+                lines.append(f'  <link rel="stylesheet" href="{url}" {common} />')
+            else:
+                lines.append(f'  <script src="{url}" {common}></script>')
     return "\n".join(lines)
 
 
@@ -715,7 +743,7 @@ def wrap_html_page(
     # that actually has a filter. Export renders static values; a filter-less
     # (params-only) dashboard needs none either.
     filter_lib_block = (
-        filter_lib_script_tags() + "\n" + filter_lib_style()
+        filter_lib_script_tags(vega_src_base) + "\n" + filter_lib_style()
         if (interactive and has_filters)
         else ""
     )

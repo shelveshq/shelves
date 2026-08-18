@@ -41,14 +41,19 @@ contract they use framework-free CDN libs — **noUiSlider** (`range`), **flatpi
 `multi_dropdown` `<select multiple>` into a collapsing tokenized control. Python
 never learns which lib renders a control: `buildRange`/`buildDateRange` pick the
 library skeleton vs a **native fallback** (two `<input type=range>` / two
-`<input type=date>`) by feature-detecting the global (`_hasLib`), so a failed CDN
-load degrades to a working widget instead of breaking the page — the per-control
-wiring is wrapped so one lib's init throw can't abort the render loop. Bounds and
-default ride on the wrapper's `data-*` for the wiring to read. **Commit timing:**
-the value label tracks the drag live (`update`), but the filter commits only on
-drag-end (`change`); a full-bounds range commits `null` (unfiltered). The libs
-load as **pinned CDN + SRI** (vegaEmbed precedent, `FILTER_LIB_CDN` in
-`layout.py`) and are restyled onto the `--shelves-filter-*` tokens
+`<input type=date>`) by feature-detecting the global (`_hasLib`), so a failed
+lib load degrades to a working widget instead of breaking the page — the
+per-control wiring is wrapped so one lib's init throw can't abort the render
+loop. Bounds and default ride on the wrapper's `data-*` for the wiring to read.
+**Commit timing:** the value label tracks the drag live (`update`), but the
+filter commits only on drag-end (`change`); a full-bounds range commits `null`
+(unfiltered). The libs load the **same way as Vega** (`FILTER_LIB_CDN` in
+`layout.py`, mirroring `vega_script_tags`): Studio serves the **vendored copies**
+under `shelves/studio/static/vendor/` same-origin via `vega_src_base` (SHE-77 —
+so a CDN blip or content blocker can't silently degrade every filter widget
+while the vendored Vega still loads), with the **pinned CDN + SRI** URLs as the
+fallback when no vendored base is passed. Keep the vendored filenames in lockstep
+with the CDN versions. The libs are restyled onto the `--shelves-filter-*` tokens
 (`FILTER_LIB_CSS`) — both emitted **only** on the interactive path where a filter
 exists (`interactive and has_filters`); exported HTML renders static values and
 needs no library.
