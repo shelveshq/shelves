@@ -48,12 +48,14 @@
     'border-radius:var(--shelves-filter-radius,4px);' +
     'background:var(--shelves-filter-surface,#ffffff);' +
     'padding:4px 8px;flex:1 1 auto;min-height:0;overflow-y:auto';
-  var LIST_ITEM_STYLE = 'display:block;padding:2px 0;font-size:var(--shelves-filter-font-size,13px)';
+  var LIST_ITEM_STYLE = 'display:block;padding:2px 0;font-size:var(--shelves-filter-font-size,13px);' +
+    'color:var(--shelves-filter-text,#1a1a1a)';
   var LIST_ITEM_ALL_STYLE = LIST_ITEM_STYLE + ';font-weight:500';
   // Native <select multiple> as a scrollable listbox (dropdown:true for multi
   // mode). Height comes from the option `size` attribute (a few rows) — a
   // one-row-tall fixed height clips its own options with no scroll affordance.
   var NATIVE_MULTI_STYLE = 'font-size:var(--shelves-filter-font-size,13px);' +
+    'color:var(--shelves-filter-text,#1a1a1a);' +
     'border:1px solid var(--shelves-filter-border,#e5e7eb);' +
     'border-radius:var(--shelves-filter-radius,4px);' +
     'background:var(--shelves-filter-surface,#ffffff);' +

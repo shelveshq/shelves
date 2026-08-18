@@ -213,6 +213,30 @@ test('_labelStyle: label text reads the text token', () => {
   assert.ok(html.includes('color:var(--shelves-control-text'));
 });
 
+test('open-list item text reads the filter text token (single_list)', () => {
+  const html = cr.buildSingleList({
+    type: 'filter', field: 'r', title: 'R',
+    options: [{ value: 'a', label: 'A' }], default: null,
+  });
+  assert.ok(html.includes('color:var(--shelves-filter-text'));
+});
+
+test('open-list item text reads the filter text token (multi_select)', () => {
+  const html = cr.buildMultiSelect({
+    type: 'filter', field: 'r', title: 'R',
+    options: [{ value: 'a', label: 'A' }], default: null,
+  });
+  assert.ok(html.includes('color:var(--shelves-filter-text'));
+});
+
+test('native multi-select box text reads the filter text token', () => {
+  const html = cr.buildNativeMultiSelect({
+    type: 'filter', field: 'r', title: 'R',
+    options: [{ value: 'a', label: 'A' }], default: null,
+  });
+  assert.ok(html.includes('color:var(--shelves-filter-text'));
+});
+
 // ─── buildRange (noUiSlider, native fallback) ────────────────
 
 test('buildRange: falls back to two native range inputs when noUiSlider absent', () => {
