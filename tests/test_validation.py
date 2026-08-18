@@ -20,8 +20,16 @@ import yaml
 
 from shelves.models.loader import clear_model_cache
 from shelves.schema.chart_schema import MarkType
-from shelves.validation import validate_chart_yaml
+from shelves.validation import validate_chart_yaml, validate_dashboard_yaml
 from tests.conftest import MODELS_DIR
+
+_DASHBOARD_YAML = (
+    "dashboard: Test\n"
+    "root:\n"
+    "  contains:\n"
+    "    - sheet: charts/present.yaml\n"
+    "    - sheet: charts/missing.yaml\n"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -261,3 +269,41 @@ def test_nested_union_typo_reports_single_error():
     assert err.path == "color.tpe"
     assert err.line == 8
     assert "str" not in {e.path for e in result.errors}
+
+
+# ─── Dashboard sheet-existence pass ───────────────────────────────
+
+
+def test_dashboard_missing_sheet_reported(tmp_path):
+    charts = tmp_path / "charts"
+    charts.mkdir()
+    (charts / "present.yaml").write_text("sheet: p\ndata: orders\ncols: country\nrows: revenue\n")
+
+    result = validate_dashboard_yaml(_DASHBOARD_YAML, project_dir=tmp_path)
+
+    assert result.model_checked is True
+    missing = [e for e in result.errors if e.code == "missing_sheet"]
+    assert len(missing) == 1
+    err = missing[0]
+    assert err.source == "model"
+    assert err.path == "root.contains[1].sheet"
+    assert err.line == 5
+    assert "charts/missing.yaml" in err.message
+
+
+def test_dashboard_all_sheets_present_ok(tmp_path):
+    charts = tmp_path / "charts"
+    charts.mkdir()
+    for name in ("present.yaml", "missing.yaml"):
+        (charts / name).write_text("sheet: p\ndata: orders\ncols: country\nrows: revenue\n")
+
+    result = validate_dashboard_yaml(_DASHBOARD_YAML, project_dir=tmp_path)
+
+    assert [e for e in result.errors if e.code == "missing_sheet"] == []
+
+
+def test_dashboard_no_project_dir_skips_sheet_check():
+    result = validate_dashboard_yaml(_DASHBOARD_YAML, project_dir=None)
+
+    assert result.model_checked is False
+    assert [e for e in result.errors if e.code == "missing_sheet"] == []

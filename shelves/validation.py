@@ -434,6 +434,68 @@ def _semantic_errors(
     return errors
 
 
+# ─── Dashboard semantic checks ────────────────────────────────────
+
+
+def _dashboard_sheet_refs(
+    raw: object, loc: tuple[str | int, ...] = ()
+) -> list[tuple[str, tuple[str | int, ...]]]:
+    """Collect (chart_path, loc) for every sheet reference in a dashboard.
+
+    A sheet leaf is written as the value of a ``sheet:`` key (both the inline
+    leaf form and named components in the ``components`` block), so walking the
+    RAW dict for `sheet:` string values finds every referenced chart file with
+    its YAML position. Bare-string component *references* are names, not paths,
+    and are correctly ignored.
+    """
+    pairs: list[tuple[str, tuple[str | int, ...]]] = []
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            if key == "sheet" and isinstance(value, str) and value:
+                pairs.append((value, (*loc, "sheet")))
+            pairs.extend(_dashboard_sheet_refs(value, (*loc, key)))
+    elif isinstance(raw, list):
+        for i, item in enumerate(raw):
+            pairs.extend(_dashboard_sheet_refs(item, (*loc, i)))
+    return pairs
+
+
+def _dashboard_sheet_errors(
+    raw: dict,
+    project_dir: Path | str | None,
+    yaml_text: str,
+) -> list[ValidationErrorItem]:
+    """Report every referenced sheet (chart file) that does not exist on disk.
+
+    Paths resolve relative to `project_dir` (the dashboard file's directory) —
+    the same base `compose_dashboard` uses as `charts_dir`.
+    """
+    if project_dir is None:
+        return []
+    base = Path(project_dir)
+    errors: list[ValidationErrorItem] = []
+    for link, loc in _dashboard_sheet_refs(raw):
+        if (base / link).exists():
+            continue
+        pos = yaml_loc_to_position(yaml_text, loc, position="value")
+        errors.append(
+            ValidationErrorItem(
+                path=_path_str(loc),
+                loc=list(loc),
+                line=pos[0] if pos else None,
+                col=pos[1] if pos else None,
+                code="missing_sheet",
+                source="model",
+                message=f"Referenced sheet '{link}' was not found.",
+                fix_hint=(
+                    "Create the chart file, or fix the link path — it resolves "
+                    "relative to the dashboard file's directory."
+                ),
+            )
+        )
+    return errors
+
+
 # ─── Kind detection ───────────────────────────────────────────────
 
 
@@ -587,9 +649,12 @@ def validate_dashboard_yaml(
 ) -> ValidationResult:
     """Validate a dashboard YAML spec.
 
-    Schema pass against DashboardSpec, plus a v1 semantic pass: every referenced
-    sheet (chart file) must exist on disk relative to `project_dir`. Richer
-    layout checks are out of scope for SHE-54.
+    Schema pass against DashboardSpec, plus a v1 semantic pass (when
+    `project_dir` is given): every referenced sheet (chart file) must exist on
+    disk relative to `project_dir`. `models_dir` is accepted for signature
+    parity with `validate_chart_yaml` and reserved for future per-sheet field
+    validation — it is not consulted yet. Richer layout checks are out of scope
+    for SHE-54.
     """
     from shelves.schema.layout_schema import DashboardSpec
 
@@ -597,6 +662,13 @@ def validate_dashboard_yaml(
     if early is not None:
         return early
     assert raw is not None
+
+    # Semantic pass: referenced sheets must exist on disk (best-effort; runs
+    # whether or not the schema pass produced errors). Sheet errors rank first.
+    # Collect refs BEFORE model_validate — DashboardSpec's before-validator
+    # mutates `raw` in place, which would erase the original `sheet:` keys.
+    sheet_checked = project_dir is not None
+    sheet_errors = _dashboard_sheet_errors(raw, project_dir, yaml_text) if sheet_checked else []
 
     spec = None
     schema_errors: list[ValidationErrorItem] = []
@@ -610,8 +682,9 @@ def validate_dashboard_yaml(
         ]
         schema_errors = _dedupe_union_noise(schema_errors)
 
+    errors = sheet_errors + schema_errors
     normalized: str | None = None
-    if not schema_errors and spec is not None:
+    if not errors and spec is not None:
         normalized = yaml.safe_dump(
             spec.model_dump(exclude_none=True, mode="json"),
             sort_keys=False,
@@ -619,9 +692,9 @@ def validate_dashboard_yaml(
         )
 
     return ValidationResult(
-        valid=not schema_errors,
+        valid=not errors,
         kind="dashboard",
-        errors=schema_errors,
+        errors=errors,
         normalized=normalized,
-        model_checked=False,
+        model_checked=sheet_checked,
     )
