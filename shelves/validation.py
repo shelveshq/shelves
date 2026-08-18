@@ -28,8 +28,9 @@ from __future__ import annotations
 import difflib
 import re
 from collections.abc import Callable, Mapping, Sequence
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import yaml
 from pydantic import BaseModel, ValidationError
@@ -147,6 +148,64 @@ def _did_you_mean(value: str, options: Sequence[str]) -> str | None:
     return matches[0] or None if matches else None
 
 
+@lru_cache(maxsize=1)
+def _model_class_registry() -> dict[str, type[BaseModel]]:
+    """Map every chart-grammar model class name → the class itself.
+
+    Used to resolve the union-arm class name Pydantic embeds in a loc for a
+    `str | Model` union (e.g. ``('color', 'ColorFieldMapping', 'tpe')``).
+    """
+    from shelves.schema import chart_schema
+
+    return {
+        name: obj
+        for name, obj in vars(chart_schema).items()
+        if isinstance(obj, type) and issubclass(obj, BaseModel) and obj is not BaseModel
+    }
+
+
+def _model_from_annotation(annotation: object) -> type[BaseModel] | None:
+    """First BaseModel subclass reachable inside a type annotation.
+
+    Unwraps `X | None`, `list[X]`, and `str | Model` unions so a nested key's
+    owning model can be found from its field's declared type.
+    """
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    for arg in get_args(annotation):
+        found = _model_from_annotation(arg)
+        if found is not None:
+            return found
+    return None
+
+
+def _fields_for_loc(loc: Sequence[str | int]) -> tuple[str, ...]:
+    """Field names of the model that owns the key at the tail of `loc`.
+
+    Walks the schema from `ChartSpec` along the loc's field segments, following
+    each field's annotation into the nested model, so a suggestion for an
+    unknown nested key is drawn from that key's real siblings (not the top
+    level). Falls back to the current model's fields if the path can't be
+    resolved.
+    """
+    registry = _model_class_registry()
+    current: type[BaseModel] = ChartSpec
+    for seg in loc[:-1]:
+        if not isinstance(seg, str):
+            continue  # list/tuple index — the item type is already `current`
+        field = current.model_fields.get(seg)
+        if field is not None:
+            nested = _model_from_annotation(field.annotation)
+            if nested is None:
+                return tuple(current.model_fields.keys())
+            current = nested
+        elif seg in registry:
+            current = registry[seg]  # Pydantic union-arm class-name segment
+        else:
+            return tuple(current.model_fields.keys())
+    return tuple(current.model_fields.keys())
+
+
 def _path_str(display_loc: Sequence[str | int]) -> str:
     """Render a cleaned loc as a dotted/indexed path: ['rows', 0, 'measure'] → 'rows[0].measure'."""
     out = ""
@@ -189,7 +248,7 @@ def _convert_pydantic_error(err: Mapping[str, Any], info: dict) -> ValidationErr
         code = "unknown_key"
         last = display_loc[-1] if display_loc else path
         if isinstance(last, str):
-            did_you_mean = _did_you_mean(last, list(ChartSpec.model_fields.keys()))
+            did_you_mean = _did_you_mean(last, _fields_for_loc(err["loc"]))
         message = f"Unknown key '{path}'."
         fix_hint = f"Remove '{path}'" + (
             f" or replace it with '{did_you_mean}'." if did_you_mean else "."

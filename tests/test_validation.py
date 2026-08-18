@@ -271,6 +271,42 @@ def test_nested_union_typo_reports_single_error():
     assert "str" not in {e.path for e in result.errors}
 
 
+@pytest.mark.parametrize(
+    "yaml_text, path, did_you_mean",
+    [
+        # union arm (str | ColorFieldMapping)
+        (
+            "sheet: t\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n"
+            "color:\n  field: region\n  tpe: nominal\n",
+            "color.tpe",
+            "type",
+        ),
+        # list of models (list[ShelfFilter])
+        (
+            "sheet: t\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n"
+            "filters:\n  - field: region\n    operator: eq\n    valu: US\n",
+            "filters[0].valu",
+            "value",
+        ),
+        # nested optional model (KPIBlock)
+        (
+            "sheet: t\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n"
+            "kpi:\n  value: revenue\n  format: '$'\n  comparson: x\n",
+            "kpi.comparson",
+            "comparison",
+        ),
+    ],
+)
+def test_nested_unknown_key_suggests_from_nested_model(yaml_text, path, did_you_mean):
+    # `did you mean` for an unknown *nested* key must come from that key's own
+    # model, not the top-level ChartSpec fields.
+    result = validate_chart_yaml(yaml_text, models_dir=MODELS_DIR)
+
+    errs = [e for e in result.errors if e.code == "unknown_key" and e.path == path]
+    assert len(errs) == 1
+    assert errs[0].did_you_mean == did_you_mean
+
+
 # ─── Dashboard sheet-existence pass ───────────────────────────────
 
 
