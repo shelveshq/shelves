@@ -22,7 +22,8 @@
   // the widget belongs to a filter control. `p` is the var-name prefix.
   function _labelStyle(p) {
     return 'font-size:var(--shelves-' + p + '-font-size,13px);' +
-      'font-weight:500;margin-bottom:4px;white-space:nowrap';
+      'font-weight:500;margin-bottom:4px;white-space:nowrap;' +
+      'color:var(--shelves-' + p + '-text,#1a1a1a)';
   }
   function _inputStyle(p) {
     return 'font-size:var(--shelves-' + p + '-font-size,13px);' +
@@ -30,6 +31,7 @@
       'border:1px solid var(--shelves-' + p + '-border,#e5e7eb);' +
       'border-radius:var(--shelves-' + p + '-radius,4px);' +
       'background:var(--shelves-' + p + '-surface,#ffffff);' +
+      'color:var(--shelves-' + p + '-text,#1a1a1a);' +
       'padding:0 8px;box-sizing:border-box;width:100%';
   }
   var LABEL_STYLE = _labelStyle('control');
@@ -46,12 +48,14 @@
     'border-radius:var(--shelves-filter-radius,4px);' +
     'background:var(--shelves-filter-surface,#ffffff);' +
     'padding:4px 8px;flex:1 1 auto;min-height:0;overflow-y:auto';
-  var LIST_ITEM_STYLE = 'display:block;padding:2px 0;font-size:var(--shelves-filter-font-size,13px)';
+  var LIST_ITEM_STYLE = 'display:block;padding:2px 0;font-size:var(--shelves-filter-font-size,13px);' +
+    'color:var(--shelves-filter-text,#1a1a1a)';
   var LIST_ITEM_ALL_STYLE = LIST_ITEM_STYLE + ';font-weight:500';
   // Native <select multiple> as a scrollable listbox (dropdown:true for multi
   // mode). Height comes from the option `size` attribute (a few rows) — a
   // one-row-tall fixed height clips its own options with no scroll affordance.
   var NATIVE_MULTI_STYLE = 'font-size:var(--shelves-filter-font-size,13px);' +
+    'color:var(--shelves-filter-text,#1a1a1a);' +
     'border:1px solid var(--shelves-filter-border,#e5e7eb);' +
     'border-radius:var(--shelves-filter-radius,4px);' +
     'background:var(--shelves-filter-surface,#ffffff);' +
@@ -234,16 +238,114 @@
     return parts.join('');
   }
 
-  function buildRangeStub(opts) {
+  // ─── range / date_range (SHE-84) ───────────────────────────
+  // Both render a library skeleton when their CDN lib is present, else a native
+  // fallback — chosen here in the pure builder so the choice is unit-testable
+  // and export/Studio behave identically when a load fails. Bounds and default
+  // ride on the wrapper's data-* so the wiring can read them without re-parsing.
+
+  // Wildcard typeahead (SHE-103) — pure decision + commit-value seams.
+  // The value committed is a `contains` substring: a non-empty string as-is,
+  // empty / cleared → null (unfiltered "All").
+  function wildcardCommitValue(raw) {
+    return raw == null || raw === '' ? null : raw;
+  }
+
+  // Use the Tom Select typeahead only when the lib loaded AND compose resolved
+  // a non-empty option domain; otherwise fall back to the debounced text box.
+  function wildcardUseTypeahead(hasLib, options) {
+    return !!hasLib && Array.isArray(options) && options.length > 0;
+  }
+
+  function _hasLib(name) {
+    try {
+      return typeof global[name] !== 'undefined' && !!global[name];
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function _parsePair(raw) {
+    var v = raw;
+    if (typeof v === 'string') {
+      try { v = JSON.parse(v); } catch (e) { return null; }
+    }
+    return Array.isArray(v) && v.length === 2 ? v : null;
+  }
+
+  function serializeRange(lo, hi) {
+    return [Number(lo), Number(hi)];
+  }
+
+  function serializeDateRange(a, b) {
+    return a && b ? [a, b] : null;
+  }
+
+  var RANGE_VALUE_STYLE = 'font-size:var(--shelves-filter-font-size,13px);' +
+    'color:var(--shelves-filter-text,#1a1a1a);margin-top:6px';
+
+  function buildRange(opts) {
     opts = opts || {};
-    var widget = opts.control || 'range';
+    var bounds = _parseOptions(opts.options);
+    var min = bounds.length ? bounds[0] : 0;
+    var max = bounds.length > 1 ? bounds[1] : 100;
+    var def = _parsePair(opts.default) || [min, max];
+    var lo = def[0];
+    var hi = def[1];
+    var step = opts.step != null ? opts.step : '';
+
     var parts = [];
     parts.push('<div class="shelves-control" style="' + WRAP_STYLE + '">');
     parts.push(titleMarkup(opts.title, true));
-    parts.push('<div style="' +
-      'font-size:var(--shelves-filter-font-size,13px);' +
-      'color:var(--shelves-filter-border,#9ca3af);' +
-      'padding:6px 0">' + escapeAttr(widget) + ' widget — requires SHE-84</div>');
+    parts.push('<div class="shelves-range" data-min="' + escapeAttr(min) +
+      '" data-max="' + escapeAttr(max) + '"' +
+      (step !== '' ? ' data-step="' + escapeAttr(step) + '"' : '') +
+      ' data-default="' + escapeAttr(JSON.stringify([lo, hi])) + '">');
+
+    if (_hasLib('noUiSlider')) {
+      parts.push('<div class="shelves-range-slider" style="margin:16px 6px 4px"></div>');
+    } else {
+      var stepAttr = step !== '' ? ' step="' + escapeAttr(step) + '"' : '';
+      parts.push('<input type="range" class="shelves-range-lo" min="' + escapeAttr(min) +
+        '" max="' + escapeAttr(max) + '"' + stepAttr + ' value="' + escapeAttr(lo) +
+        '" style="width:100%">');
+      parts.push('<input type="range" class="shelves-range-hi" min="' + escapeAttr(min) +
+        '" max="' + escapeAttr(max) + '"' + stepAttr + ' value="' + escapeAttr(hi) +
+        '" style="width:100%">');
+    }
+    parts.push('<div class="shelves-range-value" style="' + RANGE_VALUE_STYLE + '">' +
+      escapeAttr(lo) + ' – ' + escapeAttr(hi) + '</div>');
+    parts.push('</div>');
+    parts.push('</div>');
+    return parts.join('');
+  }
+
+  function buildDateRange(opts) {
+    opts = opts || {};
+    var bounds = _parseOptions(opts.options);
+    var min = bounds.length ? bounds[0] : '';
+    var max = bounds.length > 1 ? bounds[1] : '';
+    var def = _parsePair(opts.default) || [];
+    var start = def[0] != null ? def[0] : '';
+    var end = def[1] != null ? def[1] : '';
+    var inputType = _hasLib('flatpickr') ? 'text' : 'date';
+    var minAttr = min !== '' ? ' min="' + escapeAttr(min) + '"' : '';
+    var maxAttr = max !== '' ? ' max="' + escapeAttr(max) + '"' : '';
+    var ro = inputType === 'text' ? ' readonly' : '';
+    var half = FILTER_INPUT_STYLE + ';width:50%';
+
+    var parts = [];
+    parts.push('<div class="shelves-control" style="' + WRAP_STYLE + '">');
+    parts.push(titleMarkup(opts.title, true));
+    parts.push('<div class="shelves-daterange" data-min="' + escapeAttr(min) +
+      '" data-max="' + escapeAttr(max) + '" style="display:flex;gap:6px">');
+    parts.push('<input type="' + inputType + '" class="shelves-daterange-start"' +
+      minAttr + maxAttr + ro + ' value="' + escapeAttr(start) +
+      '" placeholder="Start" style="' + half + '">');
+    parts.push('<input type="' + inputType + '" class="shelves-daterange-end"' +
+      minAttr + maxAttr + ro + ' value="' + escapeAttr(end) +
+      '" placeholder="End" style="' + half + '">');
+    parts.push('</div>');
     parts.push('</div>');
     return parts.join('');
   }
@@ -337,7 +439,8 @@
     if (widget === 'multi_select') return buildMultiSelect(attrs);
     if (widget === 'multi_dropdown') return buildNativeMultiSelect(attrs);
     if (widget === 'single_list') return buildSingleList(attrs);
-    if (widget === 'range' || widget === 'date_range') return buildRangeStub(attrs);
+    if (widget === 'range') return buildRange(attrs);
+    if (widget === 'date_range') return buildDateRange(attrs);
     return '';
   }
 
@@ -382,14 +485,22 @@
         return;
       }
 
-      var markup = buildControl(attrs);
-      if (!markup) return;
-      div.innerHTML = markup;
+      // Isolate each control: a library init that throws (bad CDN payload,
+      // unexpected DOM) must not abort the loop and leave later controls unbuilt.
+      try {
+        var markup = buildControl(attrs);
+        if (!markup) return;
+        div.innerHTML = markup;
 
-      if (isFilter) {
-        _wireFilterEvents(div, attrs);
-      } else {
-        _wireParamEvents(div, attrs);
+        if (isFilter) {
+          _wireFilterEvents(div, attrs);
+        } else {
+          _wireParamEvents(div, attrs);
+        }
+      } catch (e) {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('shelves: control render failed', e);
+        }
       }
     });
   }
@@ -457,6 +568,32 @@
         });
         _postFilterChange(attrs, selected.length > 0 ? selected : null);
       });
+      // Upgrade the native <select multiple> to a collapsing, tokenized Tom
+      // Select when the lib loaded. It keeps the underlying <select> in sync and
+      // fires native `change`, so the listener above still drives the commit.
+      // The native listbox is the degrade-gracefully fallback when it didn't.
+      if (_hasLib('TomSelect')) {
+        try {
+          // dropdownParent:'body' lifts the open list out of the filter node's
+          // overflow:hidden box (the SHE-82 fit clip) so it can overflow the
+          // widget and scroll internally instead of being cut off.
+          new global.TomSelect(multi, {
+            plugins: ['remove_button'],
+            maxOptions: null,
+            dropdownParent: 'body',
+          });
+        } catch (e) { /* keep the native listbox */ }
+      }
+      return;
+    }
+
+    if (widget === 'range') {
+      _wireRange(div, attrs);
+      return;
+    }
+
+    if (widget === 'date_range') {
+      _wireDateRange(div, attrs);
       return;
     }
 
@@ -474,6 +611,46 @@
     if (widget === 'text') {
       var textInput = div.querySelector('input[type="text"]');
       if (!textInput) return;
+      // Wildcard (SHE-103): enhance to a Tom Select single typeahead over the
+      // resolved string domain when the lib + options are present — commit
+      // `contains` on selection/Enter (change), never per keystroke. The
+      // debounced text box is the degrade-gracefully fallback.
+      var wcOptions = _parseOptions(attrs.options);
+      if (wildcardUseTypeahead(_hasLib('TomSelect'), wcOptions)) {
+        try {
+          // A wildcard default is a free-text `contains` substring, not a domain
+          // member (compose never validates it against the options). Seed it as
+          // an option so it renders as a token instead of being silently dropped
+          // by create:false — the widget would otherwise show empty over an
+          // already-filtered chart. create:true then lets the user commit any
+          // typed substring, matching the `contains` semantics.
+          var wcItems = [];
+          if (attrs.default != null && attrs.default !== '') {
+            wcItems = [attrs.default];
+            var known = wcOptions.some(function (o) {
+              return String(o.value) === String(attrs.default);
+            });
+            if (!known) {
+              wcOptions = wcOptions.concat([{ value: attrs.default, label: attrs.default }]);
+            }
+          }
+          var ts = new global.TomSelect(textInput, {
+            create: true,
+            maxItems: 1,
+            dropdownParent: 'body',
+            valueField: 'value',
+            labelField: 'label',
+            searchField: ['label'],
+            options: wcOptions,
+            items: wcItems,
+            plugins: ['remove_button'],
+          });
+          ts.on('change', function (val) {
+            _postFilterChange(attrs, wildcardCommitValue(val));
+          });
+          return;
+        } catch (e) { /* fall through to the debounced text box */ }
+      }
       textInput.addEventListener('input', function () {
         var key = (attrs.model || '') + '.' + (attrs.field || '');
         clearTimeout(_filterDebounceTimers[key]);
@@ -492,6 +669,112 @@
       var val = input.value === '' ? null : input.value;
       _postFilterChange(attrs, val);
     });
+  }
+
+  function _isoDate(d) {
+    if (typeof d === 'string') return d;
+    // Build the ISO date from LOCAL components. flatpickr hands us Date objects
+    // at local midnight; toISOString() would reproject to UTC and roll the day
+    // back in any positive-offset timezone (committing 2024-01-02 for a
+    // 2024-01-03 pick). getFullYear/getMonth/getDate stay in the local day.
+    if (d && typeof d.getFullYear === 'function') {
+      var m = ('0' + (d.getMonth() + 1)).slice(-2);
+      var day = ('0' + d.getDate()).slice(-2);
+      return d.getFullYear() + '-' + m + '-' + day;
+    }
+    return '';
+  }
+
+  // range: label tracks the drag live; the filter commits only on drag-end
+  // (noUiSlider `change`, native `change`) — a per-move commit floods the
+  // recompile loop. A selection spanning the full bounds means unfiltered.
+  function _wireRange(div, attrs) {
+    var box = div.querySelector('.shelves-range');
+    if (!box) return;
+    var min = Number(box.getAttribute('data-min'));
+    var max = Number(box.getAttribute('data-max'));
+    var stepAttr = box.getAttribute('data-step');
+    var def = _parsePair(box.getAttribute('data-default')) || [min, max];
+    var valueEl = box.querySelector('.shelves-range-value');
+
+    function setLabel(lo, hi) {
+      if (valueEl) valueEl.textContent = lo + ' – ' + hi;
+    }
+    function commit(lo, hi) {
+      var full = Number(lo) <= min && Number(hi) >= max;
+      _postFilterChange(attrs, full ? null : serializeRange(lo, hi));
+    }
+
+    if (_hasLib('noUiSlider')) {
+      var mount = box.querySelector('.shelves-range-slider');
+      if (!mount) return;
+      var cfg = { start: def, connect: true, range: { min: min, max: max } };
+      if (stepAttr) cfg.step = Number(stepAttr);
+      global.noUiSlider.create(mount, cfg);
+      mount.noUiSlider.on('update', function (v) { setLabel(Number(v[0]), Number(v[1])); });
+      mount.noUiSlider.on('change', function (v) { commit(Number(v[0]), Number(v[1])); });
+      return;
+    }
+
+    var loEl = box.querySelector('.shelves-range-lo');
+    var hiEl = box.querySelector('.shelves-range-hi');
+    if (!loEl || !hiEl) return;
+    function read() {
+      var lo = Number(loEl.value);
+      var hi = Number(hiEl.value);
+      return lo > hi ? [hi, lo] : [lo, hi]; // guard handle crossing
+    }
+    function live() { var r = read(); setLabel(r[0], r[1]); }
+    function done() { var r = read(); commit(r[0], r[1]); }
+    loEl.addEventListener('input', live);
+    hiEl.addEventListener('input', live);
+    loEl.addEventListener('change', done);
+    hiEl.addEventListener('change', done);
+  }
+
+  function _wireDateRange(div, attrs) {
+    var box = div.querySelector('.shelves-daterange');
+    if (!box) return;
+    var startEl = box.querySelector('.shelves-daterange-start');
+    var endEl = box.querySelector('.shelves-daterange-end');
+    if (!startEl || !endEl) return;
+    var dmin = box.getAttribute('data-min') || undefined;
+    var dmax = box.getAttribute('data-max') || undefined;
+
+    if (_hasLib('flatpickr')) {
+      var opts = {
+        dateFormat: 'Y-m-d',
+        minDate: dmin,
+        maxDate: dmax,
+        onClose: function (sel) {
+          if (sel && sel.length === 2) {
+            _postFilterChange(attrs, serializeDateRange(_isoDate(sel[0]), _isoDate(sel[1])));
+          } else if (!sel || sel.length === 0) {
+            _postFilterChange(attrs, null);
+          }
+        },
+      };
+      if (global.rangePlugin) opts.plugins = [global.rangePlugin({ input: endEl })];
+      if (startEl.value && endEl.value) opts.defaultDate = [startEl.value, endEl.value];
+      global.flatpickr(startEl, opts);
+      return;
+    }
+
+    function commit() {
+      var s = startEl.value;
+      var e = endEl.value;
+      // Mirror the flatpickr path: commit a range only when both endpoints are
+      // set, and null (unfiltered) only when both are cleared. Exactly one set
+      // is an incomplete range mid-entry — do nothing rather than clear the
+      // filter out from under a half-typed selection.
+      if (s && e) {
+        _postFilterChange(attrs, serializeDateRange(s, e));
+      } else if (!s && !e) {
+        _postFilterChange(attrs, null);
+      }
+    }
+    startEl.addEventListener('change', commit);
+    endEl.addEventListener('change', commit);
   }
 
   function _postFilterChange(attrs, value) {
@@ -514,7 +797,12 @@
     buildMultiSelect: buildMultiSelect,
     buildNativeMultiSelect: buildNativeMultiSelect,
     buildSingleList: buildSingleList,
-    buildRangeStub: buildRangeStub,
+    buildRange: buildRange,
+    buildDateRange: buildDateRange,
+    serializeRange: serializeRange,
+    serializeDateRange: serializeDateRange,
+    wildcardCommitValue: wildcardCommitValue,
+    wildcardUseTypeahead: wildcardUseTypeahead,
     buildStaticValue: buildStaticValue,
     buildControl: buildControl,
     render: render,

@@ -46,6 +46,124 @@ from shelves.translator.layout_styles import (
 # container.  Static, escape-safe CSS.
 _TEXT_HOLDER_STYLE = "overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
 
+# SHE-84: framework-free widget libs for range / date_range / multi-select
+# filter controls. Python never learns which lib renders a control —
+# control_render.js picks noUiSlider / flatpickr / Tom Select behind the data-*
+# contract and degrades to native widgets if a load fails. Loaded only on the
+# interactive (Studio) path where a filter exists; exported HTML renders static
+# values and needs none.
+#
+# Studio serves the vendored copies (shelves/studio/static/vendor/) same-origin,
+# so a CDN blip or content blocker can't silently degrade every filter widget
+# while the vendored Vega libs still load (SHE-77 — the same reason
+# `vega_script_tags` prefers `src_base`). The pinned CDN + SRI URLs stay as the
+# fallback for any surface that emits these without a vendored base.
+#
+# Each record is `(cdn_url, sri, vendor_filename)`; the vendored filenames must
+# stay in lockstep with the CDN versions. A `.css` file emits a <link>,
+# anything else a <script>.
+FILTER_LIB_CDN: tuple[tuple[str, str, str], ...] = (
+    (
+        "https://cdn.jsdelivr.net/npm/nouislider@15.8.1/dist/nouislider.min.css",
+        "sha384-PSZaVsyG9jDu8hFaSJev5s/9poIJlX7cuxSGdqCgXRHpo2DzIaZAyCd2rG/DJJmV",
+        "nouislider-15.8.1.min.css",
+    ),
+    (
+        "https://cdn.jsdelivr.net/npm/nouislider@15.8.1/dist/nouislider.min.js",
+        "sha384-EcVTHT5RdDTvzbTIbNOtaNxNALeJYDgmv5Crp3NBmcdrCPrDnqp6I1+ETJ/FCFHI",
+        "nouislider-15.8.1.min.js",
+    ),
+    (
+        "https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css",
+        "sha384-RkASv+6KfBMW9eknReJIJ6b3UnjKOKC5bOUaNgIY778NFbQ8MtWq9Lr/khUgqtTt",
+        "flatpickr-4.6.13.min.css",
+    ),
+    (
+        "https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js",
+        "sha384-5JqMv4L/Xa0hfvtF06qboNdhvuYXUku9ZrhZh3bSk8VXF0A/RuSLHpLsSV9Zqhl6",
+        "flatpickr-4.6.13.min.js",
+    ),
+    (
+        "https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/plugins/rangePlugin.js",
+        "sha384-xVVZahyDKmE4bAn31Qx5rsWQLzyYxJ0oP2FHy58nIjwyYCZbd3iyvB2debdwQMmg",
+        "flatpickr-rangePlugin-4.6.13.js",
+    ),
+    (
+        "https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.min.css",
+        "sha384-krui876Mk6M6Lq6uj1SQo+u4MoImxFwCfwzWNU982QBMNci3VMZ3FoYSdUakJD5I",
+        "tom-select-2.3.1.min.css",
+    ),
+    (
+        "https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js",
+        "sha384-cnROoUgVILyibe3J0zhzWoJ9p2WmdnK7j/BOTSWqVDbC1pVw2d+i6Q/1ESKJKCYf",
+        "tom-select-2.3.1.complete.min.js",
+    ),
+)
+
+
+def filter_lib_script_tags(src_base: str | None = None) -> str:
+    """`<link>`/`<script>` tags for the filter widget libs.
+
+    Vendored same-origin under `src_base` (Studio passes "/static/vendor") with
+    no SRI; else the pinned CDN URLs with SRI as the fallback.
+    """
+    lines = []
+    for url, sri, fname in FILTER_LIB_CDN:
+        is_css = fname.endswith(".css")
+        if src_base:
+            href = f"{src_base}/{fname}"
+            if is_css:
+                lines.append(f'  <link rel="stylesheet" href="{href}" />')
+            else:
+                lines.append(f'  <script src="{href}"></script>')
+        else:
+            common = f'integrity="{sri}" crossorigin="anonymous" referrerpolicy="no-referrer"'
+            if is_css:
+                lines.append(f'  <link rel="stylesheet" href="{url}" {common} />')
+            else:
+                lines.append(f'  <script src="{url}" {common}></script>')
+    return "\n".join(lines)
+
+
+# Restyle each filter lib's own classes onto the `--shelves-filter-*` tokens, so
+# a theme accent/surface change repaints noUiSlider, flatpickr and Tom Select
+# with no hardcoded colors (only the neutral handle ring / shadow are literal).
+# Ships with the libs — same interactive+has_filters gate.
+FILTER_LIB_CSS = (
+    ".noUi-target{border:0;box-shadow:none;background:var(--shelves-filter-border,#e5e7eb)}"
+    ".noUi-connect{background:var(--shelves-filter-accent,#4A90D9)}"
+    ".noUi-horizontal{height:6px}"
+    ".noUi-horizontal .noUi-handle{width:16px;height:16px;right:-8px;top:-6px;border-radius:50%;"
+    "border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);"
+    "background:var(--shelves-filter-accent,#4A90D9)}"
+    ".noUi-handle:before,.noUi-handle:after{display:none}"
+    ".noUi-tooltip{font-size:11px;border-color:var(--shelves-filter-border,#e5e7eb)}"
+    ".flatpickr-day.selected,.flatpickr-day.startRange,.flatpickr-day.endRange{"
+    "background:var(--shelves-filter-accent,#4A90D9);border-color:var(--shelves-filter-accent,#4A90D9)}"
+    ".flatpickr-day.inRange{"
+    "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 18%,#fff);"
+    "border-color:transparent}"
+    ".ts-control,.ts-dropdown{border-radius:var(--shelves-filter-radius,4px);"
+    "border-color:var(--shelves-filter-border,#e5e7eb);background:var(--shelves-filter-surface,#fff);"
+    "color:var(--shelves-filter-text,#1a1a1a)}"
+    # Match the native inputs' height: Tom Select's default 15px font + vertical
+    # padding renders taller than the 32px steppers/dropdowns. Constrain to the
+    # filter height (multi grows past it only when it holds tokens).
+    ".ts-wrapper .ts-control{min-height:var(--shelves-filter-height,32px);"
+    "padding-top:1px;padding-bottom:1px;font-size:var(--shelves-filter-font-size,13px)}"
+    ".ts-control input,.ts-dropdown .option{color:var(--shelves-filter-text,#1a1a1a)}"
+    ".ts-dropdown .active{"
+    "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 16%,#fff);"
+    "color:var(--shelves-filter-text,#1a1a1a)}"
+    ".ts-control .item{"
+    "background:var(--shelves-filter-accent,#4A90D9);color:#fff;border-radius:3px}"
+)
+
+
+def filter_lib_style() -> str:
+    """`<style>` restyling the filter libs onto the theme tokens."""
+    return f"  <style>{FILTER_LIB_CSS}</style>"
+
 
 def translate_dashboard(
     dashboard: DashboardSpec,
@@ -106,6 +224,7 @@ def translate_dashboard(
         sheet_content_dims=ctx.sheet_content_dims,
         has_legends=bool(ctx.legend_links),
         has_controls=bool(ctx.control_meta) or bool(ctx.filter_control_meta),
+        has_filters=bool(ctx.filter_control_meta),
         vega_src_base=vega_src_base,
         interactive=interactive,
     )
@@ -472,6 +591,7 @@ def wrap_html_page(
     sheet_content_dims: dict[str, tuple[int, int]] | None = None,
     has_legends: bool = False,
     has_controls: bool = False,
+    has_filters: bool = False,
     vega_src_base: str | None = None,
     interactive: bool = False,
 ) -> str:
@@ -619,6 +739,15 @@ def wrap_html_page(
         if interactive:
             control_js = "window.__SHELVES_INTERACTIVE__ = true;\n" + control_js
 
+    # SHE-84: filter widget libs only where they run — an interactive dashboard
+    # that actually has a filter. Export renders static values; a filter-less
+    # (params-only) dashboard needs none either.
+    filter_lib_block = (
+        filter_lib_script_tags(vega_src_base) + "\n" + filter_lib_style()
+        if (interactive and has_filters)
+        else ""
+    )
+
     script_block = "\n".join(script_lines)
     patch_block = f"  <script>\n{patch_js}\n  </script>\n" if patch_js else ""
     fit_block = f"  <script>\n{fit_js}\n  </script>\n" if fit_js else ""
@@ -637,12 +766,14 @@ def wrap_html_page(
             f" --shelves-control-radius: {ct.radius}px;"
             f" --shelves-control-font-size: {ct.font_size}px;"
             f" --shelves-control-height: {ct.height}px;"
+            f" --shelves-control-text: {ct.text};"
             f" --shelves-filter-surface: {ft.surface};"
             f" --shelves-filter-border: {ft.border};"
             f" --shelves-filter-radius: {ft.radius}px;"
             f" --shelves-filter-accent: {ft.accent};"
             f" --shelves-filter-font-size: {ft.font_size}px;"
             f" --shelves-filter-height: {ft.height}px;"
+            f" --shelves-filter-text: {ft.text};"
             f" }}"
         )
 
@@ -652,6 +783,7 @@ def wrap_html_page(
   <meta charset="utf-8" />
   <title>{html.escape(dashboard_name)}</title>
 {vega_script_tags(vega_src_base)}
+{filter_lib_block}
   <style>
     * {{ margin: 0; padding: 0; box-sizing: border-box; }}
     body {{ font-family: {body_font}; }}

@@ -32,7 +32,35 @@ attributes; JS builds interactive widgets or static value displays.
 
 **Widget builders:** `buildDropdown`, `buildStepper`, `buildDateInput`,
 `buildTextInput` (shared), `buildMultiSelect` (filter-only: checkboxes + "All"
-toggle), `buildRangeStub` (placeholder for SHE-84).
+toggle), `buildRange` / `buildDateRange` (filter-only; see "Widget libraries").
+
+**Widget libraries (SHE-84).** `range`/`date_range` can't be done natively (no
+dual-handle slider; no themeable native date range), so behind the `data-*`
+contract they use framework-free CDN libs — **noUiSlider** (`range`), **flatpickr
++ rangePlugin** (`date_range`), and **Tom Select**, which enhances the
+`multi_dropdown` `<select multiple>` into a collapsing tokenized control. Python
+never learns which lib renders a control: `buildRange`/`buildDateRange` pick the
+library skeleton vs a **native fallback** (two `<input type=range>` / two
+`<input type=date>`) by feature-detecting the global (`_hasLib`), so a failed
+lib load degrades to a working widget instead of breaking the page — the
+per-control wiring is wrapped so one lib's init throw can't abort the render
+loop. Bounds and default ride on the wrapper's `data-*` for the wiring to read.
+**Commit timing:** the value label tracks the drag live (`update`), but the
+filter commits only on drag-end (`change`); a full-bounds range commits `null`
+(unfiltered). The libs load the **same way as Vega** (`FILTER_LIB_CDN` in
+`layout.py`, mirroring `vega_script_tags`): Studio serves the **vendored copies**
+under `shelves/studio/static/vendor/` same-origin via `vega_src_base` (SHE-77 —
+so a CDN blip or content blocker can't silently degrade every filter widget
+while the vendored Vega still loads), with the **pinned CDN + SRI** URLs as the
+fallback when no vendored base is passed. Keep the vendored filenames in lockstep
+with the CDN versions. The libs are restyled onto the `--shelves-filter-*` tokens
+(`FILTER_LIB_CSS`) — both emitted **only** on the interactive path where a filter
+exists (`interactive and has_filters`); exported HTML renders static values and
+needs no library.
+
+`serializeRange`/`serializeDateRange` are the pure value↔store round-trips
+(numeric handles → `[lo, hi]` numbers; ISO strings → `[start, end]`, empties →
+`null`), exercised by `node --test control_render.test.js`.
 
 **Dimension `dropdown` flag (single/multi):** the compose layer picks the widget
 name from the filter's `dropdown` bool (default `true`), and the JS dispatches on
@@ -48,10 +76,22 @@ so the list flexes to fill the box height and scrolls internally (`flex:1 1 auto
 min-height:0; overflow-y:auto`). This pairs with the filter node's inner div,
 which `layout_styles.resolve_inner_styles` gives `flex-direction:column;
 justify-content:flex-start; overflow:hidden` — so a long list scrolls **inside**
-its own box instead of bleeding over neighbours. A true collapsing multi-select
-dropdown (HTML has no native one — `<select multiple>` is always an open listbox)
-and wildcard typeahead are tracked as UI-widget upgrades (see the range-slider
-ticket, SHE-84).
+its own box instead of bleeding over neighbours. The collapsing multi-select
+(HTML has no native one — `<select multiple>` is always an open listbox) now ships
+via Tom Select enhancing the `multi_dropdown` (see "Widget libraries"). Wildcard
+(SHE-103) resolves its field's distinct string domain at compose time (a
+truncated top-matches prefix for high-cardinality fields) and enhances the
+`text` widget to a **Tom Select single typeahead** over it — committing
+`contains` on selection/Enter (Tom Select `change`), never per keystroke. The
+debounced text box is the degrade-gracefully fallback when the lib is absent or
+no options resolve; the exported (static) HTML is unchanged.
+
+**Text token (SHE-84).** `_inputStyle`/`_labelStyle` set `color` from
+`--shelves-<p>-text` (`p` = `control` | `filter`; default `#1a1a1a`) so widget and
+label text stay legible on a dark control/filter surface. Emitted next to the other
+tokens in `layout.py`'s `control_css`. The `text` field lives on both
+`ControlTokens` and `FilterTokens` — the fix is symmetric across parameters and
+filters because both go through the same helper.
 
 **Static value display:** When `!window.__SHELVES_INTERACTIVE__` (exported HTML),
 `buildStaticValue` renders label + text value — no `<select>`, `<input>`, or

@@ -855,14 +855,12 @@ def _resolve_filter_options(
     """Resolve filter options from the data layer at compose time.
 
     Returns `(options, truncated)` — the options being a list of {value, label}
-    dicts for categorical modes, a [min, max] pair for bounds modes, or None for
-    wildcard. `truncated` is True when the domain hit MAX_DOMAIN_CARDINALITY and
+    dicts for categorical modes (including wildcard, which resolves the same
+    distinct-string domain for its typeahead), or a [min, max] pair for bounds
+    modes. `truncated` is True when the domain hit MAX_DOMAIN_CARDINALITY and
     the list is only a prefix of the real one, in which case a `default:` outside
     it cannot be judged invalid.
     """
-    if mode == "wildcard":
-        return None, False
-
     from shelves.data.domains import (
         LiteralParamType,
         _inline_domain,
@@ -882,7 +880,9 @@ def _resolve_filter_options(
     is_temporal = isinstance(dim, TemporalDimensionDefinition)
 
     param_type: LiteralParamType
-    if mode in ("multi", "single"):
+    if mode in ("multi", "single", "wildcard"):
+        # wildcard (SHE-103) rides the same distinct-string domain path — a
+        # truncated top-matches list feeds the typeahead.
         param_type = "string"
     elif is_temporal or mode in ("after", "before"):
         param_type = "date"

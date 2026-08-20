@@ -109,6 +109,7 @@ layout:
     accent: "#4A90D9"
     font_size: 13
     height: 32
+    text: "#1a1a1a"
     focus_ring: "0 0 0 2px rgba(74, 144, 217, 0.3)"
   filter:
     surface: "#ffffff"
@@ -117,6 +118,7 @@ layout:
     accent: "#4A90D9"
     font_size: 13
     height: 32
+    text: "#1a1a1a"
     focus_ring: "0 0 0 2px rgba(74, 144, 217, 0.3)"
   presets:
     title:

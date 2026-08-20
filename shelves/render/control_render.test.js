@@ -191,21 +191,138 @@ test('buildMultiSelect: escapes option values and labels', () => {
   assert.ok(html.includes('A &amp; B'));
 });
 
-// ─── buildRangeStub ──────────────────────────────────────────
+// ─── text token (SHE-84) ─────────────────────────────────────
 
-test('buildRangeStub: renders disabled placeholder', () => {
-  const html = cr.buildRangeStub({ title: 'Discount', control: 'range' });
-  assert.ok(html.includes('shelves-control'));
-  assert.ok(html.includes('Discount'));
-  assert.ok(html.includes('range'));
-  // Should NOT contain an input or select
-  assert.ok(!html.includes('<input'));
-  assert.ok(!html.includes('<select'));
+test('_inputStyle: parameter widget text reads the control text token', () => {
+  const html = cr.buildDropdown({
+    param: 'm', title: 'M', options: [{ value: 'a', label: 'A' }], default: null,
+  });
+  assert.ok(html.includes('color:var(--shelves-control-text'));
 });
 
-test('buildRangeStub: works for date_range too', () => {
-  const html = cr.buildRangeStub({ title: 'Date', control: 'date_range' });
-  assert.ok(html.includes('date_range'));
+test('_inputStyle: filter widget text reads the filter text token', () => {
+  const html = cr.buildDropdown({
+    type: 'filter', field: 'r', title: 'R',
+    options: [{ value: 'a', label: 'A' }], default: null,
+  });
+  assert.ok(html.includes('color:var(--shelves-filter-text'));
+});
+
+test('_labelStyle: label text reads the text token', () => {
+  const html = cr.buildStepper({ param: 'n', title: 'N', default: '1' });
+  assert.ok(html.includes('color:var(--shelves-control-text'));
+});
+
+test('open-list item text reads the filter text token (single_list)', () => {
+  const html = cr.buildSingleList({
+    type: 'filter', field: 'r', title: 'R',
+    options: [{ value: 'a', label: 'A' }], default: null,
+  });
+  assert.ok(html.includes('color:var(--shelves-filter-text'));
+});
+
+test('open-list item text reads the filter text token (multi_select)', () => {
+  const html = cr.buildMultiSelect({
+    type: 'filter', field: 'r', title: 'R',
+    options: [{ value: 'a', label: 'A' }], default: null,
+  });
+  assert.ok(html.includes('color:var(--shelves-filter-text'));
+});
+
+test('native multi-select box text reads the filter text token', () => {
+  const html = cr.buildNativeMultiSelect({
+    type: 'filter', field: 'r', title: 'R',
+    options: [{ value: 'a', label: 'A' }], default: null,
+  });
+  assert.ok(html.includes('color:var(--shelves-filter-text'));
+});
+
+// ─── buildRange (noUiSlider, native fallback) ────────────────
+
+test('buildRange: falls back to two native range inputs when noUiSlider absent', () => {
+  const html = cr.buildRange({
+    type: 'filter', field: 'sales', title: 'Sales',
+    options: [0, 5000], default: null,
+  });
+  assert.ok(html.includes('class="shelves-range"'));
+  assert.ok(html.includes('data-min="0"'));
+  assert.ok(html.includes('data-max="5000"'));
+  // Two native handles, no library mount.
+  assert.strictEqual((html.match(/type="range"/g) || []).length, 2);
+  assert.ok(!html.includes('shelves-range-slider'));
+});
+
+test('buildRange: mounts a noUiSlider target when the library is present', () => {
+  global.noUiSlider = { create: function () {} };
+  try {
+    const html = cr.buildRange({
+      type: 'filter', field: 'sales', title: 'Sales',
+      options: [0, 5000], default: [1000, 4000],
+    });
+    assert.ok(html.includes('shelves-range-slider'));
+    assert.ok(!html.includes('type="range"'));
+    // Bounds + default travel on the wrapper for the wiring to read.
+    assert.ok(html.includes('data-min="0"'));
+    assert.ok(html.includes('data-max="5000"'));
+  } finally {
+    delete global.noUiSlider;
+  }
+});
+
+test('buildRange: null default spans the full bounds', () => {
+  const html = cr.buildRange({
+    type: 'filter', field: 'sales', title: 'Sales', options: [0, 5000], default: null,
+  });
+  assert.ok(html.includes('value="0"'));
+  assert.ok(html.includes('value="5000"'));
+});
+
+// ─── buildDateRange (flatpickr, native fallback) ─────────────
+
+test('buildDateRange: falls back to two native date inputs when flatpickr absent', () => {
+  const html = cr.buildDateRange({
+    type: 'filter', field: 'order_date', title: 'Order Date',
+    options: ['2024-01-01', '2024-12-31'], default: null,
+  });
+  assert.ok(html.includes('class="shelves-daterange"'));
+  assert.strictEqual((html.match(/type="date"/g) || []).length, 2);
+  assert.ok(html.includes('min="2024-01-01"'));
+  assert.ok(html.includes('max="2024-12-31"'));
+});
+
+test('buildDateRange: uses text inputs flatpickr can mount when present', () => {
+  global.flatpickr = function () {};
+  try {
+    const html = cr.buildDateRange({
+      type: 'filter', field: 'order_date', title: 'Order Date',
+      options: ['2024-01-01', '2024-12-31'], default: ['2024-03-01', '2024-09-30'],
+    });
+    assert.ok(html.includes('shelves-daterange-start'));
+    assert.ok(html.includes('shelves-daterange-end'));
+    assert.ok(!html.includes('type="date"'));
+    assert.ok(html.includes('value="2024-03-01"'));
+    assert.ok(html.includes('value="2024-09-30"'));
+  } finally {
+    delete global.flatpickr;
+  }
+});
+
+// ─── value↔store serialization round-trips ───────────────────
+
+test('serializeRange: numeric handles round-trip to numbers', () => {
+  assert.deepStrictEqual(cr.serializeRange('100', '200'), [100, 200]);
+  assert.deepStrictEqual(cr.serializeRange(0, 5000), [0, 5000]);
+});
+
+test('serializeDateRange: ISO strings round-trip unchanged', () => {
+  assert.deepStrictEqual(
+    cr.serializeDateRange('2024-01-01', '2024-12-31'),
+    ['2024-01-01', '2024-12-31'],
+  );
+});
+
+test('serializeDateRange: empty endpoints collapse to null', () => {
+  assert.strictEqual(cr.serializeDateRange('', ''), null);
 });
 
 // ─── buildNativeMultiSelect (multi, dropdown:true) ───────────
@@ -342,13 +459,18 @@ test('buildControl: dispatches single_list to radio list', () => {
   assert.ok(html.includes('type="radio"'));
 });
 
-test('buildControl: dispatches range/date_range to stub', () => {
-  const range = cr.buildControl({ control: 'range', title: 'R', default: null });
-  assert.ok(range.includes('range'));
-  assert.ok(!range.includes('<input'));
+test('buildControl: dispatches range to buildRange', () => {
+  const range = cr.buildControl({
+    control: 'range', title: 'R', field: 'sales', type: 'filter',
+    options: JSON.stringify([0, 100]), default: null,
+  });
+  assert.ok(range.includes('class="shelves-range"'));
 
-  const dateRange = cr.buildControl({ control: 'date_range', title: 'DR', default: null });
-  assert.ok(dateRange.includes('date_range'));
+  const dateRange = cr.buildControl({
+    control: 'date_range', title: 'DR', field: 'd', type: 'filter',
+    options: JSON.stringify(['2024-01-01', '2024-12-31']), default: null,
+  });
+  assert.ok(dateRange.includes('class="shelves-daterange"'));
 });
 
 // ─── buildStaticValue ────────────────────────────────────────
@@ -542,4 +664,29 @@ test('buildStaticValue: range mode null default shows All', () => {
     mode: 'range',
   });
   assert.ok(html.includes('All'));
+});
+
+// ─── SHE-103: wildcard typeahead seams ──────────────────────────────────────
+
+test('wildcardCommitValue: non-empty string commits that string', () => {
+  assert.strictEqual(cr.wildcardCommitValue('West'), 'West');
+});
+
+test('wildcardCommitValue: empty / cleared selection commits null', () => {
+  assert.strictEqual(cr.wildcardCommitValue(''), null);
+  assert.strictEqual(cr.wildcardCommitValue(null), null);
+  assert.strictEqual(cr.wildcardCommitValue(undefined), null);
+});
+
+test('wildcardUseTypeahead: lib present + options → typeahead', () => {
+  assert.strictEqual(cr.wildcardUseTypeahead(true, [{ value: 'a', label: 'A' }]), true);
+});
+
+test('wildcardUseTypeahead: lib absent → fallback text box', () => {
+  assert.strictEqual(cr.wildcardUseTypeahead(false, [{ value: 'a', label: 'A' }]), false);
+});
+
+test('wildcardUseTypeahead: no options → fallback text box', () => {
+  assert.strictEqual(cr.wildcardUseTypeahead(true, []), false);
+  assert.strictEqual(cr.wildcardUseTypeahead(true, null), false);
 });
