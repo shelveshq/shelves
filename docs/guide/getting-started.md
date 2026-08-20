@@ -171,6 +171,17 @@ once with line numbers, valid options, and "did you mean" suggestions, and
 exits non-zero on any error (CI-friendly). Point it at a file or a directory
 (directories are searched for `*.yaml`).
 
+## Agent tools (MCP)
+
+```bash
+pip install "shelves-bi[mcp]"
+shelves-mcp            # stdio MCP server, run from your project root
+```
+
+`shelves-mcp` exposes the semantic model and chart pipeline to coding agents
+(Claude Code, Codex, Cursor) — `get_model`, `sample_field_values`,
+`list_parameters`, and `list_specs`. See [Agent Tools](agent-tools.md).
+
 ## Dashboards
 
 Dashboards compose multiple charts into a single HTML page with layout, text, navigation, and styling:
