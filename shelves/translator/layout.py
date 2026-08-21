@@ -137,11 +137,17 @@ FILTER_LIB_CSS = (
     "border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);"
     "background:var(--shelves-filter-accent,#4A90D9)}"
     ".noUi-handle:before,.noUi-handle:after{display:none}"
-    ".noUi-tooltip{font-size:11px;border-color:var(--shelves-filter-border,#e5e7eb)}"
+    ".noUi-tooltip{font-size:11px;border-color:var(--shelves-filter-border,#e5e7eb);"
+    "background:var(--shelves-filter-surface,#fff);color:var(--shelves-filter-text,#1a1a1a)}"
     ".flatpickr-day.selected,.flatpickr-day.startRange,.flatpickr-day.endRange{"
     "background:var(--shelves-filter-accent,#4A90D9);border-color:var(--shelves-filter-accent,#4A90D9)}"
+    # Range/hover tints blend the accent over the SURFACE token, not a literal
+    # #fff — on a dark filter surface a white blend produces a near-white band
+    # that swallows the (light) filter text. Surface-relative keeps contrast in
+    # both themes.
     ".flatpickr-day.inRange{"
-    "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 18%,#fff);"
+    "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 22%,"
+    "var(--shelves-filter-surface,#fff));"
     "border-color:transparent}"
     ".ts-control,.ts-dropdown{border-radius:var(--shelves-filter-radius,4px);"
     "border-color:var(--shelves-filter-border,#e5e7eb);background:var(--shelves-filter-surface,#fff);"
@@ -153,7 +159,8 @@ FILTER_LIB_CSS = (
     "padding-top:1px;padding-bottom:1px;font-size:var(--shelves-filter-font-size,13px)}"
     ".ts-control input,.ts-dropdown .option{color:var(--shelves-filter-text,#1a1a1a)}"
     ".ts-dropdown .active{"
-    "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 16%,#fff);"
+    "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 24%,"
+    "var(--shelves-filter-surface,#fff));"
     "color:var(--shelves-filter-text,#1a1a1a)}"
     ".ts-control .item{"
     "background:var(--shelves-filter-accent,#4A90D9);color:#fff;border-radius:3px}"
