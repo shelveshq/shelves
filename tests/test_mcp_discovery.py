@@ -17,7 +17,9 @@ from __future__ import annotations
 import datetime as dt
 import json
 
+import httpx
 import pytest
+import respx
 
 from shelves.data.domains import clear_domain_cache
 from shelves.models.loader import clear_model_cache
@@ -170,6 +172,46 @@ def test_sample_field_values_unknown_field():
     assert out["error"]["did_you_mean"] == "country"
 
 
+def test_sample_field_values_invalid_model_returns_structured_error():
+    """A model file that exists but is malformed is a structured error, not a
+    raised exception across the protocol boundary (spec §1 principle 3)."""
+    from shelves.mcp.tools import sample_field_values
+
+    out = sample_field_values(_ctx(), "invalid_yaml", "anything")
+    assert out["error"]["code"] == "invalid_model"
+
+
+_CUBE_URL = "http://localhost:4000"
+_CUBE_LOAD = f"{_CUBE_URL}/cubejs-api/v1/load"
+
+
+@respx.mock
+def test_sample_field_values_cube_backend(monkeypatch):
+    """SHE-55 acceptance: distinct values for a Cube model, not just DuckDB —
+    the shared domain resolver must give the same shape on the Cube backend."""
+    from shelves.mcp.tools import sample_field_values
+
+    monkeypatch.setenv("CUBE_API_URL", _CUBE_URL)
+    monkeypatch.setenv("CUBE_API_TOKEN", "test-token")
+    respx.post(_CUBE_LOAD).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"orders.category": "Furniture"},
+                    {"orders.category": "Tech"},
+                    {"orders.category": "Office"},
+                ]
+            },
+        )
+    )
+
+    out = sample_field_values(_ctx(), "cube_orders", "category")
+    assert out["kind"] == "values"
+    assert set(out["values"]) == {"Furniture", "Tech", "Office"}
+    assert out["dsl_version"] == DSL_VERSION
+
+
 # ─── list_parameters ──────────────────────────────────────────────
 
 
@@ -199,6 +241,16 @@ def test_list_parameters_absent(tmp_path):
 
     out = list_parameters(_ctx(models_dir=tmp_path))
     assert out["parameters"] == []
+
+
+def test_list_parameters_malformed_returns_structured_error(tmp_path):
+    """A broken parameters.yaml is an agent-correctable error, never a raise
+    across the protocol boundary (spec §1 principle 3)."""
+    from shelves.mcp.tools import list_parameters
+
+    (tmp_path / "parameters.yaml").write_text("parameters:\n  region:\n    values: [a, b\n")
+    out = list_parameters(_ctx(models_dir=tmp_path))
+    assert out["error"]["code"] == "invalid_parameters"
 
 
 # ─── list_specs ───────────────────────────────────────────────────
@@ -248,11 +300,24 @@ def test_list_specs_kind_filter(tmp_path):
     assert out["dashboards"] == []
 
 
+def test_list_specs_skips_unreadable_yaml(tmp_path):
+    """One non-UTF-8 / unreadable *.yaml must be skipped, not abort the whole
+    inventory (spec §1 principle 3)."""
+    from shelves.mcp.tools import list_specs
+
+    (tmp_path / "good.yaml").write_text("sheet: Good\n")
+    (tmp_path / "binary.yaml").write_bytes(b"\xff\xfe\x00bad")
+
+    out = list_specs(_ctx(project_dir=tmp_path))
+    assert [c["sheet"] for c in out["charts"]] == ["Good"]
+
+
 # ─── server assembly (in-memory round trip) ───────────────────────
 
 
 def test_server_registers_tools_and_roundtrips():
     import anyio
+    from mcp.types import CallToolResult, TextContent
 
     from shelves.mcp.server import build_server
 
@@ -270,7 +335,10 @@ def test_server_registers_tools_and_roundtrips():
         } <= names
 
         result = await server.call_tool("get_model", {"model": "orders"})
-        payload = json.loads(result.content[0].text)
+        assert isinstance(result, CallToolResult)
+        block = result.content[0]
+        assert isinstance(block, TextContent)
+        payload = json.loads(block.text)
         assert payload["model"] == "orders"
         assert payload["dsl_version"] == DSL_VERSION
 

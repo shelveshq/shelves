@@ -221,6 +221,10 @@ def sample_field_values(ctx: MCPContext, model: str, field: str, limit: int = 20
             did_you_mean=_did_you_mean(model, options),
             valid_options=options,
         )
+    except ValueError as e:
+        # A model file that exists but is malformed — surface it as a structured
+        # error, never raised across the protocol boundary (spec §1 principle 3).
+        return _error("invalid_model", str(e).splitlines()[0])
 
     resolver = ModelResolver(data_model)
     dimension_names = list(data_model.dimensions.keys())
@@ -284,7 +288,12 @@ def list_parameters(ctx: MCPContext) -> dict:
     parameter's values come from a model field, signalling the agent can call
     `sample_field_values` on it. No data is fetched here.
     """
-    block = load_parameters(models_dir=ctx.models_dir)
+    try:
+        block = load_parameters(models_dir=ctx.models_dir)
+    except (ValueError, FileNotFoundError) as e:
+        # A malformed parameters.yaml is an agent-correctable error, not a
+        # protocol crash (spec §1 principle 3) — mirror list_models' handling.
+        return _error("invalid_parameters", str(e).splitlines()[0])
     params = []
     for name, param in block.items():
         entries = param.values or []
@@ -329,7 +338,10 @@ def list_specs(ctx: MCPContext, kind: str | None = None) -> dict:
             continue
         try:
             raw = yaml.safe_load(path.read_text())
-        except yaml.YAMLError:
+        except (yaml.YAMLError, OSError, UnicodeDecodeError):
+            # An unreadable / non-UTF-8 / malformed *.yaml is skipped, not fatal —
+            # a single bad file must never abort the whole inventory (spec §1
+            # principle 3: no raise across the protocol boundary).
             continue
         spec_kind = _classify(raw)
         rel_str = str(rel)
