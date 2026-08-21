@@ -14,10 +14,15 @@ Contract: `docs/foundational/Filter Specification.md` §9; gate: verify-render
 
 from pathlib import Path
 
+import shelves.theme
 from shelves.compose.dashboard import compose_dashboard
 from shelves.theme.merge import load_theme
 from shelves.theme.theme_schema import LegendTokens
 from tests.conftest import DATA_DIR, LAYOUT_DIR, MODELS_DIR, YAML_DIR
+
+# Anchor to the installed package, not the CWD, so the test passes wherever
+# pytest is invoked from.
+DEFAULT_THEME_YAML = Path(shelves.theme.__file__).parent / "default_theme.yaml"
 
 
 def _compose(fixture_name: str, **kwargs) -> str:
@@ -72,7 +77,8 @@ class TestLegendTokenEmission:
 
 class TestDefaultThemeYaml:
     def test_default_theme_yaml_lists_legend_block(self):
-        text = Path("shelves/theme/default_theme.yaml").read_text(encoding="utf-8")
-        assert "legend:" in text
+        text = DEFAULT_THEME_YAML.read_text(encoding="utf-8")
+        # swatch_size/title_weight are unique to the layout.legend block (the bare
+        # "legend:" key also appears in the chart section), so assert on those.
         assert "swatch_size: 12" in text
         assert "title_weight: 600" in text

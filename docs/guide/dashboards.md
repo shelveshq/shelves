@@ -563,6 +563,13 @@ same rules as every other layout element (see [Sizing](#sizing) and
 > layered or dual-axis charts (multiple scales per channel) are not supported yet
 > and raise a build error.
 
+**Theming:** legend swatch, label, and title styling is driven by the
+`layout.legend` theme block — `font_size`, `title_weight`, `swatch_size`,
+`swatch_radius`, `gap` (vertical row gap), and `gap_horizontal` (horizontal
+item gap). The defaults reproduce the built-in look exactly, so a dashboard that
+doesn't customise them is unchanged. (The gradient colour bar's own radius is
+fixed and independent of `swatch_radius`.)
+
 ### Parameter widget
 
 An interactive widget for a declared parameter. The widget type is inferred from the parameter's `type` and `values` shape — no author-chosen widget override.

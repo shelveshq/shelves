@@ -141,13 +141,14 @@ FILTER_LIB_CSS = (
     "background:var(--shelves-filter-surface,#fff);color:var(--shelves-filter-text,#1a1a1a)}"
     ".flatpickr-day.selected,.flatpickr-day.startRange,.flatpickr-day.endRange{"
     "background:var(--shelves-filter-accent,#4A90D9);border-color:var(--shelves-filter-accent,#4A90D9)}"
-    # Range/hover tints blend the accent over the SURFACE token, not a literal
-    # #fff — on a dark filter surface a white blend produces a near-white band
-    # that swallows the (light) filter text. Surface-relative keeps contrast in
-    # both themes.
+    # flatpickr renders its calendar as a body-attached popup we never theme, so
+    # the panel stays white (#fff) with dark day text regardless of the filter
+    # surface. Blend the in-range tint over that literal #fff — NOT the surface
+    # token — or a dark surface produces a near-black band under the dark day
+    # numbers. (Contrast the .ts-dropdown rule below, whose panel we DO repaint
+    # to the surface, so its active-row tint is correctly surface-relative.)
     ".flatpickr-day.inRange{"
-    "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 22%,"
-    "var(--shelves-filter-surface,#fff));"
+    "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 18%,#fff);"
     "border-color:transparent}"
     ".ts-control,.ts-dropdown{border-radius:var(--shelves-filter-radius,4px);"
     "border-color:var(--shelves-filter-border,#e5e7eb);background:var(--shelves-filter-surface,#fff);"
