@@ -120,6 +120,15 @@ layout:
     height: 32
     text: "#1a1a1a"
     focus_ring: "0 0 0 2px rgba(74, 144, 217, 0.3)"
+  # Independent-dashboard-legend tokens (SHE-85), emitted as --shelves-legend-*.
+  # Defaults match legend_render.js's historical hardcoded values exactly.
+  legend:
+    font_size: 12
+    title_weight: 600
+    swatch_size: 12
+    swatch_radius: 2
+    gap: 4
+    gap_horizontal: 12
   presets:
     title:
       font_size: 24

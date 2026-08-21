@@ -102,6 +102,20 @@ class FilterTokens(BaseModel):
     focus_ring: str = "0 0 0 2px rgba(74, 144, 217, 0.3)"
 
 
+class LegendTokens(BaseModel):
+    """Independent-dashboard-legend styling (SHE-85), emitted as
+    ``--shelves-legend-*`` custom properties. Defaults match the pre-token
+    hardcoded values in ``legend_render.js`` exactly — zero visual change with
+    the default theme. Values are unvalidated (no coherence checks)."""
+
+    font_size: int = 12
+    title_weight: int = 600
+    swatch_size: int = 12
+    swatch_radius: int = 2
+    gap: int = 4
+    gap_horizontal: int = 12
+
+
 class LayoutTheme(BaseModel):
     text: LayoutTextColors = Field(default_factory=LayoutTextColors)
     font: LayoutFont = Field(default_factory=LayoutFont)
@@ -111,6 +125,7 @@ class LayoutTheme(BaseModel):
     presets: dict[str, TextPreset] = Field(default_factory=dict)
     control: ControlTokens = Field(default_factory=ControlTokens)
     filter: FilterTokens = Field(default_factory=FilterTokens)
+    legend: LegendTokens = Field(default_factory=LegendTokens)
 
 
 class ThemeSpec(BaseModel):

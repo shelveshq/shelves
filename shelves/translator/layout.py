@@ -761,28 +761,39 @@ def wrap_html_page(
     legend_block = f"  <script>\n{legend_js}\n  </script>\n" if legend_js else ""
     control_block = f"  <script>\n{control_js}\n  </script>\n" if control_js else ""
 
-    # SHE-92: emit CSS custom properties for control/filter theming.
-    control_css = ""
+    # SHE-92/SHE-85: emit CSS custom properties for control/filter/legend theming.
+    # Each block is gated by its own surface (`has_controls` for control+filter,
+    # `has_legends` for legend), so a legend-only dashboard still gets its tokens.
+    theme_vars: list[str] = []
     if has_controls:
         ct = theme.layout.control
         ft = theme.layout.filter
-        control_css = (
-            f"\n    :root {{"
-            f" --shelves-control-surface: {ct.surface};"
-            f" --shelves-control-border: {ct.border};"
-            f" --shelves-control-radius: {ct.radius}px;"
-            f" --shelves-control-font-size: {ct.font_size}px;"
-            f" --shelves-control-height: {ct.height}px;"
-            f" --shelves-control-text: {ct.text};"
-            f" --shelves-filter-surface: {ft.surface};"
-            f" --shelves-filter-border: {ft.border};"
-            f" --shelves-filter-radius: {ft.radius}px;"
-            f" --shelves-filter-accent: {ft.accent};"
-            f" --shelves-filter-font-size: {ft.font_size}px;"
-            f" --shelves-filter-height: {ft.height}px;"
-            f" --shelves-filter-text: {ft.text};"
-            f" }}"
-        )
+        theme_vars += [
+            f" --shelves-control-surface: {ct.surface};",
+            f" --shelves-control-border: {ct.border};",
+            f" --shelves-control-radius: {ct.radius}px;",
+            f" --shelves-control-font-size: {ct.font_size}px;",
+            f" --shelves-control-height: {ct.height}px;",
+            f" --shelves-control-text: {ct.text};",
+            f" --shelves-filter-surface: {ft.surface};",
+            f" --shelves-filter-border: {ft.border};",
+            f" --shelves-filter-radius: {ft.radius}px;",
+            f" --shelves-filter-accent: {ft.accent};",
+            f" --shelves-filter-font-size: {ft.font_size}px;",
+            f" --shelves-filter-height: {ft.height}px;",
+            f" --shelves-filter-text: {ft.text};",
+        ]
+    if has_legends:
+        lg = theme.layout.legend
+        theme_vars += [
+            f" --shelves-legend-font-size: {lg.font_size}px;",
+            f" --shelves-legend-title-weight: {lg.title_weight};",
+            f" --shelves-legend-swatch-size: {lg.swatch_size}px;",
+            f" --shelves-legend-swatch-radius: {lg.swatch_radius}px;",
+            f" --shelves-legend-gap: {lg.gap}px;",
+            f" --shelves-legend-gap-horizontal: {lg.gap_horizontal}px;",
+        ]
+    control_css = f"\n    :root {{{''.join(theme_vars)} }}" if theme_vars else ""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
