@@ -39,15 +39,19 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     ctx = MCPContext.create(project_dir=args.project_dir, models_dir=args.models_dir)
 
+    # The `mcp` SDK is imported lazily inside `build_server`, so a missing SDK
+    # surfaces when the server is built (inside `serve`), not at import time —
+    # `serve(ctx)` must be inside the try, or the install hint never fires.
     try:
         from shelves.mcp.server import serve
+
+        serve(ctx)
     except ModuleNotFoundError as e:
         if e.name == "mcp" or (e.name or "").startswith("mcp."):
             print(_MISSING_SDK_HINT, file=sys.stderr)
             return 1
         raise
 
-    serve(ctx)
     return 0
 
 

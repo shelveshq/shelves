@@ -105,29 +105,29 @@ def _model_stems(models_dir: Path) -> list[str]:
 # ─── list_models ──────────────────────────────────────────────────
 
 
-def list_models(ctx: MCPContext) -> list[dict]:
+def list_models(ctx: MCPContext) -> dict:
     """List available semantic models in the models directory.
 
-    One entry per `*.yaml` (excluding parameters files): a valid model yields
-    ``{model, label, source_type}``; a file that fails to parse is surfaced as
-    ``{model, error}`` so an agent can see a broken model exists rather than
-    silently missing it.
+    One entry per `*.yaml` (excluding parameters files) under ``models``: a valid
+    model yields ``{model, label, source_type}``; a file that fails to parse is
+    surfaced as ``{model, error}`` so an agent can see a broken model exists
+    rather than silently missing it. The result carries the DSL schema version.
     """
-    out: list[dict] = []
+    models: list[dict] = []
     for stem in _model_stems(ctx.models_dir):
         try:
             model = load_model(stem, models_dir=ctx.models_dir)
         except (ValueError, FileNotFoundError) as e:
-            out.append({"model": stem, "error": str(e).splitlines()[0]})
+            models.append({"model": stem, "error": str(e).splitlines()[0]})
             continue
-        out.append(
+        models.append(
             {
                 "model": model.model,
                 "label": model.label,
                 "source_type": _source_type(model),
             }
         )
-    return out
+    return {"models": models, "dsl_version": DSL_VERSION}
 
 
 # ─── get_model ────────────────────────────────────────────────────
@@ -354,4 +354,4 @@ def list_specs(ctx: MCPContext, kind: str | None = None) -> dict:
         dashboards = []
     elif kind == "dashboard":
         charts = []
-    return {"charts": charts, "dashboards": dashboards}
+    return {"charts": charts, "dashboards": dashboards, "dsl_version": DSL_VERSION}

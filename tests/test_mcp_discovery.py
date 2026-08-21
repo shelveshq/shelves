@@ -101,7 +101,9 @@ def test_get_model_unknown():
 def test_list_models_scans_dir():
     from shelves.mcp.tools import list_models
 
-    entries = {e["model"]: e for e in list_models(_ctx())}
+    out = list_models(_ctx())
+    assert out["dsl_version"] == DSL_VERSION
+    entries = {e["model"]: e for e in out["models"]}
 
     # Valid models appear with their backend + label.
     assert entries["orders"]["source_type"] == "inline"
@@ -118,7 +120,9 @@ def test_list_models_scans_dir():
 def test_list_models_empty_dir(tmp_path):
     from shelves.mcp.tools import list_models
 
-    assert list_models(_ctx(models_dir=tmp_path)) == []
+    out = list_models(_ctx(models_dir=tmp_path))
+    assert out["models"] == []
+    assert out["dsl_version"] == DSL_VERSION
 
 
 # ─── sample_field_values ──────────────────────────────────────────
@@ -277,6 +281,7 @@ def test_list_specs_inventory(tmp_path):
 
     out = list_specs(_ctx(project_dir=tmp_path))
 
+    assert out["dsl_version"] == DSL_VERSION
     charts = {c["path"]: c for c in out["charts"]}
     dashboards = {d["path"]: d for d in out["dashboards"]}
 

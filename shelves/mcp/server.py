@@ -40,7 +40,7 @@ def build_server(ctx: MCPContext) -> MCPServer:
     )
 
     @server.tool()
-    def list_models() -> list[dict]:
+    def list_models() -> dict:
         """List available semantic models (name, label, backend). Start here to
         see what data is available."""
         return tools.list_models(ctx)
