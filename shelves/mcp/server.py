@@ -14,6 +14,7 @@ turns a missing SDK into a clear install hint.
 
 from __future__ import annotations
 
+import base64
 from typing import TYPE_CHECKING, Any
 
 from shelves.mcp import tools
@@ -68,6 +69,65 @@ def build_server(ctx: MCPContext) -> MCPServer:
         """Inventory of chart and dashboard YAMLs already in the project, so you
         extend rather than duplicate. Optional kind = "chart" or "dashboard"."""
         return tools.list_specs(ctx, kind)
+
+    @server.tool()
+    def validate_spec(
+        yaml_text: str | None = None, path: str | None = None, kind: str | None = None
+    ) -> dict:
+        """Validate chart/dashboard YAML against schema AND the semantic model.
+        Returns every error at once (line numbers, valid options, did-you-mean),
+        or the normalized canonical spec. Pass yaml_text or a project path."""
+        return tools.validate_spec(ctx, yaml_text=yaml_text, path=path, kind=kind)
+
+    @server.tool()
+    def compile_chart(
+        yaml_text: str | None = None, path: str | None = None, theme: str | None = None
+    ) -> dict:
+        """The compiled, theme-merged Vega-Lite for one chart (no data), for
+        inspecting how the DSL translates. Invalid specs return validation errors."""
+        return tools.compile_chart(ctx, yaml_text=yaml_text, path=path, theme=theme)
+
+    @server.tool(structured_output=False)
+    def render_chart(
+        yaml_text: str | None = None,
+        path: str | None = None,
+        format: str = "png",
+        params: dict | None = None,
+    ) -> Any:
+        """Render a chart to PNG (default — look at it to catch schema-valid but
+        semantically-wrong charts) or HTML. PNG is headless: data labels and
+        compound-chart fit are browser-only (reported in `limitations`)."""
+        payload = tools.render_chart(
+            ctx, yaml_text=yaml_text, path=path, format=format, params=params
+        )
+        png_base64 = payload.pop("png_base64", None)
+        if png_base64 is None:
+            return payload
+
+        from mcp.server.mcpserver import Image
+
+        image = Image(data=base64.b64decode(png_base64), format="png").to_image_content()
+        return [image, payload]
+
+    @server.tool()
+    def render_dashboard(path: str, format: str = "html", params: dict | None = None) -> dict:
+        """Render a dashboard (layout tree of sheets) to HTML via the compose
+        pipeline. PNG is unsupported — dashboard sizing is browser-computed."""
+        return tools.render_dashboard(ctx, path, format=format, params=params)
+
+    @server.tool()
+    def query_model(
+        model: str,
+        measures: list[str],
+        dimensions: list[str] | None = None,
+        filters: list[dict] | None = None,
+        limit: int = 500,
+    ) -> dict:
+        """Run an aggregated query through the semantic layer (sanity-check data
+        before/after charting). Read-only and SQL-free — same adapter a chart uses."""
+        return tools.query_model(
+            ctx, model, measures, dimensions=dimensions, filters=filters, limit=limit
+        )
 
     return server
 

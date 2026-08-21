@@ -31,7 +31,12 @@ from shelves.models.schema import DataModel
 from shelves.params.loader import load_parameters
 from shelves.params.schema import FieldRef
 from shelves.schema.chart_schema import DSL_VERSION
-from shelves.validation import _did_you_mean, detect_kind
+from shelves.validation import (
+    _did_you_mean,
+    detect_kind,
+    validate_chart_yaml,
+    validate_dashboard_yaml,
+)
 
 # Directory / path parts never scanned for models or specs.
 _SKIP_PARTS = {".venv", ".git", "output", "node_modules", "__pycache__"}
@@ -355,3 +360,331 @@ def list_specs(ctx: MCPContext, kind: str | None = None) -> dict:
     elif kind == "dashboard":
         charts = []
     return {"charts": charts, "dashboards": dashboards, "dsl_version": DSL_VERSION}
+
+
+# ─── authoring tools (SHE-56) ─────────────────────────────────────
+
+_LABEL_LIMITATION = "Data labels (label:) are browser-rendered and do not appear in PNG output."
+_COMPOUND_LIMITATION = "Compound specs render at natural size, not container-fit."
+_PARAMS_UNSUPPORTED = "Parameters land with the Parameter spec; render without params for now."
+
+
+def _read_input(
+    ctx: MCPContext, yaml_text: str | None, path: str | None
+) -> tuple[str | None, dict | None]:
+    """Resolve exactly one of `yaml_text` / `path` to spec text (text, error)."""
+    if yaml_text is not None and path is not None:
+        return None, _error("ambiguous_input", "Pass yaml_text or path, not both.")
+    if yaml_text is None and path is None:
+        return None, _error("missing_input", "Pass either yaml_text or path.")
+    if yaml_text is not None:
+        return yaml_text, None
+
+    assert path is not None
+    resolved = (ctx.project_dir / path).resolve()
+    if not resolved.is_relative_to(ctx.project_dir):
+        return None, _error(
+            "outside_project", f"Path {path!r} resolves outside the project directory."
+        )
+    try:
+        return resolved.read_text(), None
+    except (OSError, UnicodeDecodeError) as e:
+        return None, _error("read_error", str(e).splitlines()[0])
+
+
+def _slug(text: str) -> str:
+    keep = [c.lower() if c.isalnum() else "_" for c in text.strip()]
+    slug = "".join(keep).strip("_")
+    while "__" in slug:
+        slug = slug.replace("__", "_")
+    return slug or "chart"
+
+
+def _detect_kind(text: str, kind: str | None) -> str:
+    if kind is not None:
+        return kind
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return "chart"
+    detected = detect_kind(raw) if isinstance(raw, dict) else None
+    return detected or "chart"
+
+
+def validate_spec(
+    ctx: MCPContext,
+    yaml_text: str | None = None,
+    path: str | None = None,
+    kind: str | None = None,
+) -> dict:
+    """Validate chart or dashboard YAML against schema AND the semantic model.
+
+    Returns every error at once — line/column, valid options, and did-you-mean
+    suggestions — or, when valid, the normalized canonical spec. Kind is inferred
+    from the root keys unless given. This is the SHE-54 renderer verbatim.
+    """
+    text, err = _read_input(ctx, yaml_text, path)
+    if err is not None:
+        return err
+    assert text is not None
+
+    if _detect_kind(text, kind) == "dashboard":
+        result = validate_dashboard_yaml(
+            text, models_dir=ctx.models_dir, project_dir=ctx.project_dir
+        )
+    else:
+        result = validate_chart_yaml(text, models_dir=ctx.models_dir)
+    return result.model_dump()
+
+
+def compile_chart(
+    ctx: MCPContext,
+    yaml_text: str | None = None,
+    path: str | None = None,
+    theme: str | None = None,
+) -> dict:
+    """Compiled, theme-merged Vega-Lite for one chart (no data) — for inspection.
+
+    Invalid specs return the validate_spec error payload instead of raising.
+    """
+    text, err = _read_input(ctx, yaml_text, path)
+    if err is not None:
+        return err
+    assert text is not None
+
+    result = validate_chart_yaml(text, models_dir=ctx.models_dir)
+    if not result.valid:
+        return result.model_dump()
+
+    from shelves.pipeline import compile_chart as _compile
+
+    vl_spec, spec = _compile(
+        text, models_dir=ctx.models_dir, theme_path=Path(theme) if theme else None
+    )
+    return {"vega_lite": vl_spec, "sheet": spec.sheet, "dsl_version": DSL_VERSION}
+
+
+def _has_label(spec: Any) -> bool:
+    if spec.label:
+        return True
+    for shelf in (spec.rows, spec.cols):
+        if isinstance(shelf, list):
+            for entry in shelf:
+                if entry.label:
+                    return True
+                if entry.layer and any(layer.label for layer in entry.layer):
+                    return True
+    return False
+
+
+def _render_limitations(spec: Any, vl_spec: dict) -> list[str]:
+    limitations: list[str] = []
+    if _has_label(spec):
+        limitations.append(_LABEL_LIMITATION)
+    if any(k in vl_spec for k in ("vconcat", "hconcat", "repeat", "facet")):
+        limitations.append(_COMPOUND_LIMITATION)
+    return limitations
+
+
+def render_chart(
+    ctx: MCPContext,
+    yaml_text: str | None = None,
+    path: str | None = None,
+    format: str = "png",
+    params: dict | None = None,
+) -> dict:
+    """Render a chart to PNG (default — a multimodal agent can look at it) or HTML.
+
+    PNG is headless (vl-convert): data labels and container-fit sizing for
+    compound charts are browser-only and are reported in `limitations`. Use
+    format="html" for full fidelity. Invalid specs return the validate_spec
+    error payload; unresolvable data returns a `data_unavailable` error.
+    """
+    if params:
+        return _error("not_supported_yet", _PARAMS_UNSUPPORTED)
+
+    text, err = _read_input(ctx, yaml_text, path)
+    if err is not None:
+        return err
+    assert text is not None
+
+    result = validate_chart_yaml(text, models_dir=ctx.models_dir)
+    if not result.valid:
+        return result.model_dump()
+
+    from shelves.errors import ShelvesError
+    from shelves.pipeline import compile_chart as _compile
+    from shelves.pipeline import resolve_model_data
+
+    vl_spec, spec = _compile(text, models_dir=ctx.models_dir)
+    try:
+        bound = resolve_model_data(
+            vl_spec, spec, models_dir=ctx.models_dir, data_base_dir=ctx.project_dir
+        )
+    except ShelvesError as e:
+        return _error(
+            "data_unavailable",
+            str(e).splitlines()[0],
+            fix_hint="Set CUBE_API_URL/CUBE_API_TOKEN, or use a model with resolvable data.",
+        )
+
+    out_dir = ctx.project_dir / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    slug = _slug(spec.sheet)
+
+    if format == "html":
+        from shelves.render.to_html import render_html
+
+        out_path = out_dir / f"{slug}.html"
+        out_path.write_text(render_html(bound, title=spec.sheet))
+        return {"format": "html", "path": str(out_path), "dsl_version": DSL_VERSION}
+
+    try:
+        from shelves.render.to_png import render_png
+
+        png, width, height = render_png(bound)
+    except ModuleNotFoundError as e:
+        if e.name == "vl_convert" or (e.name or "").startswith("vl_convert"):
+            return _error(
+                "vl_convert_missing",
+                "PNG rendering needs the vl-convert-python package.",
+                fix_hint='pip install "shelves-bi[mcp]"',
+            )
+        raise
+
+    out_path = out_dir / f"{slug}.png"
+    out_path.write_bytes(png)
+    import base64
+
+    return {
+        "format": "png",
+        "path": str(out_path),
+        "png_base64": base64.b64encode(png).decode(),
+        "width": width,
+        "height": height,
+        "limitations": _render_limitations(spec, bound),
+        "dsl_version": DSL_VERSION,
+    }
+
+
+def render_dashboard(
+    ctx: MCPContext,
+    path: str,
+    format: str = "html",
+    params: dict | None = None,
+) -> dict:
+    """Render a dashboard (layout tree of sheets) to HTML via the compose pipeline.
+
+    PNG is not supported — dashboard sizing is browser-computed; use HTML.
+    """
+    if params:
+        return _error("not_supported_yet", _PARAMS_UNSUPPORTED)
+    if format == "png":
+        return _error(
+            "unsupported_format",
+            "Dashboard PNG needs a browser (layout sizing is browser-computed). "
+            "Render format='html' instead.",
+        )
+
+    resolved = (ctx.project_dir / path).resolve()
+    if not resolved.is_relative_to(ctx.project_dir):
+        return _error("outside_project", f"Path {path!r} resolves outside the project directory.")
+
+    from shelves.compose.dashboard import compose_dashboard
+    from shelves.errors import ShelvesError
+
+    try:
+        html = compose_dashboard(
+            resolved,
+            chart_base_dir=ctx.project_dir,
+            data_dir=ctx.project_dir,
+            models_dir=ctx.models_dir,
+        )
+    except ShelvesError as e:
+        return _error("data_unavailable", str(e).splitlines()[0])
+
+    out_dir = ctx.project_dir / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{resolved.stem}.html"
+    out_path.write_text(html)
+    return {"format": "html", "path": str(out_path), "dsl_version": DSL_VERSION}
+
+
+def query_model(
+    ctx: MCPContext,
+    model: str,
+    measures: list[str],
+    dimensions: list[str] | None = None,
+    filters: list[dict] | None = None,
+    limit: int = 500,
+) -> dict:
+    """Aggregated rows for a measure/dimension selection through the semantic layer.
+
+    Sanity-check data before or after charting. Read-only and SQL-free — routes
+    through the same adapter a chart uses (file → DuckDB, cube → Cube.dev).
+    """
+    from pydantic import ValidationError
+
+    from shelves.errors import ShelvesError
+    from shelves.schema.chart_schema import ShelfFilter
+
+    dimensions = dimensions or []
+    try:
+        data_model = load_model(model, models_dir=ctx.models_dir)
+    except FileNotFoundError:
+        options = _model_stems(ctx.models_dir)
+        return _error(
+            "unknown_model",
+            f"Unknown model {model!r}.",
+            did_you_mean=_did_you_mean(model, options),
+            valid_options=options,
+        )
+    except ValueError as e:
+        return _error("invalid_model", str(e).splitlines()[0])
+
+    resolver = ModelResolver(data_model)
+    field_names = list(data_model.measures.keys()) + list(data_model.dimensions.keys())
+    for name in [*measures, *dimensions]:
+        try:
+            resolver.resolve_type(name)
+        except ValueError:
+            return _error(
+                "unknown_field",
+                f"Unknown field {name!r} in model {model!r}.",
+                did_you_mean=_did_you_mean(name, field_names),
+                valid_options=field_names,
+            )
+
+    shelf_filters: list[ShelfFilter] | None = None
+    if filters:
+        try:
+            shelf_filters = [ShelfFilter.model_validate(f) for f in filters]
+        except ValidationError as e:
+            return _error("invalid_filter", e.errors()[0].get("msg", "invalid filter"))
+
+    from shelves.data.query import run_model_query
+
+    try:
+        rows = run_model_query(
+            model,
+            measures,
+            dimensions,
+            shelf_filters,
+            models_dir=ctx.models_dir,
+            data_base_dir=ctx.project_dir,
+        )
+    except (ShelvesError, KeyError) as e:
+        return _error(
+            "data_unavailable",
+            str(e).splitlines()[0],
+            fix_hint="query_model needs a file or cube source with resolvable data.",
+        )
+
+    truncated = len(rows) > limit
+    rows = rows[:limit]
+    return {
+        "rows": rows,
+        "row_count": len(rows),
+        "truncated": truncated,
+        "dsl_version": DSL_VERSION,
+    }
