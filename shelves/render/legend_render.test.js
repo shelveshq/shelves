@@ -17,7 +17,7 @@ test('buildMarkup: vertical list with title', () => {
     [{ label: 'US', color: '#1f77b4' }, { label: 'UK', color: '#ff7f0e' }],
     { title: 'Country', orientation: 'vertical' }
   );
-  assert.ok(html.includes('font-weight:600'));        // title heading
+  assert.ok(html.includes('font-weight:var(--shelves-legend-title-weight,600)'));        // title heading
   assert.ok(html.includes('Country'));
   assert.ok(html.includes('flex-direction:column'));  // vertical items
   assert.ok(html.includes('#1f77b4'));
@@ -33,7 +33,7 @@ test('buildMarkup: horizontal wraps, no title element when absent', () => {
   );
   assert.ok(html.includes('flex-direction:row'));
   assert.ok(html.includes('flex-wrap:wrap'));
-  assert.ok(!html.includes('font-weight:600'));       // no title heading
+  assert.ok(!html.includes('font-weight:var(--shelves-legend-title-weight,600)'));       // no title heading
 });
 
 test('buildMarkup: escapes HTML in labels and title', () => {
@@ -230,7 +230,7 @@ test('renderGradient: horizontal bar, ticks min..max', () => {
   assert.ok(html.includes('linear-gradient(to right'));
   assert.ok(html.includes('flex-direction:row'));
   assert.ok(html.indexOf('>0<') < html.indexOf('>10000<')); // min left, max right
-  assert.ok(!html.includes('font-weight:600')); // no title element when title absent
+  assert.ok(!html.includes('font-weight:var(--shelves-legend-title-weight,600)')); // no title element when title absent
 });
 
 test('renderGradient: horizontal bar fills the container width (aligns with ticks)', () => {
@@ -334,7 +334,7 @@ test('buildSizeMarkup: glyphs sized, labels aligned, title', () => {
     { title: 'Revenue', orientation: 'vertical', maxDiameter: 20 }
   );
   assert.ok(html.includes('Revenue')); // title heading
-  assert.ok(html.includes('font-weight:600')); // title style
+  assert.ok(html.includes('font-weight:var(--shelves-legend-title-weight,600)')); // title style
   assert.ok(html.includes('border-radius:50%')); // circle glyph
   assert.ok(html.includes('width:20px;height:20px')); // largest glyph at its diameter
   assert.ok(html.includes('flex-direction:column')); // vertical items
@@ -359,7 +359,7 @@ test('renderSize: horizontal row of glyphs', () => {
   assert.ok(html.includes('flex-direction:row'));
   assert.ok(html.includes('align-items:flex-end')); // circles sit on a shared baseline
   assert.ok(html.includes('border-radius:50%'));
-  assert.ok(!html.includes('font-weight:600')); // no title element when title absent
+  assert.ok(!html.includes('font-weight:var(--shelves-legend-title-weight,600)')); // no title element when title absent
 });
 
 test('renderSize: empty for non-numeric or <2 domain', () => {

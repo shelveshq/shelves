@@ -137,9 +137,16 @@ FILTER_LIB_CSS = (
     "border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3);"
     "background:var(--shelves-filter-accent,#4A90D9)}"
     ".noUi-handle:before,.noUi-handle:after{display:none}"
-    ".noUi-tooltip{font-size:11px;border-color:var(--shelves-filter-border,#e5e7eb)}"
+    ".noUi-tooltip{font-size:11px;border-color:var(--shelves-filter-border,#e5e7eb);"
+    "background:var(--shelves-filter-surface,#fff);color:var(--shelves-filter-text,#1a1a1a)}"
     ".flatpickr-day.selected,.flatpickr-day.startRange,.flatpickr-day.endRange{"
     "background:var(--shelves-filter-accent,#4A90D9);border-color:var(--shelves-filter-accent,#4A90D9)}"
+    # flatpickr renders its calendar as a body-attached popup we never theme, so
+    # the panel stays white (#fff) with dark day text regardless of the filter
+    # surface. Blend the in-range tint over that literal #fff — NOT the surface
+    # token — or a dark surface produces a near-black band under the dark day
+    # numbers. (Contrast the .ts-dropdown rule below, whose panel we DO repaint
+    # to the surface, so its active-row tint is correctly surface-relative.)
     ".flatpickr-day.inRange{"
     "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 18%,#fff);"
     "border-color:transparent}"
@@ -153,7 +160,8 @@ FILTER_LIB_CSS = (
     "padding-top:1px;padding-bottom:1px;font-size:var(--shelves-filter-font-size,13px)}"
     ".ts-control input,.ts-dropdown .option{color:var(--shelves-filter-text,#1a1a1a)}"
     ".ts-dropdown .active{"
-    "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 16%,#fff);"
+    "background:color-mix(in srgb,var(--shelves-filter-accent,#4A90D9) 24%,"
+    "var(--shelves-filter-surface,#fff));"
     "color:var(--shelves-filter-text,#1a1a1a)}"
     ".ts-control .item{"
     "background:var(--shelves-filter-accent,#4A90D9);color:#fff;border-radius:3px}"
@@ -754,28 +762,39 @@ def wrap_html_page(
     legend_block = f"  <script>\n{legend_js}\n  </script>\n" if legend_js else ""
     control_block = f"  <script>\n{control_js}\n  </script>\n" if control_js else ""
 
-    # SHE-92: emit CSS custom properties for control/filter theming.
-    control_css = ""
+    # SHE-92/SHE-85: emit CSS custom properties for control/filter/legend theming.
+    # Each block is gated by its own surface (`has_controls` for control+filter,
+    # `has_legends` for legend), so a legend-only dashboard still gets its tokens.
+    theme_vars: list[str] = []
     if has_controls:
         ct = theme.layout.control
         ft = theme.layout.filter
-        control_css = (
-            f"\n    :root {{"
-            f" --shelves-control-surface: {ct.surface};"
-            f" --shelves-control-border: {ct.border};"
-            f" --shelves-control-radius: {ct.radius}px;"
-            f" --shelves-control-font-size: {ct.font_size}px;"
-            f" --shelves-control-height: {ct.height}px;"
-            f" --shelves-control-text: {ct.text};"
-            f" --shelves-filter-surface: {ft.surface};"
-            f" --shelves-filter-border: {ft.border};"
-            f" --shelves-filter-radius: {ft.radius}px;"
-            f" --shelves-filter-accent: {ft.accent};"
-            f" --shelves-filter-font-size: {ft.font_size}px;"
-            f" --shelves-filter-height: {ft.height}px;"
-            f" --shelves-filter-text: {ft.text};"
-            f" }}"
-        )
+        theme_vars += [
+            f" --shelves-control-surface: {ct.surface};",
+            f" --shelves-control-border: {ct.border};",
+            f" --shelves-control-radius: {ct.radius}px;",
+            f" --shelves-control-font-size: {ct.font_size}px;",
+            f" --shelves-control-height: {ct.height}px;",
+            f" --shelves-control-text: {ct.text};",
+            f" --shelves-filter-surface: {ft.surface};",
+            f" --shelves-filter-border: {ft.border};",
+            f" --shelves-filter-radius: {ft.radius}px;",
+            f" --shelves-filter-accent: {ft.accent};",
+            f" --shelves-filter-font-size: {ft.font_size}px;",
+            f" --shelves-filter-height: {ft.height}px;",
+            f" --shelves-filter-text: {ft.text};",
+        ]
+    if has_legends:
+        lg = theme.layout.legend
+        theme_vars += [
+            f" --shelves-legend-font-size: {lg.font_size}px;",
+            f" --shelves-legend-title-weight: {lg.title_weight};",
+            f" --shelves-legend-swatch-size: {lg.swatch_size}px;",
+            f" --shelves-legend-swatch-radius: {lg.swatch_radius}px;",
+            f" --shelves-legend-gap: {lg.gap}px;",
+            f" --shelves-legend-gap-horizontal: {lg.gap_horizontal}px;",
+        ]
+    control_css = f"\n    :root {{{''.join(theme_vars)} }}" if theme_vars else ""
 
     return f"""<!DOCTYPE html>
 <html lang="en">

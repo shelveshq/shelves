@@ -17,18 +17,30 @@
 (function (global) {
   'use strict';
 
-  // Static styling. No dedicated legend layout tokens exist in the theme yet, so
-  // these are reasonable inline defaults; labels inherit the page body font.
+  // Styling reads the SHE-85 `--shelves-legend-*` theme tokens (emitted by
+  // layout.py on any dashboard with legends), each with a CSS var() fallback
+  // equal to the historical hardcoded value — so the JS still renders correctly
+  // standalone (under `node --test` and in a page without the vars) with zero
+  // visual change under the default theme. Labels inherit the page body font.
   var SWATCH_STYLE =
-    'display:inline-block;width:12px;height:12px;border-radius:2px;' +
+    'display:inline-block;width:var(--shelves-legend-swatch-size,12px);' +
+    'height:var(--shelves-legend-swatch-size,12px);' +
+    'border-radius:var(--shelves-legend-swatch-radius,2px);' +
     'margin-right:6px;flex:0 0 auto';
-  var LABEL_STYLE = 'font-size:12px;line-height:1.4;white-space:nowrap';
-  var TITLE_STYLE = 'font-size:12px;font-weight:600;margin-bottom:6px';
+  var LABEL_STYLE =
+    'font-size:var(--shelves-legend-font-size,12px);line-height:1.4;white-space:nowrap';
+  var TITLE_STYLE =
+    'font-size:var(--shelves-legend-font-size,12px);' +
+    'font-weight:var(--shelves-legend-title-weight,600);margin-bottom:6px';
   var ROW_STYLE = 'display:flex;align-items:center';
-  var ITEMS_STYLE_V = 'display:flex;flex-direction:column;gap:4px';
-  var ITEMS_STYLE_H = 'display:flex;flex-direction:row;flex-wrap:wrap;gap:12px';
+  var ITEMS_STYLE_V = 'display:flex;flex-direction:column;gap:var(--shelves-legend-gap,4px)';
+  var ITEMS_STYLE_H =
+    'display:flex;flex-direction:row;flex-wrap:wrap;gap:var(--shelves-legend-gap-horizontal,12px)';
 
-  // SHE-12 gradient styling (no dedicated theme tokens yet).
+  // SHE-12 gradient styling. The bar radius stays a literal 2px — it is NOT the
+  // swatch-radius token: that token rounds a 12×12 categorical swatch, and a
+  // theme raising it to make round swatches would otherwise deform the 14×120
+  // ramp into a capsule and clip its end colour stops. Decoupled on purpose.
   var GRADIENT_STOPS = 16; // n+1 color samples across the domain
   var GRADIENT_BAR_V = 'width:14px;height:120px;border-radius:2px;flex:0 0 auto';
   // Horizontal bar fills the container width so it aligns with the tick row,
