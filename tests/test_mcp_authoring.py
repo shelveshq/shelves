@@ -170,6 +170,33 @@ def test_compile_chart_invalid_returns_validation_payload():
     assert any(e["code"] == "unknown_field" for e in out["errors"])
 
 
+def test_compile_chart_theme_resolves_within_project():
+    """A theme path resolves against project_dir (like `path`), so a relative
+    value works and its config reaches the compiled spec."""
+    from shelves.mcp.tools import compile_chart
+
+    out = compile_chart(
+        _ctx(), yaml_text=_text("simple_bar.yaml"), theme="themes/custom_brand.yaml"
+    )
+    assert "vega_lite" in out
+
+
+def test_compile_chart_theme_outside_project_rejected():
+    from shelves.mcp.tools import compile_chart
+
+    out = compile_chart(_ctx(), yaml_text=_text("simple_bar.yaml"), theme="/etc/passwd")
+    assert out["error"]["code"] == "outside_project"
+
+
+def test_compile_chart_theme_missing_rejected():
+    from shelves.mcp.tools import compile_chart
+
+    out = compile_chart(
+        _ctx(), yaml_text=_text("simple_bar.yaml"), theme="themes/no_such_theme.yaml"
+    )
+    assert out["error"]["code"] == "theme_not_found"
+
+
 # ─── render_chart ─────────────────────────────────────────────────
 
 
@@ -261,6 +288,45 @@ def test_render_chart_vl_convert_missing(project, monkeypatch):
     assert out["error"]["code"] == "vl_convert_missing"
 
 
+def test_render_chart_unknown_format_rejected(project):
+    from shelves.mcp.tools import render_chart
+
+    out = render_chart(project, path="yaml/simple_bar.yaml", format="HTML")
+    assert out["error"]["code"] == "unsupported_format"
+    assert "png" in out["error"]["valid_options"]
+
+
+def test_render_chart_same_sheet_title_distinct_files(project):
+    """Two different charts sharing a `sheet` title must not clobber each
+    other's PNG (filename carries a content digest)."""
+    from shelves.mcp.tools import render_chart
+
+    base = "sheet: Same Title\ndata: orders\nrows: revenue\nmarks: bar\n"
+    a = render_chart(project, yaml_text=base + "cols: region\n", format="png")
+    b = render_chart(project, yaml_text=base + "cols: country\n", format="png")
+    assert a["path"] != b["path"]
+
+
+def test_render_chart_inline_missing_data_file(tmp_path):
+    """An inline model whose data file is missing must return a structured
+    error, not a successful, blank PNG."""
+    from shelves.mcp.tools import MCPContext, render_chart
+
+    # A project root with the model dir but no data/orders.json.
+    ctx = MCPContext.create(project_dir=tmp_path, models_dir=MODELS_DIR)
+    out = render_chart(ctx, yaml_text=_text("simple_bar.yaml"), format="png")
+    assert out["error"]["code"] == "data_unavailable"
+
+
+def test_render_chart_inline_malformed_json(project):
+    """Malformed inline JSON is a structured error, not an uncaught crash."""
+    from shelves.mcp.tools import render_chart
+
+    (project.project_dir / "data" / "orders.json").write_text("{not valid json")
+    out = render_chart(project, path="yaml/simple_bar.yaml", format="png")
+    assert out["error"]["code"] == "invalid_data"
+
+
 # ─── render_dashboard ─────────────────────────────────────────────
 
 
@@ -282,6 +348,37 @@ def test_render_dashboard_png_unsupported(project):
     assert out["error"]["code"] == "unsupported_format"
 
 
+def test_render_dashboard_returns_warnings_list(project):
+    """compose_dashboard reports per-sheet problems via warnings.warn; the tool
+    surfaces them rather than discarding them into a clean payload."""
+    from shelves.mcp.tools import render_dashboard
+
+    out = render_dashboard(project, path="layout/mcp_mini_dashboard.yaml")
+    assert isinstance(out["warnings"], list)
+
+
+def test_render_dashboard_missing_chart_link_is_structured(project):
+    """A dashboard link to a missing chart returns a structured error instead
+    of crashing across the protocol boundary (compose raises FileNotFoundError).
+    """
+    from shelves.mcp.tools import render_dashboard
+
+    dash = project.project_dir / "layout" / "broken.yaml"
+    dash.write_text(
+        'dashboard: "Broken"\n'
+        "canvas: { width: 800, height: 600 }\n"
+        "root:\n"
+        "  orientation: vertical\n"
+        "  contains:\n"
+        "    - sheet: yaml/does_not_exist.yaml\n"
+        "      name: missing\n"
+        '      width: "100%"\n'
+    )
+    out = render_dashboard(project, path="layout/broken.yaml")
+    assert "error" in out
+    assert out["error"]["code"] == "chart_not_found"
+
+
 # ─── query_model ──────────────────────────────────────────────────
 
 
@@ -290,6 +387,13 @@ def _adapter_rows(model_name, chart_yaml):
     resolver = ModelResolver(model)
     spec = parse_chart(chart_yaml)
     return DuckDBAdapter(base_dir=FIXTURES_DIR).fetch(model, spec, resolver)
+
+
+def _sorted_rows(rows):
+    """Order-insensitive view of a row list. DuckDB does not guarantee row
+    order without an ORDER BY, so two independent aggregations of the same data
+    may come back permuted — compare their contents, not their sequence."""
+    return sorted(rows, key=lambda r: json.dumps(r, sort_keys=True, default=str))
 
 
 def test_query_model_aggregated_rows():
@@ -301,7 +405,7 @@ def test_query_model_aggregated_rows():
         "duckdb_orders",
         "sheet: q\ndata: duckdb_orders\ncols: region\nrows: revenue\nmarks: bar\n",
     )
-    assert out["rows"] == expected
+    assert _sorted_rows(out["rows"]) == _sorted_rows(expected)
     assert out["row_count"] == len(expected)
     assert out["truncated"] is False
 
@@ -329,7 +433,7 @@ def test_query_model_with_filter():
         "sheet: q\ndata: duckdb_orders\ncols: region\nrows: revenue\nmarks: bar\n"
         "filters:\n  - field: region\n    operator: eq\n    value: NA\n",
     )
-    assert out["rows"] == expected
+    assert _sorted_rows(out["rows"]) == _sorted_rows(expected)
     assert all(r["region"] == "NA" for r in out["rows"])
 
 
@@ -356,6 +460,98 @@ def test_query_model_inline_source_unavailable():
 
     out = query_model(_ctx(), model="orders", measures=["revenue"], dimensions=["country"])
     assert out["error"]["code"] == "data_unavailable"
+
+
+def test_query_model_unknown_filter_field():
+    """A filter on a hallucinated field is an agent-correctable error, not the
+    raw ValueError the resolver raises deep inside the adapter."""
+    from shelves.mcp.tools import query_model
+
+    out = query_model(
+        _ctx(),
+        model="duckdb_orders",
+        measures=["revenue"],
+        dimensions=["region"],
+        filters=[{"field": "regoin", "operator": "eq", "value": "NA"}],
+    )
+    assert out["error"]["code"] == "unknown_field"
+    assert out["error"]["did_you_mean"] == "region"
+
+
+def test_query_model_negative_limit_rejected():
+    """A negative limit must not silently drop rows off the end and report the
+    truncated set as complete."""
+    from shelves.mcp.tools import query_model
+
+    out = query_model(
+        _ctx(), model="duckdb_orders", measures=["revenue"], dimensions=["region"], limit=-1
+    )
+    assert out["error"]["code"] == "invalid_limit"
+
+
+def test_query_model_zero_limit_rejected():
+    from shelves.mcp.tools import query_model
+
+    out = query_model(
+        _ctx(), model="duckdb_orders", measures=["revenue"], dimensions=["region"], limit=0
+    )
+    assert out["error"]["code"] == "invalid_limit"
+
+
+def test_query_model_malformed_filter_keeps_loc():
+    """A structural filter error keeps its `loc` so the message is actionable."""
+    from shelves.mcp.tools import query_model
+
+    out = query_model(
+        _ctx(),
+        model="duckdb_orders",
+        measures=["revenue"],
+        dimensions=["region"],
+        # `op` is not a ShelfFilter field (strict schema) — missing `operator`.
+        filters=[{"field": "region", "op": "eq", "value": "NA"}],
+    )
+    assert out["error"]["code"] == "invalid_filter"
+    # loc-bearing message, not a bare sentence.
+    assert ":" in out["error"]["message"]
+
+
+def test_run_model_query_suppresses_only_disaggregation_warning(monkeypatch):
+    """query.py must silence ONLY the tooltip-disaggregation warning — any other
+    warning the adapter raises has to still reach the caller."""
+    import warnings as _w
+
+    from shelves.data.query import run_model_query
+
+    class _FakeAdapter:
+        def __init__(self, base_dir=None):
+            pass
+
+        def fetch(self, model, spec, resolver, **_kw):
+            _w.warn(
+                "Tooltip field 'x' is not referenced ... Including it in the data "
+                "query will disaggregate the data — ...",
+                UserWarning,
+                stacklevel=2,
+            )
+            _w.warn("a real adapter problem the caller must see", UserWarning, stacklevel=2)
+            return [{"revenue": 1}]
+
+    monkeypatch.setattr("shelves.data.duckdb_adapter.DuckDBAdapter", _FakeAdapter)
+
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        rows = run_model_query(
+            "duckdb_orders",
+            ["revenue"],
+            ["region"],
+            models_dir=MODELS_DIR,
+            data_base_dir=FIXTURES_DIR,
+        )
+
+    assert rows == [{"revenue": 1}]
+    messages = [str(w.message) for w in caught]
+    assert any("real adapter problem" in m for m in messages)
+    assert not any("disaggregate the data" in m for m in messages)
 
 
 _CUBE_URL = "http://localhost:4000"

@@ -70,8 +70,14 @@ def run_model_query(
             "inline data as a chart instead."
         )
 
-    # The synthetic spec carries dimensions on tooltip; the chart-time
-    # disaggregation warning is irrelevant to an explicit aggregation query.
+    # The synthetic spec carries extra dimensions on tooltip; the chart-time
+    # disaggregation warning (fields.py) is irrelevant to an explicit
+    # aggregation query. Suppress ONLY that warning — any other warning the
+    # adapter raises (KPI/format notices, real problems) must still surface.
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Tooltip field .* disaggregate the data",
+            category=UserWarning,
+        )
         return adapter.fetch(model, spec, resolver)

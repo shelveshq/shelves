@@ -4,7 +4,7 @@ description: Model with $param references in calculations for SHE-94 tests
 
 source:
   type: file
-  path: tests/fixtures/data/orders.csv
+  path: data/orders.csv
 
 dimensions:
   region:

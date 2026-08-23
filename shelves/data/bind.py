@@ -38,6 +38,7 @@ def resolve_data(
     rows: list[dict] | None = None,
     models_dir: str | Path | None = None,
     *,
+    data_base_dir: Path | None = None,
     parameters: ParameterSet | None = None,
 ) -> dict:
     """
@@ -54,6 +55,11 @@ def resolve_data(
         rows: Pre-fetched rows. If None, queries Cube.dev via the model's source.
         models_dir: Optional path to models directory. Defaults to
                     <project_root>/models/.
+        data_base_dir: Base directory for resolving a file source's relative
+                    ``source.path``. The registry's shared DuckDB adapter is
+                    pinned to the CWD, so when a base dir is given a fresh
+                    adapter bound to it is used instead — otherwise a file
+                    source silently reads from the wrong data root.
 
     Returns:
         Vega-Lite spec with data attached.
@@ -74,6 +80,14 @@ def resolve_data(
     if model.source:
         if parameters is not None and model.source.type == "cube":
             _check_no_param_in_cube_calcs(model)
+
+        if model.source.type == "file" and data_base_dir is not None:
+            from shelves.data.duckdb_adapter import DuckDBAdapter
+
+            fetched = DuckDBAdapter(base_dir=data_base_dir).fetch(
+                model, chart_spec, resolver, parameters=parameters
+            )
+            return bind_data(spec, fetched)
 
         from shelves.data.sources import get_adapter
 

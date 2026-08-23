@@ -102,8 +102,10 @@ def resolve_model_data(
         vl_spec: Compiled Vega-Lite spec (no data yet).
         spec: Parsed ChartSpec (needed for field extraction).
         models_dir: Optional models directory path.
-        data_base_dir: Base directory for resolving relative inline source
-                      paths. If None, paths are resolved as-is.
+        data_base_dir: Base directory for resolving a relative source path —
+                      inline JSON here, and a file (DuckDB) source's relative
+                      ``source.path``. If None, paths are resolved as-is
+                      (inline) / against the CWD (file).
 
     Returns:
         Vega-Lite spec, with data attached if resolution succeeded.
@@ -122,4 +124,10 @@ def resolve_model_data(
             return resolve_data(vl_spec, spec, rows=rows)
         return vl_spec
     else:
-        return resolve_data(vl_spec, spec, models_dir=models_dir, parameters=parameters)
+        return resolve_data(
+            vl_spec,
+            spec,
+            models_dir=models_dir,
+            data_base_dir=data_base_dir,
+            parameters=parameters,
+        )

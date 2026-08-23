@@ -88,6 +88,18 @@ def _error(
     return {"error": err}
 
 
+def _first_pydantic_error(exc: Any, fallback: str) -> str:
+    """First validation error as ``loc: msg`` — keep ``loc`` so a structural
+    error points at the offending field instead of a bare, unanchored message."""
+    errors = exc.errors()
+    if not errors:
+        return fallback
+    first = errors[0]
+    loc = ".".join(str(p) for p in first.get("loc", ()))
+    msg = first.get("msg", fallback)
+    return f"{loc}: {msg}" if loc else msg
+
+
 def _iso(value: Any) -> Any:
     """ISO-format dates/datetimes; pass everything else through unchanged."""
     if isinstance(value, (dt.date, dt.datetime)):
@@ -367,6 +379,7 @@ def list_specs(ctx: MCPContext, kind: str | None = None) -> dict:
 _LABEL_LIMITATION = "Data labels (label:) are browser-rendered and do not appear in PNG output."
 _COMPOUND_LIMITATION = "Compound specs render at natural size, not container-fit."
 _PARAMS_UNSUPPORTED = "Parameters land with the Parameter spec; render without params for now."
+_CHART_FORMATS = {"png", "html"}
 
 
 def _read_input(
@@ -398,6 +411,32 @@ def _slug(text: str) -> str:
     while "__" in slug:
         slug = slug.replace("__", "_")
     return slug or "chart"
+
+
+def _content_hash(text: str) -> str:
+    """Short stable digest of the spec text — disambiguates output filenames so
+    two charts that share a `sheet` title don't overwrite each other's PNG."""
+    import hashlib
+
+    return hashlib.sha1(text.encode()).hexdigest()[:8]
+
+
+def _resolve_theme(ctx: MCPContext, theme: str | None) -> tuple[Path | None, dict | None]:
+    """Resolve a theme path like `path`: against `project_dir`, contained, existing.
+
+    Returns (path, error). A bad or hostile theme value must come back as a
+    structured error, never raise across the protocol boundary (spec §1).
+    """
+    if theme is None:
+        return None, None
+    resolved = (ctx.project_dir / theme).resolve()
+    if not resolved.is_relative_to(ctx.project_dir):
+        return None, _error(
+            "outside_project", f"Theme path {theme!r} resolves outside the project directory."
+        )
+    if not resolved.is_file():
+        return None, _error("theme_not_found", f"Theme file {theme!r} does not exist.")
+    return resolved, None
 
 
 def _detect_kind(text: str, kind: str | None) -> str:
@@ -452,15 +491,17 @@ def compile_chart(
         return err
     assert text is not None
 
+    theme_path, theme_err = _resolve_theme(ctx, theme)
+    if theme_err is not None:
+        return theme_err
+
     result = validate_chart_yaml(text, models_dir=ctx.models_dir)
     if not result.valid:
         return result.model_dump()
 
     from shelves.pipeline import compile_chart as _compile
 
-    vl_spec, spec = _compile(
-        text, models_dir=ctx.models_dir, theme_path=Path(theme) if theme else None
-    )
+    vl_spec, spec = _compile(text, models_dir=ctx.models_dir, theme_path=theme_path)
     return {"vega_lite": vl_spec, "sheet": spec.sheet, "dsl_version": DSL_VERSION}
 
 
@@ -475,6 +516,36 @@ def _has_label(spec: Any) -> bool:
                 if entry.layer and any(layer.label for layer in entry.layer):
                     return True
     return False
+
+
+def _inline_data_error(ctx: MCPContext, spec: Any) -> dict | None:
+    """Structured error for the two inline failures `resolve_model_data` hides.
+
+    Only inline sources are checked here — file/cube sources fetch inside
+    `resolve_model_data` and raise `ShelvesError`, which the caller catches. The
+    spec has already validated against its model, so `load_model` succeeds.
+    """
+    import json
+
+    model = load_model(spec.data, models_dir=ctx.models_dir)
+    if not (model.source and model.source.type == "inline"):
+        return None
+    src = Path(model.source.path)
+    if not src.is_absolute():
+        src = ctx.project_dir / src
+    if not src.exists():
+        return _error(
+            "data_unavailable",
+            f"Inline data file not found: {model.source.path}",
+            fix_hint="Point the model's inline source at an existing JSON file.",
+        )
+    try:
+        json.loads(src.read_text())
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+        return _error(
+            "invalid_data", f"Inline data file is not valid JSON: {str(e).splitlines()[0]}"
+        )
+    return None
 
 
 def _render_limitations(spec: Any, vl_spec: dict) -> list[str]:
@@ -502,6 +573,12 @@ def render_chart(
     """
     if params:
         return _error("not_supported_yet", _PARAMS_UNSUPPORTED)
+    if format not in _CHART_FORMATS:
+        return _error(
+            "unsupported_format",
+            f"Unknown format {format!r}.",
+            valid_options=sorted(_CHART_FORMATS),
+        )
 
     text, err = _read_input(ctx, yaml_text, path)
     if err is not None:
@@ -517,6 +594,15 @@ def render_chart(
     from shelves.pipeline import resolve_model_data
 
     vl_spec, spec = _compile(text, models_dir=ctx.models_dir)
+
+    # resolve_model_data hides two inline failures — a missing data file (silent
+    # no-op → a successful but blank render) and malformed JSON (uncaught
+    # JSONDecodeError). For the render surface a blank image is not a product;
+    # surface both as structured errors instead.
+    inline_err = _inline_data_error(ctx, spec)
+    if inline_err is not None:
+        return inline_err
+
     try:
         bound = resolve_model_data(
             vl_spec, spec, models_dir=ctx.models_dir, data_base_dir=ctx.project_dir
@@ -530,7 +616,9 @@ def render_chart(
 
     out_dir = ctx.project_dir / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
-    slug = _slug(spec.sheet)
+    # Include a content digest so two charts sharing a `sheet` title write to
+    # distinct files instead of the later render clobbering the earlier one.
+    slug = f"{_slug(spec.sheet)}_{_content_hash(text)}"
 
     if format == "html":
         from shelves.render.to_html import render_html
@@ -585,29 +673,57 @@ def render_dashboard(
             "Dashboard PNG needs a browser (layout sizing is browser-computed). "
             "Render format='html' instead.",
         )
+    if format != "html":
+        return _error(
+            "unsupported_format",
+            f"Unknown format {format!r}.",
+            valid_options=["html"],
+        )
 
     resolved = (ctx.project_dir / path).resolve()
     if not resolved.is_relative_to(ctx.project_dir):
         return _error("outside_project", f"Path {path!r} resolves outside the project directory.")
 
+    from pydantic import ValidationError
+
     from shelves.compose.dashboard import compose_dashboard
+    from shelves.diagnostics import capture_warnings
     from shelves.errors import ShelvesError
 
+    # compose_dashboard reports per-sheet data/layout problems via warnings.warn
+    # (the panel Studio surfaces); capture them so this surface returns them too
+    # rather than discarding them into a clean-looking payload.
+    compose_warnings: list[str] = []
     try:
-        html = compose_dashboard(
-            resolved,
-            chart_base_dir=ctx.project_dir,
-            data_dir=ctx.project_dir,
-            models_dir=ctx.models_dir,
-        )
+        with capture_warnings(compose_warnings):
+            html = compose_dashboard(
+                resolved,
+                chart_base_dir=ctx.project_dir,
+                data_dir=ctx.project_dir,
+                models_dir=ctx.models_dir,
+            )
     except ShelvesError as e:
         return _error("data_unavailable", str(e).splitlines()[0])
+    except FileNotFoundError as e:
+        # A sheet's link path doesn't resolve to a file (compose fail-fast).
+        return _error("chart_not_found", str(e).splitlines()[0])
+    except ValidationError as e:
+        return _error("invalid_dashboard", _first_pydantic_error(e, "invalid dashboard"))
+    except (RuntimeError, ValueError) as e:
+        # A sheet's chart YAML failed to compile (RuntimeError), or filter
+        # validation failed (ValueError) — both documented compose raises.
+        return _error("invalid_dashboard", str(e).splitlines()[0])
 
     out_dir = ctx.project_dir / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{resolved.stem}.html"
     out_path.write_text(html)
-    return {"format": "html", "path": str(out_path), "dsl_version": DSL_VERSION}
+    return {
+        "format": "html",
+        "path": str(out_path),
+        "warnings": compose_warnings,
+        "dsl_version": DSL_VERSION,
+    }
 
 
 def query_model(
@@ -629,6 +745,12 @@ def query_model(
     from shelves.schema.chart_schema import ShelfFilter
 
     dimensions = dimensions or []
+    if limit < 1:
+        return _error(
+            "invalid_limit",
+            f"limit must be a positive integer, got {limit}.",
+            fix_hint="Pass limit >= 1 (default 500).",
+        )
     try:
         data_model = load_model(model, models_dir=ctx.models_dir)
     except FileNotFoundError:
@@ -644,7 +766,8 @@ def query_model(
 
     resolver = ModelResolver(data_model)
     field_names = list(data_model.measures.keys()) + list(data_model.dimensions.keys())
-    for name in [*measures, *dimensions]:
+
+    def _validate_field(name: str) -> dict | None:
         try:
             resolver.resolve_type(name)
         except ValueError:
@@ -654,13 +777,25 @@ def query_model(
                 did_you_mean=_did_you_mean(name, field_names),
                 valid_options=field_names,
             )
+        return None
+
+    for name in [*measures, *dimensions]:
+        field_err = _validate_field(name)
+        if field_err is not None:
+            return field_err
 
     shelf_filters: list[ShelfFilter] | None = None
     if filters:
         try:
             shelf_filters = [ShelfFilter.model_validate(f) for f in filters]
         except ValidationError as e:
-            return _error("invalid_filter", e.errors()[0].get("msg", "invalid filter"))
+            return _error("invalid_filter", _first_pydantic_error(e, "invalid filter"))
+        # A filter on a hallucinated field must be an agent-correctable error,
+        # not the ValueError the resolver raises deep inside the adapter.
+        for filt in shelf_filters:
+            field_err = _validate_field(filt.field)
+            if field_err is not None:
+                return field_err
 
     from shelves.data.query import run_model_query
 
