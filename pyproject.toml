@@ -35,6 +35,7 @@ duckdb = [
 ]
 mcp = [
     "mcp>=2.0",
+    "vl-convert-python>=1.6",
 ]
 dev = [
     "pytest>=8.0",
@@ -47,6 +48,7 @@ dev = [
     "twine>=5.0",
     "duckdb>=1.0",
     "mcp>=2.0",
+    "vl-convert-python>=1.6",
 ]
 
 [project.urls]

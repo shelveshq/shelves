@@ -247,6 +247,41 @@ class TestResolveModelData:
         assert "data" not in result
         assert result == vl_spec
 
+    def test_file_source_honors_data_base_dir(self, tmp_path, monkeypatch):
+        """A file (DuckDB) source resolves its relative source.path against
+        data_base_dir, NOT the CWD — the registry adapter is pinned to CWD, so
+        without threading the base dir a file source reads the wrong data root.
+        """
+        from shelves.pipeline import compile_chart, resolve_model_data
+
+        yaml_text = "sheet: q\ndata: duckdb_orders\ncols: region\nrows: revenue\nmarks: bar\n"
+        vl_spec, spec = compile_chart(yaml_text, no_theme=True, models_dir=MODELS_DIR)
+
+        # CWD is a directory with no data/orders.csv; only data_base_dir has it.
+        monkeypatch.chdir(tmp_path)
+        result = resolve_model_data(
+            vl_spec,
+            spec,
+            models_dir=MODELS_DIR,
+            data_base_dir=FIXTURES_DIR,  # where data/orders.csv actually lives
+        )
+
+        assert "data" in result
+        assert len(result["data"]["values"]) > 0
+
+    def test_file_source_without_base_dir_uses_cwd(self, tmp_path, monkeypatch):
+        """The base-dir default is unchanged: with no data_base_dir a file
+        source resolves against the CWD (and fails when the file is not there)."""
+        from shelves.data.errors import ShelvesError
+        from shelves.pipeline import compile_chart, resolve_model_data
+
+        yaml_text = "sheet: q\ndata: duckdb_orders\ncols: region\nrows: revenue\nmarks: bar\n"
+        vl_spec, spec = compile_chart(yaml_text, no_theme=True, models_dir=MODELS_DIR)
+
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(ShelvesError):
+            resolve_model_data(vl_spec, spec, models_dir=MODELS_DIR)
+
     def test_cube_delegates_to_resolve_data(self):
         """Cube-source model delegates to resolve_data."""
         from unittest.mock import patch

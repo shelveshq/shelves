@@ -306,3 +306,9 @@ sizing math in `compound_fit.js`, exercised by **`node --test
 shelves/render/compound_fit.test.js`** (node's built-in runner, zero deps). DOM
 measurement in `compoundFit.fit` is browser-only and is checked by the manual
 screenshots above.
+
+> `to_png.py` (vl-convert, SHE-56) renders headless PNGs of the **compiled
+> spec** for the MCP agent loop (`render_chart` default format). It does NOT run
+> `label_patch.js` or `compound_fit.js`, so it must never be used to verify label
+> placement or dashboard/compound sizing — the manual browser screenshot rule
+> above still governs those. The MCP payload flags both gaps under `limitations`.

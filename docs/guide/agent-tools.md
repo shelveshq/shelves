@@ -32,9 +32,31 @@ lands in a later release.)
 | `list_specs` | Chart and dashboard YAMLs already in the project, so agents extend rather than duplicate. |
 
 Every tool goes through the semantic layer — there is no raw-SQL tool, and the
-server never writes files (your agent already has file tools). Results report
-the DSL schema version so an agent knows which grammar it is writing.
+server never writes *spec* files (your agent already has file tools; only the
+render tools below write rendered PNG/HTML into `output/`). Results report the
+DSL schema version so an agent knows which grammar it is writing.
 
-The authoring loop (`validate_spec`, `render_chart`, `compile_chart`,
-`query_model`) and read-only resources (the grammar card, JSON Schema) land in
-follow-up releases.
+## Authoring tools
+
+The correction loop — write → validate → fix → render → look:
+
+| Tool | What it does |
+| --- | --- |
+| `validate_spec` | Validate chart/dashboard YAML against schema **and** the semantic model. Returns every error at once — line numbers, valid options, did-you-mean suggestions — or the normalized canonical spec. |
+| `compile_chart` | The compiled, theme-merged Vega-Lite for one chart (no data), for inspecting how the DSL translates. |
+| `render_chart` | Render a chart to **PNG** (default — a multimodal agent can look at it to catch schema-valid-but-wrong charts) or HTML. |
+| `render_dashboard` | Render a dashboard (layout tree of sheets) to HTML. |
+| `query_model` | Run an aggregated query through the semantic layer to sanity-check data — same adapter a chart uses, no raw SQL. |
+
+Every tool accepts inline `yaml_text` or a project `path`. Paths must stay
+inside the project root.
+
+### PNG limitations
+
+`render_chart` produces PNG through vl-convert, with no browser. Data labels
+(`label:`) and container-fit sizing for compound charts (facets, concatenations)
+are browser features and do **not** appear in PNGs — the payload lists them
+under `limitations`. Use `render_chart(..., format="html")` for full fidelity.
+Dashboards are HTML-only for the same reason (their sizing is browser-computed).
+
+Read-only resources (the grammar card, JSON Schema) land in a follow-up release.

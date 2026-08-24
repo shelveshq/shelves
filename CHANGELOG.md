@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### MCP authoring tools
+
+- **Authoring tools for the MCP server** — `validate_spec`, `compile_chart`, `render_chart` (PNG/HTML), `render_dashboard`, and `query_model`, so an agent can validate, compile, render, and sanity-check data through the same pipeline every other surface uses. (SHE-56)
+- **Structured errors, never protocol crashes** — every tool returns errors as a payload. `render_dashboard` now reports missing chart links, compile failures, and invalid dashboard YAML as structured errors (instead of raising) and surfaces per-sheet data/layout warnings. `render_chart` reports missing or malformed inline data, rejects unknown `format` values, and validates `theme` paths for existence and project containment. `query_model` validates filter fields, rejects a non-positive `limit`, and keeps error locations in filter messages.
+- **File-source data root fix** — a file (DuckDB) source now resolves its relative `source.path` against the caller's data base directory on every surface, not the current working directory.
+
 ## [0.6.0] - 2026-08-01
 
 The **Parameters** release: charts and dashboards can now be parameterized —
