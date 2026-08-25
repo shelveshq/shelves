@@ -50,6 +50,18 @@ kpi:
 > "did you mean" suggestion), rather than silently ignored. This protects
 > both humans and LLM agents from typos like `colour:`.
 
+### Machine-readable schema
+
+A JSON Schema for both spec kinds is generated from the models and published at
+`schemas/chart.schema.json` and `schemas/dashboard.schema.json` (and as the MCP
+resources `shelves://schema/chart` / `shelves://schema/dashboard`). Each file is
+stamped with the DSL version. Use it for structured decoding or editor
+validation — see [Editor validation](getting-started.md#editor-validation) for
+the YAML language-server setup. The schema is a *superset* of what Pydantic
+accepts: it enforces structure, types, and enums, but a few cross-field rules
+(e.g. "at most one multi-measure shelf") are validator-only and still checked at
+parse time.
+
 ---
 
 ## Shelves (`cols` / `rows`)

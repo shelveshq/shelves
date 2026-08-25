@@ -49,6 +49,7 @@ dev = [
     "duckdb>=1.0",
     "mcp>=2.0",
     "vl-convert-python>=1.6",
+    "jsonschema>=4.0",
 ]
 
 [project.urls]

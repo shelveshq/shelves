@@ -16,6 +16,16 @@ This module handles **Parse**: YAML string → `ChartSpec` via Pydantic.
 - **Inheritance:** Top-level `marks`/`color`/`detail` cascade down to multi-measure entries → layer entries. More specific overrides less specific.
 - **FieldTypeResolver protocol:** An abstraction that allows pluggable type resolution (e.g., from data block, from semantic layer models). The translator depends on this protocol, not on any specific resolver implementation.
 
+## Generated JSON Schema
+
+`json_schema.py` exports `ChartSpec` / `DashboardSpec` as JSON Schema, served as
+the MCP resources `shelves://schema/{chart,dashboard}` and written to committed
+artifacts under `schemas/`. **Any grammar change must regenerate them** with
+`python -m shelves.schema` — a test (`tests/test_json_schema_export.py`) diffs
+the committed files against freshly generated output and fails on drift. The
+schema is a one-directional superset acceptor: cross-key `model_validator` rules
+are not expressible in JSON Schema, so never try to encode them there.
+
 ## Documentation Requirement
 
 **Any change to the DSL (`chart_schema.py`) MUST be accompanied by updates to:**

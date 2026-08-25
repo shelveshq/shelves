@@ -368,7 +368,7 @@ class LayerEntry(BaseModel):
 
     model_config = _STRICT
 
-    measure: str
+    measure: str = Field(description="Measure field overlaid on the parent entry.")
     mark: MarkSpec | None = None
     color: ColorSpec | None = None
     detail: str | None = None
@@ -391,7 +391,7 @@ class MeasureEntry(BaseModel):
 
     model_config = _STRICT
 
-    measure: str
+    measure: str = Field(description="Measure field for this shelf entry / panel.")
     mark: MarkSpec | None = None
     color: ColorSpec | None = None
     detail: str | None = None
@@ -442,38 +442,54 @@ class ChartSpec(BaseModel):
         description="DSL version this spec targets (e.g. '0.1.0').",
     )
 
-    sheet: str = Field(min_length=1)
-    description: str | None = None
+    sheet: str = Field(min_length=1, description="Chart title / sheet name.")
+    description: str | None = Field(
+        default=None, description="Optional free-text note about the chart."
+    )
     data: str = Field(min_length=1, description="Model name referencing a DataModel manifest.")
 
     # Shelf assignments
-    cols: ShelfSpec | None = None
-    rows: ShelfSpec | None = None
+    cols: ShelfSpec | None = Field(
+        default=None,
+        description="Column shelf: a field name, or a list of measure entries (multi-measure).",
+    )
+    rows: ShelfSpec | None = Field(
+        default=None,
+        description="Row shelf: a field name, or a list of measure entries (multi-measure).",
+    )
 
-    # Default mark — inherited by measure entries / layers that don't set their own
-    marks: MarkSpec | None = None
+    marks: MarkSpec | None = Field(
+        default=None,
+        description="Default mark, inherited by measure entries / layers that don't set their own.",
+    )
 
-    # Default encoding channels — inherited by entries / layers
-    color: ColorSpec | None = None
-    detail: str | None = None
-    size: str | int | float | None = None
-    tooltip: TooltipSpec | None = None
+    color: ColorSpec | None = Field(
+        default=None, description="Default color encoding: a field mapping or a fixed hex color."
+    )
+    detail: str | None = Field(
+        default=None, description="Disaggregation field — adds detail without a visual channel."
+    )
+    size: str | int | float | None = Field(
+        default=None, description="Default size encoding: a field name or a fixed value."
+    )
+    tooltip: TooltipSpec | None = Field(default=None, description="Tooltip fields.")
 
-    # Interactions
-    filters: list[ShelfFilter] | None = None
-    sort: SortSpec | None = None
+    filters: list[ShelfFilter] | None = Field(default=None, description="Row-level filters.")
+    sort: SortSpec | None = Field(default=None, description="Sort order for a shelf.")
 
-    # Partitioning
-    facet: FacetSpec | None = None
+    facet: FacetSpec | None = Field(
+        default=None, description="Partition the chart into small multiples."
+    )
 
-    # Axis config (for single-measure charts)
-    axis: AxisConfig | None = None
+    axis: AxisConfig | None = Field(
+        default=None, description="Per-channel axis customization (single-measure charts)."
+    )
 
-    # Data labels
-    label: LabelSpec | None = None
+    label: LabelSpec | None = Field(default=None, description="Data labels on the marks.")
 
-    # KPI special pattern
-    kpi: KPIBlock | None = None
+    kpi: KPIBlock | None = Field(
+        default=None, description="KPI single-value pattern (excludes shelves)."
+    )
 
     @model_validator(mode="after")
     def at_most_one_multi_measure_shelf(self):

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 from shelves.mcp import tools
 from shelves.mcp.tools import MCPContext
 from shelves.schema.chart_schema import DSL_VERSION
+from shelves.schema.json_schema import chart_json_schema, dashboard_json_schema, dumps
 
 if TYPE_CHECKING:
     from mcp.server import MCPServer
@@ -128,6 +129,26 @@ def build_server(ctx: MCPContext) -> MCPServer:
         return tools.query_model(
             ctx, model, measures, dimensions=dimensions, filters=filters, limit=limit
         )
+
+    @server.resource(
+        "shelves://schema/chart",
+        name="Chart JSON Schema",
+        mime_type="application/json",
+    )
+    def chart_schema_resource() -> str:
+        """JSON Schema for a chart spec — for structured decoding and editor
+        validation. A superset acceptor: cross-key validators are not encoded."""
+        return dumps(chart_json_schema())
+
+    @server.resource(
+        "shelves://schema/dashboard",
+        name="Dashboard JSON Schema",
+        mime_type="application/json",
+    )
+    def dashboard_schema_resource() -> str:
+        """JSON Schema for a dashboard spec — for structured decoding and editor
+        validation. A superset acceptor: cross-key validators are not encoded."""
+        return dumps(dashboard_json_schema())
 
     return server
 

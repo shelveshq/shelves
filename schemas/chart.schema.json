@@ -1,0 +1,1320 @@
+{
+  "$defs": {
+    "AxisChannelConfig": {
+      "additionalProperties": false,
+      "description": "Per-channel axis customization for single-measure charts.\n\nBooleans are passthroughs into the channel's Vega-Lite ``axis`` object.\nEach is None by default \u2192 the property is omitted from the encoding so it\ninherits the theme default (config.axisX / config.axisY).\n\nNaming: ``ruler`` (Tableau's \"Axis Ruler\") maps to VL ``axis.domain`` \u2014\nthe baseline drawn along the axis. Line *styling* stays theme-only.",
+      "properties": {
+        "format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "grid": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Grid"
+        },
+        "labels": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Labels"
+        },
+        "ruler": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ruler"
+        },
+        "ticks": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ticks"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "title": "AxisChannelConfig",
+      "type": "object"
+    },
+    "AxisConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/AxisChannelConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "X"
+        },
+        "y": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/AxisChannelConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Y"
+        }
+      },
+      "title": "AxisConfig",
+      "type": "object"
+    },
+    "AxisSort": {
+      "additionalProperties": false,
+      "description": "Sort by another axis's values (e.g., sort x by y values).",
+      "properties": {
+        "axis": {
+          "enum": [
+            "x",
+            "y"
+          ],
+          "title": "Axis",
+          "type": "string"
+        },
+        "channel": {
+          "anyOf": [
+            {
+              "enum": [
+                "x",
+                "y"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Channel"
+        },
+        "order": {
+          "enum": [
+            "ascending",
+            "descending"
+          ],
+          "title": "Order",
+          "type": "string"
+        }
+      },
+      "required": [
+        "axis",
+        "order"
+      ],
+      "title": "AxisSort",
+      "type": "object"
+    },
+    "ColorFieldMapping": {
+      "additionalProperties": false,
+      "description": "Explicit color field with optional type override.",
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "enum": [
+                "quantitative",
+                "nominal",
+                "ordinal",
+                "temporal"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
+        }
+      },
+      "required": [
+        "field"
+      ],
+      "title": "ColorFieldMapping",
+      "type": "object"
+    },
+    "FieldSort": {
+      "additionalProperties": false,
+      "description": "Sort by a field's values (ascending/descending or custom order).",
+      "properties": {
+        "channel": {
+          "anyOf": [
+            {
+              "enum": [
+                "x",
+                "y"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Channel"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "order": {
+          "anyOf": [
+            {
+              "enum": [
+                "ascending",
+                "descending"
+              ],
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "title": "Order"
+        }
+      },
+      "required": [
+        "field",
+        "order"
+      ],
+      "title": "FieldSort",
+      "type": "object"
+    },
+    "KPIBlock": {
+      "additionalProperties": false,
+      "description": "Top-level kpi property on a chart spec.\nWhen present, the translator routes to the KPI pattern compiler.",
+      "properties": {
+        "comparison": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KPIComparison"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "format": {
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "spacing": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spacing"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "format"
+      ],
+      "title": "KPIBlock",
+      "type": "object"
+    },
+    "KPIComparison": {
+      "additionalProperties": false,
+      "description": "Configuration for the comparison value displayed beneath the primary KPI metric.",
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "mode": {
+          "default": "delta_percent",
+          "enum": [
+            "delta_percent",
+            "delta_absolute",
+            "value"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "polarity": {
+          "default": "up_is_good",
+          "enum": [
+            "up_is_good",
+            "down_is_good",
+            "neutral"
+          ],
+          "title": "Polarity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "field"
+      ],
+      "title": "KPIComparison",
+      "type": "object"
+    },
+    "LabelConfig": {
+      "additionalProperties": false,
+      "description": "Configuration for data labels on a mark.",
+      "properties": {
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "horizontal": {
+          "anyOf": [
+            {
+              "enum": [
+                "left",
+                "center",
+                "right"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Horizontal"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "gt": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size"
+        },
+        "vertical": {
+          "anyOf": [
+            {
+              "enum": [
+                "top",
+                "center",
+                "bottom"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vertical"
+        }
+      },
+      "title": "LabelConfig",
+      "type": "object"
+    },
+    "LayerEntry": {
+      "additionalProperties": false,
+      "description": "A measure layered on top of a parent MeasureEntry (Phase 1a).\n\nLayers share the chart space with their parent \u2014 they're overlaid,\nnot stacked as separate panels. Each layer can override mark, color,\ndetail, size, and opacity, or inherit from the parent entry / top-level.",
+      "properties": {
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/ColorFieldMapping"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/LabelConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "mark": {
+          "anyOf": [
+            {
+              "enum": [
+                "bar",
+                "line",
+                "area",
+                "circle",
+                "square",
+                "text",
+                "point",
+                "rule",
+                "tick",
+                "rect",
+                "arc",
+                "geoshape"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/MarkObject"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mark"
+        },
+        "measure": {
+          "description": "Measure field overlaid on the parent entry.",
+          "title": "Measure",
+          "type": "string"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Opacity"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size"
+        }
+      },
+      "required": [
+        "measure"
+      ],
+      "title": "LayerEntry",
+      "type": "object"
+    },
+    "MarkObject": {
+      "additionalProperties": false,
+      "description": "Extended mark with style properties.",
+      "properties": {
+        "opacity": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Opacity"
+        },
+        "point": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Point"
+        },
+        "style": {
+          "anyOf": [
+            {
+              "enum": [
+                "solid",
+                "dashed",
+                "dotted"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style"
+        },
+        "type": {
+          "enum": [
+            "bar",
+            "line",
+            "area",
+            "circle",
+            "square",
+            "text",
+            "point",
+            "rule",
+            "tick",
+            "rect",
+            "arc",
+            "geoshape"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "MarkObject",
+      "type": "object"
+    },
+    "MeasureEntry": {
+      "additionalProperties": false,
+      "description": "One entry on the multi-measure shelf (rows or cols).\n\nWithout `layer`: a standalone panel in a stacked layout.\nWith `layer`: a multi-axis panel where the parent measure and\nlayer measures share the same chart space.\n\nEncoding properties (mark, color, detail, size, opacity) on this\nentry act as defaults for its layer entries.",
+      "properties": {
+        "axis": {
+          "anyOf": [
+            {
+              "enum": [
+                "independent",
+                "shared"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Axis"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/ColorFieldMapping"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Detail"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/$defs/LabelConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/LayerEntry"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Layer"
+        },
+        "mark": {
+          "anyOf": [
+            {
+              "enum": [
+                "bar",
+                "line",
+                "area",
+                "circle",
+                "square",
+                "text",
+                "point",
+                "rule",
+                "tick",
+                "rect",
+                "arc",
+                "geoshape"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/MarkObject"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mark"
+        },
+        "measure": {
+          "description": "Measure field for this shelf entry / panel.",
+          "title": "Measure",
+          "type": "string"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Opacity"
+        },
+        "shared_axis": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shared Axis"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size"
+        }
+      },
+      "required": [
+        "measure"
+      ],
+      "title": "MeasureEntry",
+      "type": "object"
+    },
+    "RowColumnFacet": {
+      "additionalProperties": false,
+      "description": "Facet by row, column, or both (grid).",
+      "properties": {
+        "axis": {
+          "anyOf": [
+            {
+              "enum": [
+                "independent",
+                "shared"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Axis"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column"
+        },
+        "row": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Row"
+        }
+      },
+      "title": "RowColumnFacet",
+      "type": "object"
+    },
+    "ShelfFilter": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "operator": {
+          "enum": [
+            "in",
+            "not_in",
+            "eq",
+            "neq",
+            "gt",
+            "lt",
+            "gte",
+            "lte",
+            "between",
+            "contains"
+          ],
+          "title": "Operator",
+          "type": "string"
+        },
+        "range": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Range"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "values": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Values"
+        }
+      },
+      "required": [
+        "field",
+        "operator"
+      ],
+      "title": "ShelfFilter",
+      "type": "object"
+    },
+    "TooltipField": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        }
+      },
+      "required": [
+        "field"
+      ],
+      "title": "TooltipField",
+      "type": "object"
+    },
+    "WrapFacet": {
+      "additionalProperties": false,
+      "description": "Wrapping facet \u2014 single dimension wrapped into a grid.",
+      "properties": {
+        "axis": {
+          "anyOf": [
+            {
+              "enum": [
+                "independent",
+                "shared"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Axis"
+        },
+        "columns": {
+          "exclusiveMinimum": 0,
+          "title": "Columns",
+          "type": "integer"
+        },
+        "field": {
+          "title": "Field",
+          "type": "string"
+        },
+        "sort": {
+          "anyOf": [
+            {
+              "enum": [
+                "ascending",
+                "descending"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sort"
+        }
+      },
+      "required": [
+        "field",
+        "columns"
+      ],
+      "title": "WrapFacet",
+      "type": "object"
+    }
+  },
+  "$id": "shelves://schema/chart",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A fully validated Chart DSL spec.\n\nSupports three shelf shapes:\n  1. String field name \u2192 single-measure chart (Phase 1)\n  2. List of MeasureEntry without layers \u2192 stacked panels (Phase 1)\n  3. List of MeasureEntry with layers \u2192 multi-axis / stacked layers (Phase 1a)\n\nTop-level marks/color/detail/size act as inheritable defaults for\nmeasure entries and their layers.",
+  "properties": {
+    "axis": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AxisConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Per-channel axis customization (single-measure charts)."
+    },
+    "color": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/ColorFieldMapping"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Default color encoding: a field mapping or a fixed hex color.",
+      "title": "Color"
+    },
+    "cols": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/MeasureEntry"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Column shelf: a field name, or a list of measure entries (multi-measure).",
+      "title": "Cols"
+    },
+    "data": {
+      "description": "Model name referencing a DataModel manifest.",
+      "minLength": 1,
+      "title": "Data",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional free-text note about the chart.",
+      "title": "Description"
+    },
+    "detail": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Disaggregation field \u2014 adds detail without a visual channel.",
+      "title": "Detail"
+    },
+    "facet": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WrapFacet"
+        },
+        {
+          "$ref": "#/$defs/RowColumnFacet"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Partition the chart into small multiples.",
+      "title": "Facet"
+    },
+    "filters": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/ShelfFilter"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Row-level filters.",
+      "title": "Filters"
+    },
+    "kpi": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/KPIBlock"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "KPI single-value pattern (excludes shelves)."
+    },
+    "label": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/LabelConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Data labels on the marks.",
+      "title": "Label"
+    },
+    "marks": {
+      "anyOf": [
+        {
+          "enum": [
+            "bar",
+            "line",
+            "area",
+            "circle",
+            "square",
+            "text",
+            "point",
+            "rule",
+            "tick",
+            "rect",
+            "arc",
+            "geoshape"
+          ],
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/MarkObject"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Default mark, inherited by measure entries / layers that don't set their own.",
+      "title": "Marks"
+    },
+    "rows": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/MeasureEntry"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Row shelf: a field name, or a list of measure entries (multi-measure).",
+      "title": "Rows"
+    },
+    "sheet": {
+      "description": "Chart title / sheet name.",
+      "minLength": 1,
+      "title": "Sheet",
+      "type": "string"
+    },
+    "size": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Default size encoding: a field name or a fixed value.",
+      "title": "Size"
+    },
+    "sort": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FieldSort"
+        },
+        {
+          "$ref": "#/$defs/AxisSort"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Sort order for a shelf.",
+      "title": "Sort"
+    },
+    "tooltip": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/TooltipField"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Tooltip fields.",
+      "title": "Tooltip"
+    },
+    "version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "DSL version this spec targets (e.g. '0.1.0').",
+      "title": "Version"
+    }
+  },
+  "required": [
+    "sheet",
+    "data"
+  ],
+  "title": "ChartSpec",
+  "type": "object",
+  "version": "0.15.0"
+}
