@@ -186,14 +186,19 @@ serves the JSON Schema for chart and dashboard specs as the resources
 
 ## Editor validation
 
-Shelves publishes a JSON Schema for each spec kind at `schemas/chart.schema.json`
-and `schemas/dashboard.schema.json`. Point the [YAML language server](https://github.com/redhat-developer/yaml-language-server)
+Shelves ships a JSON Schema for each spec kind. Drop copies into your project so
+an editor can validate keys, types, and enums as you type — no Studio required:
+
+```bash
+python -m shelves.schema --out schemas/    # writes chart.schema.json + dashboard.schema.json
+```
+
+Then point the [YAML language server](https://github.com/redhat-developer/yaml-language-server)
 (used by the VS Code YAML extension, among others) at it with a comment on the
-first line of a spec, and your editor validates keys, types, and enums as you
-type — no Studio required:
+first line of a spec:
 
 ```yaml
-# yaml-language-server: $schema=../schemas/chart.schema.json
+# yaml-language-server: $schema=schemas/chart.schema.json
 sheet: "Revenue by Country"
 data: orders
 cols: country
@@ -201,10 +206,11 @@ rows: revenue
 marks: bar
 ```
 
-Adjust the relative path to wherever `schemas/` lives from the spec. The schema
-is a superset of what the parser accepts (a few cross-field rules are checked
-only at compile time), so `shelves-lint` remains the source of truth for a fully
-valid spec.
+Adjust the relative path to wherever you wrote the schema. Agents can read the
+same schema over MCP as `shelves://schema/chart` / `shelves://schema/dashboard`.
+The schema is a superset of what the parser accepts (a few cross-field rules are
+checked only at compile time), so `shelves-lint` remains the source of truth for
+a fully valid spec.
 
 ## Dashboards
 

@@ -58,7 +58,21 @@ def test_dashboard_schema_structure():
     schema = dashboard_json_schema()
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert schema["title"] == "DashboardSpec"
-    assert "properties" in schema
+    # root must be constrained to the RootComponent shape, not left as Any —
+    # otherwise the export is vacuous for the entire layout tree.
+    assert schema["properties"]["root"] == {"$ref": "#/$defs/RootComponent"}
+    assert "RootComponent" in schema["$defs"]
+
+
+def test_dashboard_schema_rejects_malformed_root():
+    """The root shape is validated (orientation + object), so gross errors —
+    a string root, or a root missing orientation — fail JSON Schema."""
+    v = _validator(dashboard_json_schema())
+    assert list(v.iter_errors({"dashboard": "X", "root": "not a layout tree"}))
+    assert list(v.iter_errors({"dashboard": "X", "root": {"contains": []}}))
+    assert not list(
+        v.iter_errors({"dashboard": "X", "root": {"orientation": "vertical", "contains": []}})
+    )
 
 
 def test_both_schemas_version_stamped():

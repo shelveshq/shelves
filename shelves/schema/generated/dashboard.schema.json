@@ -16,6 +16,88 @@
       "title": "Canvas",
       "type": "object"
     },
+    "RootComponent": {
+      "additionalProperties": true,
+      "properties": {
+        "contains": {
+          "items": {},
+          "title": "Contains",
+          "type": "array"
+        },
+        "gap": {
+          "default": 0,
+          "title": "Gap",
+          "type": "integer"
+        },
+        "html": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Html"
+        },
+        "margin": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Margin"
+        },
+        "orientation": {
+          "enum": [
+            "horizontal",
+            "vertical"
+          ],
+          "title": "Orientation",
+          "type": "string"
+        },
+        "padding": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Padding"
+        },
+        "style": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style"
+        }
+      },
+      "required": [
+        "orientation"
+      ],
+      "title": "RootComponent",
+      "type": "object"
+    },
     "StyleProperties": {
       "description": "Reusable style preset. All properties optional.",
       "properties": {
@@ -271,7 +353,7 @@
       "title": "Description"
     },
     "root": {
-      "title": "Root"
+      "$ref": "#/$defs/RootComponent"
     },
     "styles": {
       "anyOf": [

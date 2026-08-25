@@ -20,11 +20,15 @@ This module handles **Parse**: YAML string → `ChartSpec` via Pydantic.
 
 `json_schema.py` exports `ChartSpec` / `DashboardSpec` as JSON Schema, served as
 the MCP resources `shelves://schema/{chart,dashboard}` and written to committed
-artifacts under `schemas/`. **Any grammar change must regenerate them** with
-`python -m shelves.schema` — a test (`tests/test_json_schema_export.py`) diffs
-the committed files against freshly generated output and fails on drift. The
-schema is a one-directional superset acceptor: cross-key `model_validator` rules
-are not expressible in JSON Schema, so never try to encode them there.
+artifacts bundled in the package at `shelves/schema/generated/` (shipped via
+package-data). **Any grammar change must regenerate them** with `python -m
+shelves.schema` — a test (`tests/test_json_schema_export.py`) diffs the committed
+files against freshly generated output and fails on drift. Studio's `GET /schema`
+and the MCP resources both route through `chart_json_schema()` — keep it the one
+generation site. The schema is a one-directional superset acceptor: cross-key
+`model_validator` rules are not expressible in JSON Schema, so never try to
+encode them there. `DashboardSpec.root` is annotated `RootComponent` so the root
+shape is validated; the `contains` subtree is `Any` on purpose.
 
 ## Documentation Requirement
 

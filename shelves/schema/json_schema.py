@@ -28,8 +28,13 @@ from shelves.schema.layout_schema import DashboardSpec
 
 _DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
-# Committed build artifacts (repo-root/schemas/). parents: [0]=schema [1]=shelves [2]=root.
-SCHEMAS_DIR = Path(__file__).resolve().parents[2] / "schemas"
+# Committed build artifacts live INSIDE the package so they ship in the wheel
+# (package-data) and resolve the same in a source checkout or an installed
+# environment — never `parents[..]/schemas`, which would point outside the
+# package once installed. The version stamp on each file makes them
+# pydantic-version-sensitive: regenerate with `python -m shelves.schema` after a
+# pydantic bump (the diff-check test enforces it).
+SCHEMAS_DIR = Path(__file__).resolve().parent / "generated"
 CHART_SCHEMA_PATH = SCHEMAS_DIR / "chart.schema.json"
 DASHBOARD_SCHEMA_PATH = SCHEMAS_DIR / "dashboard.schema.json"
 

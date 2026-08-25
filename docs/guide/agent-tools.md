@@ -59,4 +59,7 @@ are browser features and do **not** appear in PNGs — the payload lists them
 under `limitations`. Use `render_chart(..., format="html")` for full fidelity.
 Dashboards are HTML-only for the same reason (their sizing is browser-computed).
 
-Read-only resources (the grammar card, JSON Schema) land in a follow-up release.
+The server also exposes the DSL as read-only resources: the JSON Schema for
+chart and dashboard specs at `shelves://schema/chart` and
+`shelves://schema/dashboard` (usable for structured decoding and editor
+validation). The grammar card lands in a follow-up release.
