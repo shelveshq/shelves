@@ -94,7 +94,15 @@ See each module's `CLAUDE.md` and `docs/architecture-diagram.md` for design deci
 
 ## Branching Convention
 
-Branch names follow: `KAN-{ticket}/description-in-kebab-case` (e.g. `KAN-100/semantic-layer-integration`).
+Branch names MUST NOT contain a personal identifier (no username, no email
+local-part). Do **not** follow the Linear/Jira-suggested branch name — it embeds
+the author's email. Use one of these instead:
+
+- **Ticket-driven** (single ticket): `{ticket-id}/description-in-kebab-case`
+  (e.g. `SHE-58/json-schema-export`, `KAN-100/semantic-layer-integration`).
+- **Project-driven** (a branch that will carry several related tickets): a
+  generic kebab-case name from the Linear project or theme, no ticket ID
+  (e.g. `llm-writability-upgrades`).
 
 ## Planning Workflow
 
