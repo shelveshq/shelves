@@ -36,9 +36,11 @@ def build_server(ctx: MCPContext) -> MCPServer:
         version=DSL_VERSION,
         instructions=(
             "Discover a Shelves semantic model, then write chart/dashboard YAML "
-            "against it. Call get_model first for the metric menu; "
+            "against it. Read the shelves://grammar resource for the whole DSL on "
+            "one page. Call get_model first for the metric menu; "
             "sample_field_values for the values a filter can use; "
-            "list_parameters for runtime knobs; list_specs to extend existing specs."
+            "list_parameters for runtime knobs; list_specs to extend existing specs. "
+            "shelves://schema/{chart,dashboard} give the JSON Schema."
         ),
     )
 
