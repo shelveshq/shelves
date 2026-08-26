@@ -35,5 +35,6 @@ shape is validated; the `contains` subtree is `Any` on purpose.
 **Any change to the DSL (`chart_schema.py`) MUST be accompanied by updates to:**
 - `docs/guide/dsl-reference.md` — update relevant field/property docs, examples, and type tables
 - `docs/guide/getting-started.md` — update if the change affects introductory workflow or basic examples
+- `shelves/mcp/resources/grammar.md` — the grammar card (`shelves://grammar`), the whole DSL on one page for LLM context injection. Add the new canonical form / enum value / mark and keep it **within the ≤2,500-token budget** (CI-checked by `tests/test_grammar_card.py`). This is a different genre from `dsl-reference.md`: canonical forms only, no explanatory prose. See `LLM Writability Specification.md` §3.1.
 
 This applies to: new fields, removed fields, changed types, new operators, new mark types, new filter operators, renamed properties, or any change to validation rules.

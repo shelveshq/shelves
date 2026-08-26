@@ -18,6 +18,7 @@ import base64
 from typing import TYPE_CHECKING, Any
 
 from shelves.mcp import tools
+from shelves.mcp.grammar import grammar_card
 from shelves.mcp.tools import MCPContext
 from shelves.schema.chart_schema import DSL_VERSION
 from shelves.schema.json_schema import chart_json_schema, dashboard_json_schema, dumps
@@ -149,6 +150,16 @@ def build_server(ctx: MCPContext) -> MCPServer:
         """JSON Schema for a dashboard spec — for structured decoding and editor
         validation. A superset acceptor: cross-key validators are not encoded."""
         return dumps(dashboard_json_schema())
+
+    @server.resource(
+        "shelves://grammar",
+        name="Shelves Grammar Card",
+        mime_type="text/markdown",
+    )
+    def grammar_resource() -> str:
+        """The complete Shelves DSL on one page, written for context injection.
+        Load this plus a get_model menu before writing chart/dashboard YAML."""
+        return grammar_card()
 
     return server
 

@@ -78,6 +78,7 @@ include = ["shelves*"]
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
 "shelves.schema" = ["generated/*.json"]
+"shelves.mcp" = ["resources/*.md"]
 "shelves.theme" = ["*.yaml"]
 "shelves.render" = ["*.js"]
 "shelves.studio" = [
