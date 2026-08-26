@@ -260,11 +260,27 @@ def test_render_chart_invalid_returns_validation_payload():
     assert any(e["code"] == "unknown_field" for e in out["errors"])
 
 
-def test_render_chart_params_not_supported():
+_PARAM_CHART = "sheet: Metric by Country\ndata: orders\ncols: country\nrows: $metric\nmarks: bar\n"
+
+
+def test_render_chart_param_override_applied(project):
+    from pathlib import Path
+
     from shelves.mcp.tools import render_chart
 
-    out = render_chart(_ctx(), path="yaml/simple_bar.yaml", format="png", params={"region": "EMEA"})
-    assert out["error"]["code"] == "not_supported_yet"
+    # metric's declared default is `revenue`; override it with `cost`.
+    out = render_chart(project, yaml_text=_PARAM_CHART, format="html", params={"metric": "cost"})
+    assert "error" not in out, out
+    html = Path(out["path"]).read_text()
+    assert "cost" in html
+    assert "$metric" not in html
+
+
+def test_render_chart_undeclared_param_rejected(project):
+    from shelves.mcp.tools import render_chart
+
+    out = render_chart(project, yaml_text=_PARAM_CHART, format="html", params={"nonesuch": "x"})
+    assert out["error"]["code"] == "invalid_parameters"
 
 
 def test_render_chart_data_unavailable(monkeypatch):

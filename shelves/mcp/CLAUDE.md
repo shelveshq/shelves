@@ -53,11 +53,27 @@ Writability Specification.md` §3.1.
 Guarded by `tests/test_grammar_card.py`, independent of wording:
 - **Hard ≤ 2,500-token budget** (`estimate_tokens` = `ceil(len/4)`, no tiktoken
   dependency) — the CI gate. Keep examples terse.
-- **Snippet smoke test** — every ` ```yaml ` block must validate against the
-  `orders` fixture model. Non-validating fragments use a ` ```text ` fence so
-  they are excluded. `$param` refs are fine: `validate_chart_yaml` skips them.
-- **Mark coverage** — every `MarkType` value must appear on the card (list a
-  mark in the closed-set table even if no example ships for it).
+- **Snippet smoke test** — every ` ```yaml ` block must **compile** through the
+  pipeline against the `orders` fixture model (compile subsumes validate, so a
+  spec that passes schema/model checks but breaks the translator is caught).
+  `$param` refs compile because the test threads the fixture `ParameterSet`
+  (defaults, `resolve_domains=False`). Non-compilable fragments use a ` ```text `
+  fence and are excluded.
+- **Mark coverage** — every `MarkType` value must appear in the "Marks (closed
+  set)" list (scoped to that section, not incidental prose).
+
+## Parameters
+
+`compile_chart`, `render_chart`, and `render_dashboard` resolve `$parameter`
+references via `_build_parameters` → `load_parameter_set` (the one entry point
+every surface shares, so the MCP resolves identically to the CLIs). `compile`
+uses `resolve_domains=False` — it is the no-data path, so a field-backed `$ref`
+never triggers a backend query; references take their declared defaults. The
+render paths use `resolve_domains=True` and accept a `params` override dict
+(stringified into the CLI override format, `None` → the null token), so an
+override is validated against the real field domain. A missing/invalid
+parameters.yaml or a bad override becomes an `invalid_parameters` structured
+error, never a raised exception.
 
 ## Key Rules
 

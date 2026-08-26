@@ -88,7 +88,8 @@ def build_server(ctx: MCPContext) -> MCPServer:
         yaml_text: str | None = None, path: str | None = None, theme: str | None = None
     ) -> dict:
         """The compiled, theme-merged Vega-Lite for one chart (no data), for
-        inspecting how the DSL translates. Invalid specs return validation errors."""
+        inspecting how the DSL translates. `$parameter` references resolve to
+        their declared defaults. Invalid specs return validation errors."""
         return tools.compile_chart(ctx, yaml_text=yaml_text, path=path, theme=theme)
 
     @server.tool(structured_output=False)
@@ -100,7 +101,9 @@ def build_server(ctx: MCPContext) -> MCPServer:
     ) -> Any:
         """Render a chart to PNG (default — look at it to catch schema-valid but
         semantically-wrong charts) or HTML. PNG is headless: data labels and
-        compound-chart fit are browser-only (reported in `limitations`)."""
+        compound-chart fit are browser-only (reported in `limitations`).
+        `$parameters` resolve to their defaults; override with `params`
+        (e.g. {"metric": "cost"}) — values are checked against the model."""
         payload = tools.render_chart(
             ctx, yaml_text=yaml_text, path=path, format=format, params=params
         )
@@ -116,7 +119,8 @@ def build_server(ctx: MCPContext) -> MCPServer:
     @server.tool()
     def render_dashboard(path: str, format: str = "html", params: dict | None = None) -> dict:
         """Render a dashboard (layout tree of sheets) to HTML via the compose
-        pipeline. PNG is unsupported — dashboard sizing is browser-computed."""
+        pipeline. PNG is unsupported — dashboard sizing is browser-computed.
+        `$parameters` resolve to their defaults; override with `params`."""
         return tools.render_dashboard(ctx, path, format=format, params=params)
 
     @server.tool()

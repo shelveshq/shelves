@@ -4,20 +4,23 @@ Grammar card tests (SHE-57).
 The grammar card (`shelves/mcp/resources/grammar.md`) is the whole DSL on one
 page, served as MCP resource `shelves://grammar`. These are the machine guards
 that keep it honest independent of its wording: a hard token budget, a smoke
-test that every YAML example on the card validates against the semantic model,
-a resource round trip, and a mark-coverage reminder.
+test that every YAML example on the card compiles against the semantic model
+(with parameters resolved to their defaults), a resource round trip, and a
+mark-coverage reminder.
 
 Contract: `LLM Writability Specification.md` §3.1.
 """
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
 import yaml
 
 from shelves.mcp.grammar import GRAMMAR_TOKEN_BUDGET, estimate_tokens, grammar_card
+from shelves.params.resolve import load_parameter_set
 from shelves.pipeline import compile_chart
 from shelves.schema.chart_schema import MarkType
 from shelves.validation import detect_kind, validate_dashboard_yaml
@@ -28,8 +31,8 @@ _YAML_BLOCK = re.compile(r"```yaml\n(.*?)```", re.DOTALL)
 
 def _yaml_blocks(text: str) -> list[str]:
     """Every ```yaml fenced block on the card. Fragments that are not compilable
-    specs (the inheritance sketch, the parameter example the MCP tools can't
-    resolve) use a non-yaml fence (```text) and are deliberately excluded."""
+    specs (the inheritance cascade sketch) use a non-yaml fence (```text) and
+    are deliberately excluded."""
     return [m.group(1) for m in _YAML_BLOCK.finditer(text)]
 
 
@@ -78,9 +81,10 @@ def test_card_has_yaml_snippets():
 
 def test_every_yaml_snippet_compiles():
     # Compile (not just validate) so the card cannot ship a snippet that passes
-    # schema/model checks but blows up in the translator — the gap a ```yaml
-    # parameter example would fall into (it can't compile through the tools, so
-    # it lives in a ```text fence and is excluded here).
+    # schema/model checks but blows up in the translator. Parameters resolve to
+    # their declared defaults; resolve_domains=False keeps this data-free (the
+    # $-refs on the card are backed by the `orders` fixture parameters.yaml).
+    params = load_parameter_set(models_dir=MODELS_DIR, resolve_domains=False)
     blocks = _yaml_blocks(grammar_card())
     for i, block in enumerate(blocks):
         raw = yaml.safe_load(block)
@@ -92,11 +96,27 @@ def test_every_yaml_snippet_compiles():
             )
             continue
         try:
-            compile_chart(block, models_dir=MODELS_DIR)
+            compile_chart(block, models_dir=MODELS_DIR, parameters=params)
         except Exception as e:
             raise AssertionError(
                 f"Grammar card yaml snippet #{i} failed to compile:\n{block}"
             ) from e
+
+
+def test_mcp_compile_tool_resolves_parameters():
+    # End-to-end guard for the MCP wiring: the compile_chart tool must resolve a
+    # $parameter to its declared default, not raise ParameterReferenceError.
+    from shelves.mcp.tools import MCPContext
+    from shelves.mcp.tools import compile_chart as compile_tool
+
+    ctx = MCPContext.create(project_dir=FIXTURES_DIR, models_dir=MODELS_DIR)
+    snippet = "\n".join(b for b in _yaml_blocks(grammar_card()) if "$metric" in b)
+    assert snippet, "The parameters example should be a compilable ```yaml block."
+
+    out = compile_tool(ctx, yaml_text=snippet)
+    assert "error" not in out, out
+    # metric's declared default is `revenue` — it must appear in the compiled spec.
+    assert "revenue" in json.dumps(out["vega_lite"])
 
 
 # ─── resource registration ────────────────────────────────────────

@@ -268,7 +268,7 @@ set. Reference a whole value with `$name` — in a field slot (`rows`, `color`,
 a filter's `field`, …) for `field` params, or in a filter value for the others.
 Embed one in text (`sheet`, titles) with `${name}`. `$$` is a literal `$`.
 
-```text
+```yaml
 sheet: "${metric} by Country"
 data: orders
 cols: country
@@ -280,10 +280,10 @@ filters:
     value: $region     # a `string` parameter
 ```
 
-Parameters resolve at render time — pass values with `--param name=value` on the
-CLI, or rely on each parameter's declared default. The `compile_chart` /
-`render_chart` MCP tools do **not** resolve `$params`; to test a spec through
-them, substitute concrete field names and values first.
+Each reference resolves to its declared default, so a parameterized spec
+compiles as-is. `compile_chart` and `render_chart` resolve them; override a
+value on `render_chart` with `params` (e.g. `{"metric": "cost"}`), or on the
+CLI with `--param metric=cost`.
 
 ## Theme
 
