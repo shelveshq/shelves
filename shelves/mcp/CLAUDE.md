@@ -66,14 +66,28 @@ Guarded by `tests/test_grammar_card.py`, independent of wording:
 
 `compile_chart`, `render_chart`, and `render_dashboard` resolve `$parameter`
 references via `_build_parameters` → `load_parameter_set` (the one entry point
-every surface shares, so the MCP resolves identically to the CLIs). `compile`
-uses `resolve_domains=False` — it is the no-data path, so a field-backed `$ref`
-never triggers a backend query; references take their declared defaults. The
-render paths use `resolve_domains=True` and accept a `params` override dict
-(stringified into the CLI override format, `None` → the null token), so an
-override is validated against the real field domain. A missing/invalid
-parameters.yaml or a bad override becomes an `invalid_parameters` structured
-error, never a raised exception.
+every surface shares, so the MCP resolves identically to the CLIs). All three
+accept a `params` override dict (stringified into the CLI override format,
+`None` → the null token).
+
+Domain resolution (the backend query that validates an override against a real
+field domain) is gated:
+- `compile_chart` always uses `resolve_domains=False` — it is the no-data
+  inspection path, so a field-backed `$ref` never triggers a query. Overrides
+  are still type/enum/range-checked; only the live field-domain check is
+  deferred to render.
+- the render paths use `resolve_domains=bool(params)` — a query only when there
+  is an override to check. Without overrides they skip it, so a chart that uses
+  no parameters keeps its purpose-built `data_unavailable` error instead of a
+  domain-resolution `invalid_parameters`, even in a project that merely declares
+  a field-backed parameter.
+
+A missing/invalid parameters.yaml or a bad override becomes an
+`invalid_parameters` structured error, never a raised exception. A sheet's
+undeclared `$ref` inside a dashboard is wrapped by compose as a
+`RuntimeError`-from-`ParameterReferenceError`; `render_dashboard` classifies it
+`invalid_parameters` (via `__cause__`), matching the chart tools, while keeping
+compose's "which sheet" context in the message.
 
 ## Key Rules
 

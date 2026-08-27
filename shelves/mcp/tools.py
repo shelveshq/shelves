@@ -515,10 +515,14 @@ def compile_chart(
     yaml_text: str | None = None,
     path: str | None = None,
     theme: str | None = None,
+    params: dict | None = None,
 ) -> dict:
     """Compiled, theme-merged Vega-Lite for one chart (no data) — for inspection.
 
-    Invalid specs return the validate_spec error payload instead of raising.
+    `$parameter` references resolve to their declared defaults; `params` overrides
+    them to preview the spec under specific values (matching `shelves-render
+    --param`). Invalid specs return the validate_spec error payload instead of
+    raising.
     """
     text, err = _read_input(ctx, yaml_text, path)
     if err is not None:
@@ -533,10 +537,11 @@ def compile_chart(
     if not result.valid:
         return result.model_dump()
 
-    # Resolve declared parameters to their defaults (no overrides). Domains are
-    # NOT resolved — compile is the no-data inspection path, so a $ref backed by
-    # a model field must never trigger a backend query.
-    params, perr = _build_parameters(ctx, resolve_domains=False)
+    # Domains are NOT resolved — compile is the no-data inspection path, so a
+    # $ref backed by a model field must never trigger a backend query. Overrides
+    # are still type/enum/range-checked; only live field-domain checks are
+    # deferred to the render path.
+    params_set, perr = _build_parameters(ctx, overrides=params, resolve_domains=False)
     if perr is not None:
         return perr
 
@@ -544,7 +549,7 @@ def compile_chart(
 
     try:
         vl_spec, spec = _compile(
-            text, models_dir=ctx.models_dir, theme_path=theme_path, parameters=params
+            text, models_dir=ctx.models_dir, theme_path=theme_path, parameters=params_set
         )
     except ValueError as e:
         # An undeclared, misplaced, or mistyped $ref (ParameterReferenceError).
@@ -634,9 +639,12 @@ def render_chart(
     if not result.valid:
         return result.model_dump()
 
-    # Render resolves data, so it resolves parameter domains too — an override
-    # is validated against the real field domain, exactly as the render CLI.
-    params_set, perr = _build_parameters(ctx, overrides=params, resolve_domains=True)
+    # Resolve domains only when there is an override to check against a live
+    # field domain. Without overrides we skip that query, so a chart that uses
+    # no parameters still reports the purpose-built `data_unavailable` error
+    # (below) rather than a domain-resolution `invalid_parameters` — even in a
+    # project that merely declares a field-backed parameter.
+    params_set, perr = _build_parameters(ctx, overrides=params, resolve_domains=bool(params))
     if perr is not None:
         return perr
 
@@ -740,7 +748,7 @@ def render_dashboard(
     if not resolved.is_relative_to(ctx.project_dir):
         return _error("outside_project", f"Path {path!r} resolves outside the project directory.")
 
-    params_set, perr = _build_parameters(ctx, overrides=params, resolve_domains=True)
+    params_set, perr = _build_parameters(ctx, overrides=params, resolve_domains=bool(params))
     if perr is not None:
         return perr
 
@@ -749,6 +757,7 @@ def render_dashboard(
     from shelves.compose.dashboard import compose_dashboard
     from shelves.diagnostics import capture_warnings
     from shelves.errors import ShelvesError
+    from shelves.params.substitute import ParameterReferenceError
 
     # compose_dashboard reports per-sheet data/layout problems via warnings.warn
     # (the panel Studio surfaces); capture them so this surface returns them too
@@ -770,9 +779,17 @@ def render_dashboard(
         return _error("chart_not_found", str(e).splitlines()[0])
     except ValidationError as e:
         return _error("invalid_dashboard", _first_pydantic_error(e, "invalid dashboard"))
+    except ParameterReferenceError as e:
+        # A dashboard-level $ref error raised directly (defensive).
+        return _error("invalid_parameters", str(e).splitlines()[0])
     except (RuntimeError, ValueError) as e:
         # A sheet's chart YAML failed to compile (RuntimeError), or filter
-        # validation failed (ValueError) — both documented compose raises.
+        # validation failed (ValueError) — both documented compose raises. A
+        # sheet's undeclared/misplaced $ref is wrapped by compose as a
+        # RuntimeError-from-ParameterReferenceError; classify it the way the
+        # chart tools do (invalid_parameters), keeping compose's sheet context.
+        if isinstance(e.__cause__, ParameterReferenceError):
+            return _error("invalid_parameters", str(e).splitlines()[0])
         return _error("invalid_dashboard", str(e).splitlines()[0])
 
     out_dir = ctx.project_dir / "output"

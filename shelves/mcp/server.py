@@ -85,12 +85,16 @@ def build_server(ctx: MCPContext) -> MCPServer:
 
     @server.tool()
     def compile_chart(
-        yaml_text: str | None = None, path: str | None = None, theme: str | None = None
+        yaml_text: str | None = None,
+        path: str | None = None,
+        theme: str | None = None,
+        params: dict | None = None,
     ) -> dict:
         """The compiled, theme-merged Vega-Lite for one chart (no data), for
         inspecting how the DSL translates. `$parameter` references resolve to
-        their declared defaults. Invalid specs return validation errors."""
-        return tools.compile_chart(ctx, yaml_text=yaml_text, path=path, theme=theme)
+        their declared defaults; pass `params` (e.g. {"metric": "cost"}) to
+        preview under specific values. Invalid specs return validation errors."""
+        return tools.compile_chart(ctx, yaml_text=yaml_text, path=path, theme=theme, params=params)
 
     @server.tool(structured_output=False)
     def render_chart(
