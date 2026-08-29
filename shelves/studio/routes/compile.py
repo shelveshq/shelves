@@ -202,6 +202,6 @@ async def compile_yaml(request: Request) -> JSONResponse:
 
 async def get_schema() -> JSONResponse:
     """GET /schema — return ChartSpec JSON Schema for Monaco YAML validation."""
-    from shelves.schema.chart_schema import ChartSpec
+    from shelves.schema.json_schema import chart_json_schema
 
-    return JSONResponse(ChartSpec.model_json_schema())
+    return JSONResponse(chart_json_schema())

@@ -440,7 +440,12 @@ class DashboardSpec(BaseModel):
     canvas: Canvas = Field(default_factory=Canvas)
     styles: dict[str, StyleProperties] | None = None
     components: dict[str, Any] | None = None
-    root: Any  # Parsed to RootComponent in validator
+    # Assigned a RootComponent instance by `_parse_raw` (mode="before"); the
+    # annotation makes that concrete so the exported JSON Schema constrains the
+    # root's top-level shape (orientation + contains) instead of accepting Any.
+    # The component subtree stays `Any` — the single-key-dict container form is
+    # not JSON-Schema-expressible without hand-authoring the whole grammar.
+    root: RootComponent
 
     @model_validator(mode="before")
     @classmethod

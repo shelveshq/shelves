@@ -48,7 +48,11 @@ _PROJECT_FILES = [
     "yaml/simple_bar.yaml",
     "yaml/label_bar_simple.yaml",
     "yaml/facet_wrap.yaml",
+    "yaml/param_field_swap.yaml",
+    "yaml/param_undeclared_ref.yaml",
     "layout/mcp_mini_dashboard.yaml",
+    "layout/mcp_param_dashboard.yaml",
+    "layout/mcp_param_undeclared_dashboard.yaml",
     "data/orders.json",
 ]
 
@@ -197,6 +201,30 @@ def test_compile_chart_theme_missing_rejected():
     assert out["error"]["code"] == "theme_not_found"
 
 
+_PARAM_CHART = "sheet: Metric by Country\ndata: orders\ncols: country\nrows: $metric\nmarks: bar\n"
+
+
+def test_compile_chart_resolves_parameter_default():
+    from shelves.mcp.tools import compile_chart
+
+    # metric's declared default is `revenue`; no override.
+    out = compile_chart(_ctx(), yaml_text=_PARAM_CHART)
+    assert "error" not in out, out
+    assert "revenue" in json.dumps(out["vega_lite"])
+
+
+def test_compile_chart_param_override_previews_value():
+    from shelves.mcp.tools import compile_chart
+
+    # The MCP Specification promises compile accepts params to preview a spec
+    # under specific values. No data required — this is the no-data path.
+    out = compile_chart(_ctx(), yaml_text=_PARAM_CHART, params={"metric": "cost"})
+    assert "error" not in out, out
+    vl = json.dumps(out["vega_lite"])
+    assert "cost" in vl
+    assert "$metric" not in vl
+
+
 # ─── render_chart ─────────────────────────────────────────────────
 
 
@@ -260,11 +288,46 @@ def test_render_chart_invalid_returns_validation_payload():
     assert any(e["code"] == "unknown_field" for e in out["errors"])
 
 
-def test_render_chart_params_not_supported():
+def test_render_chart_param_override_applied(project):
+    from pathlib import Path
+
     from shelves.mcp.tools import render_chart
 
-    out = render_chart(_ctx(), path="yaml/simple_bar.yaml", format="png", params={"region": "EMEA"})
-    assert out["error"]["code"] == "not_supported_yet"
+    # metric's declared default is `revenue`; override it with `cost`.
+    out = render_chart(project, yaml_text=_PARAM_CHART, format="html", params={"metric": "cost"})
+    assert "error" not in out, out
+    html = Path(out["path"]).read_text()
+    assert "cost" in html
+    assert "$metric" not in html
+
+
+def test_render_chart_undeclared_param_rejected(project):
+    from shelves.mcp.tools import render_chart
+
+    out = render_chart(project, yaml_text=_PARAM_CHART, format="html", params={"nonesuch": "x"})
+    assert out["error"]["code"] == "invalid_parameters"
+
+
+def test_render_chart_resolves_domains_only_with_overrides(project, monkeypatch):
+    # Finding #1: without an override, render must NOT resolve parameter domains,
+    # so a no-param chart keeps its purpose-built data_unavailable path instead of
+    # failing on a field-backed parameter's domain query. With an override, it
+    # does resolve (to check the override against the real domain).
+    import shelves.params.resolve as resolve_mod
+    from shelves.mcp.tools import render_chart
+
+    seen: list[bool | None] = []
+    real = resolve_mod.load_parameter_set
+
+    def spy(*a, **k):
+        seen.append(k.get("resolve_domains"))
+        return real(*a, **k)
+
+    monkeypatch.setattr(resolve_mod, "load_parameter_set", spy)
+
+    render_chart(project, path="yaml/simple_bar.yaml", format="html")
+    render_chart(project, yaml_text=_PARAM_CHART, format="html", params={"metric": "cost"})
+    assert seen == [False, True]
 
 
 def test_render_chart_data_unavailable(monkeypatch):
@@ -377,6 +440,35 @@ def test_render_dashboard_missing_chart_link_is_structured(project):
     out = render_dashboard(project, path="layout/broken.yaml")
     assert "error" in out
     assert out["error"]["code"] == "chart_not_found"
+
+
+def test_render_dashboard_param_override_applied(project):
+    from pathlib import Path
+
+    from shelves.mcp.tools import render_dashboard
+
+    # The dashboard's sheet is `rows: $metric`; override the default with cost.
+    out = render_dashboard(
+        project, path="layout/mcp_param_dashboard.yaml", params={"metric": "cost"}
+    )
+    assert "error" not in out, out
+    assert "cost" in Path(out["path"]).read_text()
+
+
+def test_render_dashboard_undeclared_override_rejected(project):
+    from shelves.mcp.tools import render_dashboard
+
+    out = render_dashboard(project, path="layout/mcp_param_dashboard.yaml", params={"nope": "x"})
+    assert out["error"]["code"] == "invalid_parameters"
+
+
+def test_render_dashboard_undeclared_ref_in_sheet_is_invalid_parameters(project):
+    # A sheet references an undeclared $ref — must return invalid_parameters, the
+    # same code the chart tools give it, not the generic invalid_dashboard.
+    from shelves.mcp.tools import render_dashboard
+
+    out = render_dashboard(project, path="layout/mcp_param_undeclared_dashboard.yaml")
+    assert out["error"]["code"] == "invalid_parameters"
 
 
 # ─── query_model ──────────────────────────────────────────────────

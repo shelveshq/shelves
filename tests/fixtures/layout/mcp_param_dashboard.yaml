@@ -1,0 +1,8 @@
+dashboard: "MCP Param"
+canvas: { width: 1440, height: 900 }
+root:
+  orientation: vertical
+  contains:
+    - sheet: yaml/param_field_swap.yaml
+      name: swap
+      width: "100%"

@@ -18,8 +18,10 @@ import base64
 from typing import TYPE_CHECKING, Any
 
 from shelves.mcp import tools
+from shelves.mcp.grammar import grammar_card
 from shelves.mcp.tools import MCPContext
 from shelves.schema.chart_schema import DSL_VERSION
+from shelves.schema.json_schema import chart_json_schema, dashboard_json_schema, dumps
 
 if TYPE_CHECKING:
     from mcp.server import MCPServer
@@ -34,9 +36,11 @@ def build_server(ctx: MCPContext) -> MCPServer:
         version=DSL_VERSION,
         instructions=(
             "Discover a Shelves semantic model, then write chart/dashboard YAML "
-            "against it. Call get_model first for the metric menu; "
+            "against it. Read the shelves://grammar resource for the whole DSL on "
+            "one page. Call get_model first for the metric menu; "
             "sample_field_values for the values a filter can use; "
-            "list_parameters for runtime knobs; list_specs to extend existing specs."
+            "list_parameters for runtime knobs; list_specs to extend existing specs. "
+            "shelves://schema/{chart,dashboard} give the JSON Schema."
         ),
     )
 
@@ -81,11 +85,16 @@ def build_server(ctx: MCPContext) -> MCPServer:
 
     @server.tool()
     def compile_chart(
-        yaml_text: str | None = None, path: str | None = None, theme: str | None = None
+        yaml_text: str | None = None,
+        path: str | None = None,
+        theme: str | None = None,
+        params: dict | None = None,
     ) -> dict:
         """The compiled, theme-merged Vega-Lite for one chart (no data), for
-        inspecting how the DSL translates. Invalid specs return validation errors."""
-        return tools.compile_chart(ctx, yaml_text=yaml_text, path=path, theme=theme)
+        inspecting how the DSL translates. `$parameter` references resolve to
+        their declared defaults; pass `params` (e.g. {"metric": "cost"}) to
+        preview under specific values. Invalid specs return validation errors."""
+        return tools.compile_chart(ctx, yaml_text=yaml_text, path=path, theme=theme, params=params)
 
     @server.tool(structured_output=False)
     def render_chart(
@@ -96,7 +105,9 @@ def build_server(ctx: MCPContext) -> MCPServer:
     ) -> Any:
         """Render a chart to PNG (default — look at it to catch schema-valid but
         semantically-wrong charts) or HTML. PNG is headless: data labels and
-        compound-chart fit are browser-only (reported in `limitations`)."""
+        compound-chart fit are browser-only (reported in `limitations`).
+        `$parameters` resolve to their defaults; override with `params`
+        (e.g. {"metric": "cost"}) — values are checked against the model."""
         payload = tools.render_chart(
             ctx, yaml_text=yaml_text, path=path, format=format, params=params
         )
@@ -112,7 +123,8 @@ def build_server(ctx: MCPContext) -> MCPServer:
     @server.tool()
     def render_dashboard(path: str, format: str = "html", params: dict | None = None) -> dict:
         """Render a dashboard (layout tree of sheets) to HTML via the compose
-        pipeline. PNG is unsupported — dashboard sizing is browser-computed."""
+        pipeline. PNG is unsupported — dashboard sizing is browser-computed.
+        `$parameters` resolve to their defaults; override with `params`."""
         return tools.render_dashboard(ctx, path, format=format, params=params)
 
     @server.tool()
@@ -128,6 +140,36 @@ def build_server(ctx: MCPContext) -> MCPServer:
         return tools.query_model(
             ctx, model, measures, dimensions=dimensions, filters=filters, limit=limit
         )
+
+    @server.resource(
+        "shelves://schema/chart",
+        name="Chart JSON Schema",
+        mime_type="application/json",
+    )
+    def chart_schema_resource() -> str:
+        """JSON Schema for a chart spec — for structured decoding and editor
+        validation. A superset acceptor: cross-key validators are not encoded."""
+        return dumps(chart_json_schema())
+
+    @server.resource(
+        "shelves://schema/dashboard",
+        name="Dashboard JSON Schema",
+        mime_type="application/json",
+    )
+    def dashboard_schema_resource() -> str:
+        """JSON Schema for a dashboard spec — for structured decoding and editor
+        validation. A superset acceptor: cross-key validators are not encoded."""
+        return dumps(dashboard_json_schema())
+
+    @server.resource(
+        "shelves://grammar",
+        name="Shelves Grammar Card",
+        mime_type="text/markdown",
+    )
+    def grammar_resource() -> str:
+        """The complete Shelves DSL on one page, written for context injection.
+        Load this plus a get_model menu before writing chart/dashboard YAML."""
+        return grammar_card()
 
     return server
 

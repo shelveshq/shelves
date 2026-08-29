@@ -1,0 +1,381 @@
+{
+  "$defs": {
+    "Canvas": {
+      "properties": {
+        "height": {
+          "default": 900,
+          "title": "Height",
+          "type": "integer"
+        },
+        "width": {
+          "default": 1440,
+          "title": "Width",
+          "type": "integer"
+        }
+      },
+      "title": "Canvas",
+      "type": "object"
+    },
+    "RootComponent": {
+      "additionalProperties": true,
+      "properties": {
+        "contains": {
+          "items": {},
+          "title": "Contains",
+          "type": "array"
+        },
+        "gap": {
+          "default": 0,
+          "title": "Gap",
+          "type": "integer"
+        },
+        "html": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Html"
+        },
+        "margin": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Margin"
+        },
+        "orientation": {
+          "enum": [
+            "horizontal",
+            "vertical"
+          ],
+          "title": "Orientation",
+          "type": "string"
+        },
+        "padding": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Padding"
+        },
+        "style": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style"
+        }
+      },
+      "required": [
+        "orientation"
+      ],
+      "title": "RootComponent",
+      "type": "object"
+    },
+    "StyleProperties": {
+      "description": "Reusable style preset. All properties optional.",
+      "properties": {
+        "background": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Background"
+        },
+        "border": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Border"
+        },
+        "border_bottom": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Border Bottom"
+        },
+        "border_left": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Border Left"
+        },
+        "border_radius": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Border Radius"
+        },
+        "border_right": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Border Right"
+        },
+        "border_top": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Border Top"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        },
+        "font_family": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Font Family"
+        },
+        "font_size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Font Size"
+        },
+        "font_weight": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Font Weight"
+        },
+        "margin": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Margin"
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Opacity"
+        },
+        "padding": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Padding"
+        },
+        "shadow": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shadow"
+        },
+        "text_align": {
+          "anyOf": [
+            {
+              "enum": [
+                "left",
+                "center",
+                "right"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text Align"
+        }
+      },
+      "title": "StyleProperties",
+      "type": "object"
+    }
+  },
+  "$id": "shelves://schema/dashboard",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "canvas": {
+      "$ref": "#/$defs/Canvas"
+    },
+    "components": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Components"
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "root": {
+      "$ref": "#/$defs/RootComponent"
+    },
+    "styles": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/StyleProperties"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Styles"
+    }
+  },
+  "required": [
+    "dashboard",
+    "root"
+  ],
+  "title": "DashboardSpec",
+  "type": "object",
+  "version": "0.15.0"
+}

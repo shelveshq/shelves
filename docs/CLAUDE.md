@@ -11,6 +11,6 @@
 
 ## Rules
 
-- **DSL changes require doc updates.** Any change to `shelves/schema/chart_schema.py` MUST be accompanied by updates to `guide/dsl-reference.md` and (if applicable) `guide/getting-started.md`. See `shelves/schema/CLAUDE.md` for the full list of what triggers this.
+- **DSL changes require doc updates.** Any change to `shelves/schema/chart_schema.py` MUST be accompanied by updates to `guide/dsl-reference.md`, (if applicable) `guide/getting-started.md`, and the grammar card `shelves/mcp/resources/grammar.md` (kept within its token budget). See `shelves/schema/CLAUDE.md` for the full list of what triggers this.
 - **Foundational docs are reference material.** They describe the overall vision and architecture. Update them only when the project direction or high-level architecture changes — not for incremental feature work.
 - **Plans are ephemeral and MUST NEVER be committed.** They capture implementation strategy for a specific ticket and don't need to be kept in sync with code after the work is done. `docs/plans/` is gitignored (`.gitignore`) and must stay that way — never remove that entry, and never force-add a plan with `git add -f`. Plans are local working artifacts only; they are not published to the repo, ever. If you find a `docs/plans/*.md` file tracked by git, untrack it (`git rm --cached`).

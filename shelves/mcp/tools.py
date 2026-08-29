@@ -378,8 +378,42 @@ def list_specs(ctx: MCPContext, kind: str | None = None) -> dict:
 
 _LABEL_LIMITATION = "Data labels (label:) are browser-rendered and do not appear in PNG output."
 _COMPOUND_LIMITATION = "Compound specs render at natural size, not container-fit."
-_PARAMS_UNSUPPORTED = "Parameters land with the Parameter spec; render without params for now."
 _CHART_FORMATS = {"png", "html"}
+
+
+def _build_parameters(
+    ctx: MCPContext,
+    *,
+    overrides: dict | None = None,
+    resolve_domains: bool = True,
+) -> tuple[Any, dict | None]:
+    """Build the project ParameterSet, or a structured error — `(set, error)`.
+
+    Goes through `load_parameter_set`, the one entry point every surface uses,
+    so the MCP resolves parameters identically to the render/dev CLIs. A missing
+    parameters.yaml yields an empty set (never an error). `resolve_domains=False`
+    keeps the no-data compile path free of backend queries; the render path
+    resolves domains so an override is checked against real data, as the CLI
+    does. Agent overrides arrive as JSON values; they are stringified into the
+    CLI override format (coercion is driven by each parameter's declared type),
+    with None mapped to the null-clearing token.
+    """
+    from shelves.params.coerce import NULL_TOKEN
+    from shelves.params.resolve import load_parameter_set
+
+    typed = {k: NULL_TOKEN if v is None else str(v) for k, v in (overrides or {}).items()}
+    try:
+        params = load_parameter_set(
+            models_dir=ctx.models_dir,
+            data_base_dir=ctx.project_dir,
+            overrides=typed,
+            resolve_domains=resolve_domains,
+        )
+    except ValueError as e:
+        # Invalid parameters.yaml, a bad field reference, or an override that
+        # fails coercion / falls outside a declared or resolved value space.
+        return None, _error("invalid_parameters", str(e).splitlines()[0])
+    return params, None
 
 
 def _read_input(
@@ -481,10 +515,14 @@ def compile_chart(
     yaml_text: str | None = None,
     path: str | None = None,
     theme: str | None = None,
+    params: dict | None = None,
 ) -> dict:
     """Compiled, theme-merged Vega-Lite for one chart (no data) — for inspection.
 
-    Invalid specs return the validate_spec error payload instead of raising.
+    `$parameter` references resolve to their declared defaults; `params` overrides
+    them to preview the spec under specific values (matching `shelves-render
+    --param`). Invalid specs return the validate_spec error payload instead of
+    raising.
     """
     text, err = _read_input(ctx, yaml_text, path)
     if err is not None:
@@ -499,9 +537,23 @@ def compile_chart(
     if not result.valid:
         return result.model_dump()
 
+    # Domains are NOT resolved — compile is the no-data inspection path, so a
+    # $ref backed by a model field must never trigger a backend query. Overrides
+    # are still type/enum/range-checked; only live field-domain checks are
+    # deferred to the render path.
+    params_set, perr = _build_parameters(ctx, overrides=params, resolve_domains=False)
+    if perr is not None:
+        return perr
+
     from shelves.pipeline import compile_chart as _compile
 
-    vl_spec, spec = _compile(text, models_dir=ctx.models_dir, theme_path=theme_path)
+    try:
+        vl_spec, spec = _compile(
+            text, models_dir=ctx.models_dir, theme_path=theme_path, parameters=params_set
+        )
+    except ValueError as e:
+        # An undeclared, misplaced, or mistyped $ref (ParameterReferenceError).
+        return _error("invalid_parameters", str(e).splitlines()[0])
     return {"vega_lite": vl_spec, "sheet": spec.sheet, "dsl_version": DSL_VERSION}
 
 
@@ -571,8 +623,6 @@ def render_chart(
     format="html" for full fidelity. Invalid specs return the validate_spec
     error payload; unresolvable data returns a `data_unavailable` error.
     """
-    if params:
-        return _error("not_supported_yet", _PARAMS_UNSUPPORTED)
     if format not in _CHART_FORMATS:
         return _error(
             "unsupported_format",
@@ -589,11 +639,23 @@ def render_chart(
     if not result.valid:
         return result.model_dump()
 
+    # Resolve domains only when there is an override to check against a live
+    # field domain. Without overrides we skip that query, so a chart that uses
+    # no parameters still reports the purpose-built `data_unavailable` error
+    # (below) rather than a domain-resolution `invalid_parameters` — even in a
+    # project that merely declares a field-backed parameter.
+    params_set, perr = _build_parameters(ctx, overrides=params, resolve_domains=bool(params))
+    if perr is not None:
+        return perr
+
     from shelves.errors import ShelvesError
     from shelves.pipeline import compile_chart as _compile
     from shelves.pipeline import resolve_model_data
 
-    vl_spec, spec = _compile(text, models_dir=ctx.models_dir)
+    try:
+        vl_spec, spec = _compile(text, models_dir=ctx.models_dir, parameters=params_set)
+    except ValueError as e:
+        return _error("invalid_parameters", str(e).splitlines()[0])
 
     # resolve_model_data hides two inline failures — a missing data file (silent
     # no-op → a successful but blank render) and malformed JSON (uncaught
@@ -605,7 +667,11 @@ def render_chart(
 
     try:
         bound = resolve_model_data(
-            vl_spec, spec, models_dir=ctx.models_dir, data_base_dir=ctx.project_dir
+            vl_spec,
+            spec,
+            models_dir=ctx.models_dir,
+            data_base_dir=ctx.project_dir,
+            parameters=params_set,
         )
     except ShelvesError as e:
         return _error(
@@ -665,8 +731,6 @@ def render_dashboard(
 
     PNG is not supported — dashboard sizing is browser-computed; use HTML.
     """
-    if params:
-        return _error("not_supported_yet", _PARAMS_UNSUPPORTED)
     if format == "png":
         return _error(
             "unsupported_format",
@@ -684,11 +748,16 @@ def render_dashboard(
     if not resolved.is_relative_to(ctx.project_dir):
         return _error("outside_project", f"Path {path!r} resolves outside the project directory.")
 
+    params_set, perr = _build_parameters(ctx, overrides=params, resolve_domains=bool(params))
+    if perr is not None:
+        return perr
+
     from pydantic import ValidationError
 
     from shelves.compose.dashboard import compose_dashboard
     from shelves.diagnostics import capture_warnings
     from shelves.errors import ShelvesError
+    from shelves.params.substitute import ParameterReferenceError
 
     # compose_dashboard reports per-sheet data/layout problems via warnings.warn
     # (the panel Studio surfaces); capture them so this surface returns them too
@@ -701,6 +770,7 @@ def render_dashboard(
                 chart_base_dir=ctx.project_dir,
                 data_dir=ctx.project_dir,
                 models_dir=ctx.models_dir,
+                parameters=params_set,
             )
     except ShelvesError as e:
         return _error("data_unavailable", str(e).splitlines()[0])
@@ -709,9 +779,17 @@ def render_dashboard(
         return _error("chart_not_found", str(e).splitlines()[0])
     except ValidationError as e:
         return _error("invalid_dashboard", _first_pydantic_error(e, "invalid dashboard"))
+    except ParameterReferenceError as e:
+        # A dashboard-level $ref error raised directly (defensive).
+        return _error("invalid_parameters", str(e).splitlines()[0])
     except (RuntimeError, ValueError) as e:
         # A sheet's chart YAML failed to compile (RuntimeError), or filter
-        # validation failed (ValueError) — both documented compose raises.
+        # validation failed (ValueError) — both documented compose raises. A
+        # sheet's undeclared/misplaced $ref is wrapped by compose as a
+        # RuntimeError-from-ParameterReferenceError; classify it the way the
+        # chart tools do (invalid_parameters), keeping compose's sheet context.
+        if isinstance(e.__cause__, ParameterReferenceError):
+            return _error("invalid_parameters", str(e).splitlines()[0])
         return _error("invalid_dashboard", str(e).splitlines()[0])
 
     out_dir = ctx.project_dir / "output"
