@@ -207,6 +207,10 @@ async function initMonacoEditor() {
     scrollBeyondLastLine: false,
     renderLineHighlight: 'line',
     tabSize: 2,
+    // Render hover/suggest widgets in a body-level overflow container so a
+    // long marker hover isn't clipped by the (often narrow) editor pane — it
+    // can extend over the preview pane instead of truncating (SHE-101 f/u).
+    fixedOverflowWidgets: true,
   });
 
   state.editor.onDidChangeModelContent(() => {

@@ -98,7 +98,10 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     warning markers are positioned by `line`/`col` when the warning is a
     structured object, and fall back to a top-of-file span for plain-string
     warnings (dashboard route); error/warning squiggle colors come from the DS
-    `--danger`/`--warning` tokens in the `shelves` Monaco theme (SHE-101);
+    `--danger`/`--warning` tokens in the `shelves` Monaco theme (SHE-101).
+    `fixedOverflowWidgets: true` renders hover/suggest widgets in a body-level
+    container so a long marker hover isn't clipped by a narrow editor pane
+    (width capped via `.monaco-hover` in `styles.css`);
     ChartSpec schema is attached to monaco-yaml only while the open buffer
     classifies as chart YAML (`shelves:buffer-kind` event from main.js's router).
     Saves are confirmed: dirty clears only on a 2xx PUT; failures surface as a

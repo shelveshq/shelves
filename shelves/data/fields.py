@@ -128,10 +128,9 @@ def collect_chart_fields(spec: ChartSpec) -> set[str]:
                 loc = ("tooltip", i) if isinstance(t, str) else ("tooltip", i, "field")
                 warnings.warn(
                     PositionedWarning(
-                        f"Tooltip field '{field_name}' is not referenced by any other "
-                        f"chart property (rows, cols, color, detail, facet, etc.). "
-                        f"Including it in the data query will disaggregate the data "
-                        f"— it behaves as if '{field_name}' were added to 'detail'.",
+                        f"Tooltip field '{field_name}' isn't referenced by any other "
+                        f"chart property — including it will disaggregate the data "
+                        f"(behaves as if '{field_name}' were added to 'detail').",
                         loc=loc,
                         code="tooltip_disaggregation",
                     ),
