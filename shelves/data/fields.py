@@ -119,15 +119,22 @@ def collect_chart_fields(spec: ChartSpec) -> set[str]:
             fields.add(spec.kpi.comparison.field)
 
     if spec.tooltip:
+        from shelves.diagnostics import PositionedWarning
+
         pre_tooltip_fields = set(fields)
-        for t in spec.tooltip:
+        for i, t in enumerate(spec.tooltip):
             field_name = t if isinstance(t, str) else t.field
             if field_name not in pre_tooltip_fields:
+                loc = ("tooltip", i) if isinstance(t, str) else ("tooltip", i, "field")
                 warnings.warn(
-                    f"Tooltip field '{field_name}' is not referenced by any other "
-                    f"chart property (rows, cols, color, detail, facet, etc.). "
-                    f"Including it in the data query will disaggregate the data "
-                    f"— it behaves as if '{field_name}' were added to 'detail'.",
+                    PositionedWarning(
+                        f"Tooltip field '{field_name}' is not referenced by any other "
+                        f"chart property (rows, cols, color, detail, facet, etc.). "
+                        f"Including it in the data query will disaggregate the data "
+                        f"— it behaves as if '{field_name}' were added to 'detail'.",
+                        loc=loc,
+                        code="tooltip_disaggregation",
+                    ),
                     stacklevel=2,
                 )
             fields.add(field_name)

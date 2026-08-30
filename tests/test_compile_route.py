@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from shelves.studio.server import create_app
-from tests.conftest import DATA_DIR, MODELS_DIR
+from tests.conftest import DATA_DIR, MODELS_DIR, YAML_DIR
 from tests.conftest import LoopbackTestClient as TestClient
 
 
@@ -160,6 +160,92 @@ class TestCompileModelKey:
         assert "data" not in data["vega_lite_spec"] or "values" not in data["vega_lite_spec"].get(
             "data", {}
         )
+
+
+class TestCompileWarnings:
+    """Compile warnings are structured objects with line/col like errors, so
+    Studio can place them inline at the offending field (SHE-101)."""
+
+    def _file_client(self, tmp_path: Path) -> TestClient:
+        """A client with a file-backed (DuckDB) model so field collection runs —
+        the tooltip disaggregation warning only fires on the adapter path."""
+        models = tmp_path / "models"
+        models.mkdir()
+        shutil.copy(MODELS_DIR / "duckdb_orders.yaml", models / "duckdb_orders.yaml")
+        data = tmp_path / "data"
+        data.mkdir()
+        shutil.copy(DATA_DIR / "orders.csv", data / "orders.csv")
+        app = create_app(project_dir=tmp_path, models_dir=models)
+        return TestClient(app, raise_server_exceptions=False)
+
+    def test_kpi_warning_is_positioned(self, tmp_path: Path):
+        client = _make_client(tmp_path)
+        yaml_body = (
+            "sheet: Revenue KPI\ndata: orders\ncols: country\n"
+            'kpi:\n  value: revenue\n  format: "$,.0f"\n'
+        )
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        assert data["errors"] == []
+        assert len(data["warnings"]) == 1
+        warn = data["warnings"][0]
+        assert isinstance(warn, dict)
+        assert warn["source"] == "warning"
+        assert warn["code"] == "kpi_shelves_ignored"
+        assert "ignored when kpi is present" in warn["msg"]
+        # Placed at the `kpi:` key (key position, like errors), not a subfield.
+        assert warn["line"] == 4
+        assert warn["col"] == 1
+
+    def test_tooltip_warning_is_positioned(self, tmp_path: Path):
+        client = self._file_client(tmp_path)
+        yaml_body = (Path(YAML_DIR) / "tooltip_disaggregation.yaml").read_text()
+        resp = client.post("/compile", content=yaml_body)
+        data = resp.json()
+
+        assert data["errors"] == []
+        warns = [w for w in data["warnings"] if w["code"] == "tooltip_disaggregation"]
+        assert len(warns) == 1
+        warn = warns[0]
+        assert warn["source"] == "warning"
+        assert warn["line"] == 7
+        assert warn["col"] == 5
+        assert warn["loc"] == ["tooltip", 0]
+
+    def test_locless_warning_has_null_position(self):
+        """A warning the compile route appends directly (no loc) resolves to a
+        null line/col — editor.js falls back to the top of the file."""
+        from shelves.studio.routes.compile import _format_warnings
+
+        out = _format_warnings(
+            [{"msg": "Data resolution skipped: boom", "loc": None, "code": None}],
+            "sheet: t\n",
+        )
+        assert out == [
+            {
+                "loc": [],
+                "display_loc": [],
+                "msg": "Data resolution skipped: boom",
+                "code": "warning",
+                "source": "warning",
+                "line": None,
+                "col": None,
+            }
+        ]
+
+    def test_unresolvable_loc_falls_back_to_null(self):
+        """A loc pointing at a key absent from the parsed document resolves to
+        null rather than raising."""
+        from shelves.studio.routes.compile import _format_warnings
+
+        out = _format_warnings(
+            [{"msg": "gone", "loc": ("nonexistent",), "code": "x"}],
+            "sheet: t\ndata: orders\n",
+        )
+        assert out[0]["line"] is None
+        assert out[0]["col"] is None
+        assert out[0]["code"] == "x"
 
 
 class TestLabelPatchAsset:

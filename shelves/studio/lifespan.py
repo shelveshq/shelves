@@ -146,9 +146,10 @@ async def compile_file_and_broadcast(
     import yaml as _yaml
     from pydantic import ValidationError as _ValidationError
 
-    from shelves.diagnostics import capture_warnings
+    from shelves.diagnostics import capture_structured_warnings
     from shelves.params.resolve import load_parameter_set
     from shelves.pipeline import compile_chart, resolve_model_data
+    from shelves.studio.routes.compile import _format_warnings
 
     try:
         try:
@@ -192,11 +193,12 @@ async def compile_file_and_broadcast(
             return
 
         # Capture Python warnings (KPI shelf conflicts, tooltip disaggregation,
-        # ...) into the structured warnings list the frontend displays — same
-        # contract as the POST /compile route.
-        warnings: list[str] = []
+        # ...) into the structured warnings list the frontend displays —
+        # positioned exactly like the POST /compile route so the same chart
+        # yields the same inline markers whether you type it or save it.
+        raw_warnings: list[dict] = []
         effective_models_dir = models_dir if models_dir.exists() else None
-        with capture_warnings(warnings):
+        with capture_structured_warnings(raw_warnings):
             parameters = load_parameter_set(
                 parameters_path,
                 models_dir=effective_models_dir,
@@ -210,7 +212,7 @@ async def compile_file_and_broadcast(
             )
 
         try:
-            with capture_warnings(warnings):
+            with capture_structured_warnings(raw_warnings):
                 vl_spec = resolve_model_data(
                     vl_spec,
                     spec,
@@ -219,7 +221,7 @@ async def compile_file_and_broadcast(
                     parameters=parameters,
                 )
         except Exception as e:
-            warnings.append(f"Data resolution skipped: {e}")
+            raw_warnings.append({"msg": f"Data resolution skipped: {e}", "loc": None, "code": None})
 
         await manager.broadcast(
             {
@@ -227,7 +229,7 @@ async def compile_file_and_broadcast(
                 "path": rel,
                 "vega_lite_spec": vl_spec,
                 "errors": [],
-                "warnings": warnings,
+                "warnings": _format_warnings(raw_warnings, content),
                 "model": spec.data,
             }
         )

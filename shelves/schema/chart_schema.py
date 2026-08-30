@@ -523,9 +523,14 @@ class ChartSpec(BaseModel):
         ):
             import warnings
 
+            from shelves.diagnostics import PositionedWarning
+
             warnings.warn(
-                "KPI spec has cols/rows/marks set — these are ignored when kpi is present.",
-                UserWarning,
+                PositionedWarning(
+                    "KPI spec has cols/rows/marks set — these are ignored when kpi is present.",
+                    loc=("kpi",),
+                    code="kpi_shelves_ignored",
+                ),
                 stacklevel=2,
             )
         return self

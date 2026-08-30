@@ -313,9 +313,9 @@ function renderData(result) {
   if (values === undefined) {
     // Either resolution was skipped (warning present) or the inline source
     // file is missing (silent no-op in resolve_model_data) — say which.
-    const skipped = (result.warnings ?? []).find(
-      (w) => typeof w === 'string' && w.startsWith('Data resolution skipped:'),
-    );
+    const skipped = (result.warnings ?? [])
+      .map((w) => (typeof w === 'string' ? w : w?.msg))
+      .find((m) => typeof m === 'string' && m.startsWith('Data resolution skipped:'));
     elDataView.innerHTML = dataMessage(
       model,
       'no rows',

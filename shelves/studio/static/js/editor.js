@@ -169,6 +169,10 @@ async function initMonacoEditor() {
       'editorWidget.border': '#E8E4D8',
       'editorSuggestWidget.selectedBackground': '#F7E9DC',
       'scrollbarSlider.background': '#0B0B0A26',
+      // Squiggle colors from the design system, so errors and warnings read
+      // distinctly instead of Monaco's near-identical defaults (SHE-101).
+      'editorError.foreground': '#A33B2A',               // --danger
+      'editorWarning.foreground': '#A8751F',             // --warning
     },
   });
 
@@ -364,14 +368,33 @@ export function applyCompileMarkers(result) {
   }
 
   for (const warn of (result.warnings ?? [])) {
-    markers.push({
-      severity: monaco.MarkerSeverity.Warning,
-      message: typeof warn === 'string' ? warn : String(warn),
-      startLineNumber: 1,
-      startColumn: 1,
-      endLineNumber: 1,
-      endColumn: model.getLineMaxColumn(1),
-    });
+    // Chart /compile returns positioned warning objects (line/col like errors,
+    // SHE-101); the dashboard route still returns plain strings — both land
+    // here, so handle either shape. A locless object (line == null) falls back
+    // to the top of the file, same as a string.
+    if (typeof warn === 'object' && warn !== null && (warn.msg || warn.message)) {
+      const body = warn.msg ?? warn.message;
+      const displayLoc = warn.display_loc ? warn.display_loc.join('.') : '';
+      const msg = displayLoc ? `${displayLoc} — ${body}` : body;
+      const line = warn.line ?? 1;
+      markers.push({
+        severity: monaco.MarkerSeverity.Warning,
+        message: msg,
+        startLineNumber: line,
+        startColumn: warn.col ?? 1,
+        endLineNumber: line,
+        endColumn: warn.col != null ? warn.col + 1 : model.getLineMaxColumn(line),
+      });
+    } else {
+      markers.push({
+        severity: monaco.MarkerSeverity.Warning,
+        message: typeof warn === 'string' ? warn : String(warn),
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: model.getLineMaxColumn(1),
+      });
+    }
   }
 
   monaco.editor.setModelMarkers(model, 'shelves-compile', markers);

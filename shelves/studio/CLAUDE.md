@@ -28,6 +28,15 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     model}`) and `GET /schema` (ChartSpec JSON Schema for Monaco).
     `model` is the chart's model name (`spec.data`) on success, `null` on error
     payloads — kept in shape-parity with the watcher broadcast (`lifespan.py`).
+    `warnings` are structured objects (`{loc, display_loc, msg, code, source,
+    line, col}`, positioned like errors, SHE-101) mirroring the SHE-54
+    `ValidationErrorItem` vocabulary — a warning carries a `loc` when its emitter
+    (`PositionedWarning`) knows the field (`tooltip[i]`, `kpi`), else `line/col`
+    are null (top-of-file fallback). `_format_warnings` resolves locs through the
+    shared `resolve_locs` (one parse, **key position** like errors, cleaned
+    `display_loc`) — the watcher broadcast (`lifespan.py`) reuses it, so the same
+    chart yields identical inline markers whether typed or saved. The dashboard
+    route (`dashboard.py`) still returns plain-string warnings.
   - `dashboard.py` — `POST /compile-dashboard` (dashboard YAML → `{html, canvas,
     component_tree, errors, warnings}`).
   - `files.py` — `GET /project` (directory tree), `GET/PUT/POST/DELETE /file`,
@@ -86,6 +95,10 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
   - `editor.js` — Monaco setup, debounced compile (`POST /compile`), Cmd+S save,
     compile-marker application, and the **pointer-captured editor/preview pane
     resize handle**;
+    warning markers are positioned by `line`/`col` when the warning is a
+    structured object, and fall back to a top-of-file span for plain-string
+    warnings (dashboard route); error/warning squiggle colors come from the DS
+    `--danger`/`--warning` tokens in the `shelves` Monaco theme (SHE-101);
     ChartSpec schema is attached to monaco-yaml only while the open buffer
     classifies as chart YAML (`shelves:buffer-kind` event from main.js's router).
     Saves are confirmed: dirty clears only on a 2xx PUT; failures surface as a

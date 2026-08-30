@@ -278,6 +278,44 @@ class TestDefaultThemeInCompile:
 
         asyncio.run(_test())
 
+    def test_watcher_broadcast_positions_warnings(self, tmp_path):
+        """Watcher warnings are structured, positioned objects — same shape as
+        POST /compile — so a chart yields the same inline marker whether typed
+        or saved (SHE-101)."""
+
+        async def _test():
+            chart_path = tmp_path / "chart.yaml"
+            chart_path.write_text(
+                'sheet: S\ndata: orders\ncols: country\nkpi:\n  value: revenue\n  format: "$,.0f"\n'
+            )
+
+            captured: list[dict] = []
+
+            class _Capture:
+                async def broadcast(self, msg: dict) -> None:
+                    captured.append(msg)
+
+            await _compile_file_and_broadcast(
+                chart_path,
+                "chart.yaml",
+                _Capture(),  # type: ignore[arg-type]
+                models_dir=MODELS_DIR,
+                theme_path=None,
+                project_dir=FIXTURES_DIR,
+            )
+
+            assert captured, "No broadcast emitted"
+            warns = captured[-1]["warnings"]
+            assert len(warns) == 1
+            warn = warns[0]
+            assert isinstance(warn, dict)
+            assert warn["code"] == "kpi_shelves_ignored"
+            assert warn["source"] == "warning"
+            assert warn["line"] == 4
+            assert warn["col"] == 1
+
+        asyncio.run(_test())
+
 
 # ─── Watcher broadcasts structured YAML syntax errors ────────────
 
