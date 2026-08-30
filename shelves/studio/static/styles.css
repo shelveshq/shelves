@@ -1148,3 +1148,10 @@ body {
   padding: 1px 4px; outline: none;
 }
 .tree-input input.is-error { border-color: var(--danger); }
+
+/* ─── Monaco marker hover (SHE-101 f/u) ──────────────────── */
+/* With fixedOverflowWidgets the hover renders in a body-level container and is
+   no longer clipped by the editor pane; give it a comfortable reading width
+   (capped to the viewport) so long compile warnings wrap instead of truncate. */
+.monaco-hover { max-width: min(560px, 90vw) !important; }
+.monaco-hover .hover-contents { max-width: min(560px, 90vw) !important; }

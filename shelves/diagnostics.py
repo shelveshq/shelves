@@ -24,6 +24,48 @@ from collections.abc import Generator
 from contextlib import contextmanager
 
 
+class PositionedWarning(UserWarning):
+    """A warning that carries the YAML loc of the field it concerns (SHE-101).
+
+    Emission sites that know which field triggered the warning pass a `loc`
+    (and a stable `code`); the studio compile route resolves the loc to a
+    line/col so the marker lands inline, like an error. `str()` yields the bare
+    message, so plain string consumers are unaffected.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        loc: tuple[str | int, ...] | None = None,
+        code: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.loc = loc
+        self.code = code
+
+
+@contextmanager
+def capture_structured_warnings(into: list[dict], prefix: str = "") -> Generator[None]:
+    """Like `capture_warnings`, but records `{msg, loc, code}` dicts.
+
+    `loc`/`code` come from a `PositionedWarning`; plain warnings record them as
+    None. Used by the chart `/compile` route to position warning markers.
+    """
+    with _warnings.catch_warnings(record=True) as records:
+        _warnings.simplefilter("always")
+        try:
+            yield
+        finally:
+            for record in records:
+                message = record.message
+                if isinstance(message, PositionedWarning):
+                    loc, code = message.loc, message.code
+                else:
+                    loc, code = None, None
+                into.append({"msg": f"{prefix}{message}", "loc": loc, "code": code})
+
+
 @contextmanager
 def capture_warnings(into: list[str], prefix: str = "") -> Generator[None]:
     """Record warnings emitted inside the block into `into` as strings.

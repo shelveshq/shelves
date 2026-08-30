@@ -1,0 +1,7 @@
+sheet: Tooltip Disaggregation
+data: duckdb_orders
+cols: country
+rows: revenue
+marks: bar
+tooltip:
+  - region

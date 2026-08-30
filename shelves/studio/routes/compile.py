@@ -6,7 +6,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from shelves.diagnostics import capture_warnings
+from shelves.diagnostics import capture_structured_warnings
 from shelves.schema.yaml_position import resolve_locs
 from shelves.validation import friendly_message as _friendly_msg
 
@@ -70,6 +70,37 @@ def _format_validation_errors(
     return result
 
 
+def _format_warnings(raw_warnings: list[dict], yaml_text: str) -> list[dict]:
+    """Resolve each captured warning's loc to a line/col, mirroring the error shape.
+
+    Warnings carrying a `loc` (from a `PositionedWarning`) go through the same
+    `resolve_locs` path the structured error renderer uses — one parse for all
+    warnings, key-position placement, and display-loc cleaning. Warnings with no
+    loc (or a loc that no longer resolves) get null line/col; the editor falls
+    back to the top of the file for those.
+    """
+    indexed = [(i, tuple(w["loc"])) for i, w in enumerate(raw_warnings) if w.get("loc")]
+    resolved = resolve_locs(yaml_text, [loc for _, loc in indexed])
+    by_index = {i: info for (i, _), info in zip(indexed, resolved, strict=True)}
+
+    result: list[dict] = []
+    for i, w in enumerate(raw_warnings):
+        info = by_index.get(i)
+        pos = info["position"] if info else None
+        result.append(
+            {
+                "loc": list(w["loc"]) if w.get("loc") else [],
+                "display_loc": info["display_loc"] if info else [],
+                "msg": w["msg"],
+                "code": w.get("code") or "warning",
+                "source": "warning",
+                "line": pos[0] if pos else None,
+                "col": pos[1] if pos else None,
+            }
+        )
+    return result
+
+
 async def compile_yaml(request: Request) -> JSONResponse:
     """POST /compile — compile YAML body to Vega-Lite spec."""
     import yaml as _yaml
@@ -107,9 +138,9 @@ async def compile_yaml(request: Request) -> JSONResponse:
     # Python warnings emitted during compile (KPI shelf conflicts, tooltip
     # disaggregation, ...) are invisible to Studio unless captured into the
     # structured warnings list the frontend displays.
-    warnings: list[str] = []
+    raw_warnings: list[dict] = []
     try:
-        with capture_warnings(warnings):
+        with capture_structured_warnings(raw_warnings):
             parameters = load_parameter_set(
                 request.app.state.parameters_path,
                 models_dir=effective_models_dir,
@@ -182,7 +213,7 @@ async def compile_yaml(request: Request) -> JSONResponse:
         )
 
     try:
-        with capture_warnings(warnings):
+        with capture_structured_warnings(raw_warnings):
             vl_spec = resolve_model_data(
                 vl_spec,
                 spec,
@@ -191,12 +222,17 @@ async def compile_yaml(request: Request) -> JSONResponse:
                 parameters=parameters,
             )
     except Exception as e:
-        warnings.append(f"Data resolution skipped: {e}")
+        raw_warnings.append({"msg": f"Data resolution skipped: {e}", "loc": None, "code": None})
 
     # model stays set when only data resolution was skipped — the compile
     # itself succeeded (the Data view labels its skipped state with it).
     return JSONResponse(
-        {"vega_lite_spec": vl_spec, "errors": [], "warnings": warnings, "model": spec.data}
+        {
+            "vega_lite_spec": vl_spec,
+            "errors": [],
+            "warnings": _format_warnings(raw_warnings, yaml_body),
+            "model": spec.data,
+        }
     )
 
 

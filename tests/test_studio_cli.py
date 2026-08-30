@@ -383,7 +383,8 @@ marks: bar
         assert body["vega_lite_spec"] is not None
         assert body["errors"] == []
         assert len(body["warnings"]) > 0
-        assert "data" in body["warnings"][0].lower() or "cube" in body["warnings"][0].lower()
+        msg0 = body["warnings"][0]["msg"]
+        assert "data" in msg0.lower() or "cube" in msg0.lower()
 
     def test_compile_inline_model_binds_data(self):
         """Inline model with on-disk data binds rows via data_base_dir=project_dir."""
