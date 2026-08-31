@@ -323,12 +323,16 @@ async def compile_dashboard_file_and_broadcast(
             }
         )
     except Exception as e:
+        from shelves.studio.routes._diagnostics import runtime_error_item
+
+        # Structured (not a bare string) so applyCompileMarkers renders a marker
+        # for it — the marker pass drops string errors silently (SHE-105).
         await manager.broadcast(
             {
                 "type": "dashboard_compile_result",
                 "path": rel,
                 "html": None,
-                "errors": [str(e)],
+                "errors": [runtime_error_item(str(e))],
                 "warnings": [],
                 "component_tree": [],
             }

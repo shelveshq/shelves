@@ -35,10 +35,32 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
     are null (top-of-file fallback). `_format_warnings` resolves locs through the
     shared `resolve_locs` (one parse, **key position** like errors, cleaned
     `display_loc`) — the watcher broadcast (`lifespan.py`) reuses it, so the same
-    chart yields identical inline markers whether typed or saved. The dashboard
-    route (`dashboard.py`) still returns plain-string warnings.
+    chart yields identical inline markers whether typed or saved. Both routes
+    import these formatters from `routes/_diagnostics` (one implementation).
+  - `_diagnostics.py` — the shared diagnostics formatters (SHE-105):
+    `_format_yaml_error`, `_format_validation_errors`, `_format_warnings`, plus
+    `format_validation_items` (adapts a SHE-54 `ValidationErrorItem` → the Studio
+    error shape). `compile.py` and `dashboard.py` both import from here, so the
+    two routes paint identical inline markers. (`compile.py` re-exports the three
+    `_format_*` names for `lifespan.py` and the chart-route tests.)
   - `dashboard.py` — `POST /compile-dashboard` (dashboard YAML → `{html, canvas,
-    component_tree, errors, warnings}`).
+    component_tree, errors, warnings}`). Errors and warnings are **positioned
+    structured objects** at parity with the chart route (SHE-105): schema +
+    YAML-syntax errors come from the SHE-54 renderer (`validate_dashboard_yaml`,
+    the same one MCP `validate_spec` uses, called BEFORE the compile pipeline);
+    sheet-level warnings anchor on the sheet node in the dashboard YAML (a
+    `sheet-name → dashboard-loc` map correlated by link — **only links that
+    occur exactly once** are anchored; a duplicated link stays top-of-file rather
+    than risk a wrong node, since raw-document and flatten-discovery order need
+    not agree); filter-domain warnings
+    anchor on the `filter:` node (a `(model, field) → dashboard-loc` map,
+    `_build_filter_loc_map`). Parameter-domain warnings (from
+    `load_parameter_set`, tied to the parameter declaration in `parameters.yaml`,
+    not the layout `parameter:` control), legend, and deep runtime
+    errors/warnings degrade to top-of-file (null line/col) when no clean loc is
+    expressible — never a misleading anchor. A **missing/traversal sheet stays a warning** (the
+    dashboard still renders): `validate_dashboard_yaml` is called with
+    `project_dir=None` so it does not promote a missing sheet to an error.
   - `files.py` — `GET /project` (directory tree), `GET/PUT/POST/DELETE /file`,
     `POST /file/rename`. `resolve_safe` rejects path traversal on every
     endpoint; create/rename/delete are restricted to `.yaml/.yml/.json` and
@@ -95,9 +117,10 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
   - `editor.js` — Monaco setup, debounced compile (`POST /compile`), Cmd+S save,
     compile-marker application, and the **pointer-captured editor/preview pane
     resize handle**;
-    warning markers are positioned by `line`/`col` when the warning is a
-    structured object, and fall back to a top-of-file span for plain-string
-    warnings (dashboard route); error/warning squiggle colors come from the DS
+    error AND warning markers are positioned by `line`/`col` when the item is a
+    structured object (both routes now emit objects, SHE-101/SHE-105), and fall
+    back to a top-of-file span for a locless object or a stray string; error/
+    warning squiggle colors come from the DS
     `--danger`/`--warning` tokens in the `shelves` Monaco theme (SHE-101).
     `fixedOverflowWidgets: true` renders hover/suggest widgets in a body-level
     container so a long marker hover isn't clipped by a narrow editor pane

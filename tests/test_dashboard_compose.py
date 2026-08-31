@@ -346,6 +346,69 @@ class TestDashboardComposeWarnings:
         assert "vegaEmbed" in html
 
 
+class TestCompileDashboardChartsStructuredWarnings:
+    """SHE-105: `compile_dashboard_charts` returns structured warning dicts
+    (`{msg, code, sheet, child_loc}`), not bare strings; both surfaces consume
+    that one shape."""
+
+    def _compile(self, sheets: dict[str, str], **kwargs):
+        from shelves.compose.dashboard import compile_dashboard_charts
+
+        theme = load_theme()
+        return compile_dashboard_charts(
+            sheets,
+            YAML_DIR,
+            theme,
+            models_dir=MODELS_DIR,
+            data_base_dir=FIXTURES_DIR,
+            **kwargs,
+        )
+
+    def test_child_warning_is_structured_and_sheet_tagged(self):
+        _specs, _resolvers, warnings = self._compile({"c1": "tooltip_disaggregation.yaml"})
+        tt = [w for w in warnings if w["code"] == "tooltip_disaggregation"]
+        assert len(tt) == 1
+        w = tt[0]
+        assert w["sheet"] == "c1"
+        assert w["msg"].startswith("Sheet 'c1': ")
+        assert "region" in w["msg"]
+        # child_loc points into the *child* file (informational only).
+        assert tuple(w["child_loc"]) == ("tooltip", 0)
+
+    def test_missing_file_warning_is_structured(self):
+        _specs, _resolvers, warnings = self._compile({"ghost": "nope.yaml"}, fail_fast=False)
+        assert len(warnings) == 1
+        w = warnings[0]
+        assert w["sheet"] == "ghost"
+        assert w["code"] is None
+        assert w["child_loc"] is None
+        assert "Chart file not found" in w["msg"]
+
+    def test_compose_reemits_structured_warning_message(self):
+        """compose_dashboard re-emits each structured warning's message via
+        warnings.warn — the human-readable text is unchanged."""
+        self_yaml = LAYOUT_DIR / "_tmp_tooltip_dash.yaml"
+        self_yaml.write_text(
+            'dashboard: "TT"\n'
+            "canvas: { width: 800, height: 600 }\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - sheet: tooltip_disaggregation.yaml\n"
+            "      name: c1\n"
+        )
+        try:
+            with pytest.warns(UserWarning, match=r"Sheet 'c1': Tooltip field 'region'"):
+                compose_dashboard(
+                    dashboard_path=self_yaml,
+                    chart_base_dir=YAML_DIR,
+                    data_dir=FIXTURES_DIR,
+                    models_dir=MODELS_DIR,
+                )
+        finally:
+            self_yaml.unlink(missing_ok=True)
+
+
 # ─── Error Tests ─────────────────────────────────────────────────
 
 

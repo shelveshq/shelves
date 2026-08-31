@@ -39,18 +39,24 @@ class PositionedWarning(UserWarning):
         *,
         loc: tuple[str | int, ...] | None = None,
         code: str | None = None,
+        sheet: str | None = None,
     ) -> None:
         super().__init__(message)
         self.loc = loc
         self.code = code
+        # `sheet` tags a warning with the dashboard sheet it concerns so it can
+        # survive the `warnings.warn` round-trip (compose → MCP capture) and be
+        # returned sheet-tagged; None for chart-level warnings (SHE-105).
+        self.sheet = sheet
 
 
 @contextmanager
 def capture_structured_warnings(into: list[dict], prefix: str = "") -> Generator[None]:
-    """Like `capture_warnings`, but records `{msg, loc, code}` dicts.
+    """Like `capture_warnings`, but records `{msg, loc, code, sheet}` dicts.
 
-    `loc`/`code` come from a `PositionedWarning`; plain warnings record them as
-    None. Used by the chart `/compile` route to position warning markers.
+    `loc`/`code`/`sheet` come from a `PositionedWarning`; plain warnings record
+    them as None. Used by the chart `/compile` route to position warning markers
+    and by the MCP tools to return structured warnings.
     """
     with _warnings.catch_warnings(record=True) as records:
         _warnings.simplefilter("always")
@@ -60,10 +66,10 @@ def capture_structured_warnings(into: list[dict], prefix: str = "") -> Generator
             for record in records:
                 message = record.message
                 if isinstance(message, PositionedWarning):
-                    loc, code = message.loc, message.code
+                    loc, code, sheet = message.loc, message.code, message.sheet
                 else:
-                    loc, code = None, None
-                into.append({"msg": f"{prefix}{message}", "loc": loc, "code": code})
+                    loc, code, sheet = None, None, None
+                into.append({"msg": f"{prefix}{message}", "loc": loc, "code": code, "sheet": sheet})
 
 
 @contextmanager

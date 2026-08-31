@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any
 
 from shelves.compose.legend_link import resolve_legend_links
-from shelves.data.errors import ParameterDomainError
-from shelves.diagnostics import capture_warnings
+from shelves.diagnostics import PositionedWarning, capture_structured_warnings
+from shelves.errors import ShelvesError
 from shelves.params.substitute import ParameterSet
 from shelves.schema.field_types import FieldTypeResolver
 from shelves.schema.layout_schema import (
@@ -131,13 +131,22 @@ def compose_dashboard(
         parameters=parameters,
         filter_injections=filter_injections,
     )
-    for msg in chart_warnings:
-        warnings.warn(msg, stacklevel=2)
+    # Re-emit the structured per-sheet warnings as PositionedWarnings so a
+    # capturing surface (MCP render_dashboard) keeps the code/sheet structure;
+    # `str()` yields the bare message for plain stderr consumers (SHE-105).
+    for w in chart_warnings:
+        warnings.warn(
+            PositionedWarning(w["msg"], loc=w["child_loc"], code=w["code"], sheet=w["sheet"]),
+            stacklevel=2,
+        )
 
     # SHE-10: link legends to sheet scales + suppress in-sheet legends.
     legend_links, legend_warnings = link_legends(flat_tree, sheets, chart_specs, resolvers)
+    # Emit as PositionedWarning (locless) so one CLI run prints a single warning
+    # category — the per-sheet chart warnings above are already PositionedWarning
+    # (needed for MCP capture); a plain warnings.warn(str) would mix labels.
     for msg in legend_warnings:
-        warnings.warn(msg, stacklevel=2)
+        warnings.warn(PositionedWarning(msg), stacklevel=2)
 
     # SHE-92: discover controls and build metadata from the ParameterSet.
     controls = _discover_controls(flat_tree)
@@ -168,7 +177,7 @@ def compile_dashboard_charts(
     restrict_links: bool = False,
     parameters: ParameterSet | None = None,
     filter_injections: dict[str, list[dict]] | None = None,
-) -> tuple[dict[str, dict], dict[str, FieldTypeResolver], list[str]]:
+) -> tuple[dict[str, dict], dict[str, FieldTypeResolver], list[dict]]:
     """Compile every sheet's chart through the shared pipeline.
 
     The ONE dashboard chart loop — used by `compose_dashboard` (CLI) and the
@@ -209,7 +218,13 @@ def compile_dashboard_charts(
 
     Returns:
         (chart_specs, resolvers, warnings) — chart_specs/resolvers keyed by
-        sheet dom_id; warnings as human-readable strings.
+        sheet dom_id; warnings as structured dicts
+        ``{msg, code, sheet, child_loc}`` (SHE-105). `msg` keeps the
+        human-readable ``Sheet 'x': …`` prefix so the message reads the same on
+        every surface; `code` is a stable machine code (or None); `sheet` is the
+        sheet dom_id the warning concerns; `child_loc` is the loc into the
+        *child* chart file (informational — never resolved against dashboard
+        text). Both consuming surfaces re-emit `msg`.
     """
     # Late imports, deliberately: the pipeline import avoids a circular import
     # through shelves/__init__, and load_model must be re-read per call so a
@@ -221,12 +236,21 @@ def compile_dashboard_charts(
 
     chart_specs: dict[str, dict] = {}
     resolvers: dict[str, FieldTypeResolver] = {}
-    warnings_out: list[str] = []
+    warnings_out: list[dict] = []
+
+    def _emit(msg: str, *, code: str | None = None, child_loc: object = None) -> None:
+        warnings_out.append({"msg": msg, "code": code, "sheet": name, "child_loc": child_loc})
+
+    def _flush(records: list[dict]) -> None:
+        # Captured child warnings ({msg, loc, code, sheet}) → dashboard-shaped
+        # items: the child's loc becomes `child_loc`, the sheet tag is this sheet.
+        for w in records:
+            _emit(w["msg"], code=w.get("code"), child_loc=w.get("loc"))
 
     for name, link in sheets.items():
         chart_path = charts_dir / link
         if restrict_links and not _link_is_contained(chart_path, charts_dir):
-            warnings_out.append(
+            _emit(
                 f"Chart link '{link}' (sheet '{name}') is outside the charts "
                 "directory and was skipped."
             )
@@ -236,11 +260,12 @@ def compile_dashboard_charts(
                 raise FileNotFoundError(
                     f"Chart file not found: {chart_path} (referenced by sheet '{name}')"
                 )
-            warnings_out.append(f"Chart file not found: {link} (sheet '{name}')")
+            _emit(f"Chart file not found: {link} (sheet '{name}')")
             continue
 
+        sheet_records: list[dict] = []
         try:
-            with capture_warnings(warnings_out, prefix=f"Sheet '{name}': "):
+            with capture_structured_warnings(sheet_records, prefix=f"Sheet '{name}': "):
                 yaml_string = chart_path.read_text()
                 extra = (filter_injections or {}).get(name)
                 vl, chart_spec = compile_chart(
@@ -260,15 +285,32 @@ def compile_dashboard_charts(
                         parameters=parameters,
                     )
                 except Exception as de:
-                    warnings_out.append(f"Data resolution skipped for '{name}': {de}")
+                    # Not prefixed (the message already names the sheet, matching
+                    # the historical text). `_flush` routes it through `_emit`,
+                    # which tags it with this sheet's dom_id, so — like the other
+                    # per-sheet warnings — it anchors on the sheet node in Studio;
+                    # `child_loc` stays None (there is no child-file position).
+                    sheet_records.append(
+                        {
+                            "msg": f"Data resolution skipped for '{name}': {de}",
+                            "loc": None,
+                            "code": None,
+                            "sheet": None,
+                        }
+                    )
                 resolver = ModelResolver(load_model(chart_spec.data, models_dir=models_dir))
         except Exception as e:
+            # Warnings captured before the failure are recorded in `finally`;
+            # flush them first, then the compile-error notice — same order the
+            # old plain-string capture produced.
+            _flush(sheet_records)
             if fail_fast:
                 raise RuntimeError(
                     f"Failed to compile chart for sheet '{name}' (link: {link}): {e}"
                 ) from e
-            warnings_out.append(f"Chart '{name}' ({link}): {e}")
+            _emit(f"Chart '{name}' ({link}): {e}")
             continue
+        _flush(sheet_records)
         chart_specs[name] = vl
         resolvers[name] = resolver
 
@@ -955,12 +997,19 @@ def _resolve_filter_options(
 
 
 def _validate_filter_default(
-    filt: FilterComponent, mode: str, options: list | None, *, truncated: bool = False
+    filt: FilterComponent,
+    mode: str,
+    options: list | None,
+    *,
+    truncated: bool = False,
+    loc: tuple | None = None,
 ) -> None:
     """Validate that a filter's default value is within resolved options.
 
     A truncated domain is only a prefix of the real value set, so membership
     cannot be disproved — warn instead of rejecting a possibly-valid default.
+    `loc`, when given, is the filter component's node in the dashboard YAML, so
+    the truncation warning anchors on it inline (SHE-105).
     """
     if filt.default is None or options is None:
         return
@@ -979,9 +1028,13 @@ def _validate_filter_default(
                 continue
             if truncated:
                 warnings.warn(
-                    f"filter default {d!r} for field {filt.field!r} was not checked — "
-                    f"the domain was truncated at {MAX_DOMAIN_CARDINALITY} values, "
-                    "so membership is unknown.",
+                    PositionedWarning(
+                        f"filter default {d!r} for field {filt.field!r} was not checked — "
+                        f"the domain was truncated at {MAX_DOMAIN_CARDINALITY} values, "
+                        "so membership is unknown.",
+                        loc=loc,
+                        code="filter_default_unchecked",
+                    ),
                     stacklevel=2,
                 )
                 continue
@@ -1010,6 +1063,7 @@ def _build_filter_control_meta(
     data_base_dir: Path | None = None,
     *,
     filter_overrides: dict[str, Any] | None = None,
+    field_loc_map: dict[tuple[str, str], tuple] | None = None,
 ) -> dict[str, FilterControlMeta]:
     """Build FilterControlMeta for each filter control in the layout tree.
 
@@ -1017,10 +1071,16 @@ def _build_filter_control_meta(
     filter, the override replaces ``filt.default`` in the rendered widget so the
     control shows the same value the injection applied (a recompile must not
     reset the widget to the YAML default while the chart stays filtered).
+
+    ``field_loc_map`` maps ``(model, field)`` → the filter component's node loc
+    in the dashboard YAML; when given, option/default warnings anchor on that
+    node inline (SHE-105). The CLI compose surface leaves it None (its warnings
+    are re-emitted via ``warnings.warn``, not positioned).
     """
     from shelves.models.loader import load_model
 
     overrides = filter_overrides or {}
+    loc_map = field_loc_map or {}
 
     filter_nodes = _discover_filters_with_dom_ids(flat_tree)
     if not filter_nodes:
@@ -1048,17 +1108,27 @@ def _build_filter_control_meta(
         if title is None:
             title = filt.field
 
+        node_loc = loc_map.get((filt.model, filt.field))
+
         try:
             options, truncated = _resolve_filter_options(
                 filt, mode, models_dir=models_dir, data_base_dir=data_base_dir
             )
-        except (ValueError, FileNotFoundError, ParameterDomainError) as e:
+        except (ValueError, FileNotFoundError, ShelvesError) as e:
+            # ShelvesError covers every deliberate data-layer failure (CubeError,
+            # DuckDBQueryError, NoDataSourceError, ParameterDomainError) — a
+            # backend hiccup degrades the filter to a warning, never aborts the
+            # whole dashboard compile.
             warnings.warn(
-                f"Filter options for '{filt.field}' could not be resolved: {e}",
+                PositionedWarning(
+                    f"Filter options for '{filt.field}' could not be resolved: {e}",
+                    loc=node_loc,
+                    code="filter_options_unresolved",
+                ),
                 stacklevel=2,
             )
             options, truncated = None, False
-        _validate_filter_default(filt, mode, options, truncated=truncated)
+        _validate_filter_default(filt, mode, options, truncated=truncated, loc=node_loc)
 
         # The rendered widget follows the active override (if any), so a recompile
         # keeps the control in sync with the value injected into the chart.

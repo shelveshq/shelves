@@ -7,98 +7,24 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from shelves.diagnostics import capture_structured_warnings
-from shelves.schema.yaml_position import resolve_locs
-from shelves.validation import friendly_message as _friendly_msg
 
-# Error rendering (friendly-message table, literal parsing) is owned by
-# `shelves.validation` (SHE-54) so the CLI, the MCP tool, and this route render
-# Pydantic errors identically. This route keeps its own response *shape* (the
-# `friendly_msg`/`display_loc`/`source` dict the studio frontend consumes); only
-# the message text comes from the shared renderer.
+# Diagnostics formatting (Pydantic/YAML errors, captured warnings) is owned by
+# `routes/_diagnostics` (SHE-105) so this chart route and the dashboard route
+# paint identical inline markers. Re-exported here for backward compatibility —
+# `lifespan.py` and the chart-route tests import these names from `compile`.
+from shelves.studio.routes._diagnostics import (
+    _format_validation_errors,
+    _format_warnings,
+    _format_yaml_error,
+)
 
-
-def _format_yaml_error(exc: Exception) -> dict:
-    line = None
-    col = None
-    mark = getattr(exc, "problem_mark", None)
-    if mark is not None:
-        line = mark.line + 1
-        col = mark.column + 1
-
-    problem = getattr(exc, "problem", None)
-    if problem:
-        friendly = problem.replace("<stream end>", "end of input")
-        friendly = friendly.replace("<block end>", "end of block")
-        friendly = friendly[0].upper() + friendly[1:] if friendly else friendly
-    else:
-        friendly = str(exc)
-
-    return {
-        "loc": [],
-        "display_loc": [],
-        "msg": str(exc),
-        "friendly_msg": friendly,
-        "source": "yaml",
-        "type": "yaml_syntax",
-        "line": line,
-        "col": col,
-    }
-
-
-def _format_validation_errors(
-    exc: ValidationError,
-    yaml_text: str,
-) -> list[dict]:
-    """Convert a Pydantic ValidationError into structured error dicts with line/col."""
-    errors = exc.errors()
-    resolved = resolve_locs(yaml_text, [err["loc"] for err in errors])
-    result = []
-    for err, info in zip(errors, resolved, strict=True):
-        pos = info["position"]
-        result.append(
-            {
-                "loc": list(err["loc"]),
-                "display_loc": info["display_loc"],
-                "msg": err["msg"],
-                "friendly_msg": _friendly_msg(err["type"], err["msg"]),
-                "source": "dsl",
-                "type": err["type"],
-                "line": pos[0] if pos else None,
-                "col": pos[1] if pos else None,
-            }
-        )
-    return result
-
-
-def _format_warnings(raw_warnings: list[dict], yaml_text: str) -> list[dict]:
-    """Resolve each captured warning's loc to a line/col, mirroring the error shape.
-
-    Warnings carrying a `loc` (from a `PositionedWarning`) go through the same
-    `resolve_locs` path the structured error renderer uses — one parse for all
-    warnings, key-position placement, and display-loc cleaning. Warnings with no
-    loc (or a loc that no longer resolves) get null line/col; the editor falls
-    back to the top of the file for those.
-    """
-    indexed = [(i, tuple(w["loc"])) for i, w in enumerate(raw_warnings) if w.get("loc")]
-    resolved = resolve_locs(yaml_text, [loc for _, loc in indexed])
-    by_index = {i: info for (i, _), info in zip(indexed, resolved, strict=True)}
-
-    result: list[dict] = []
-    for i, w in enumerate(raw_warnings):
-        info = by_index.get(i)
-        pos = info["position"] if info else None
-        result.append(
-            {
-                "loc": list(w["loc"]) if w.get("loc") else [],
-                "display_loc": info["display_loc"] if info else [],
-                "msg": w["msg"],
-                "code": w.get("code") or "warning",
-                "source": "warning",
-                "line": pos[0] if pos else None,
-                "col": pos[1] if pos else None,
-            }
-        )
-    return result
+__all__ = [
+    "_format_validation_errors",
+    "_format_warnings",
+    "_format_yaml_error",
+    "compile_yaml",
+    "get_schema",
+]
 
 
 async def compile_yaml(request: Request) -> JSONResponse:

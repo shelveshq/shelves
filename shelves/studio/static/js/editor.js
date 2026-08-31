@@ -306,11 +306,11 @@ async function initMonacoEditor() {
   });
 
   document.addEventListener('shelves:dashboard-result', (e) => {
-    // Dashboard warnings (filter options that would not resolve, truncated
-    // domains, per-sheet compile notices) carry no line info, so they land as
-    // file-level markers — same treatment applyCompileMarkers gives chart
-    // warnings. Dashboard errors are plain strings and are skipped by that
-    // function's object guard; they stay in the preview overlay.
+    // Dashboard errors AND warnings are now positioned structured objects at
+    // parity with the chart route (SHE-105): schema/yaml errors and sheet-level
+    // warnings carry line/col and land inline; locless items (dashboard-level
+    // filter/param, legend) fall back to the top of the file — the same
+    // object-or-string handling applyCompileMarkers already gives chart results.
     // The status bar is NOT touched here: dashboard.js owns the counters for
     // dashboard results (SHE-50) and feeds them straight from the payload.
     if (!resultIsForCurrentFile(e.detail)) return;
@@ -367,6 +367,18 @@ export function applyCompileMarkers(result) {
         startColumn: err.col ?? 1,
         endLineNumber: line,
         endColumn: err.col != null ? err.col + 1 : model.getLineMaxColumn(line),
+      });
+    } else {
+      // A bare-string error (a last-resort fallback path) still gets a marker
+      // at the top of the file rather than being silently dropped — otherwise
+      // the status bar counts an error with nothing to click.
+      markers.push({
+        severity: monaco.MarkerSeverity.Error,
+        message: typeof err === 'string' ? err : String(err),
+        startLineNumber: 1,
+        startColumn: 1,
+        endLineNumber: 1,
+        endColumn: model.getLineMaxColumn(1),
       });
     }
   }

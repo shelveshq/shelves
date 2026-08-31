@@ -294,7 +294,10 @@ def _run_studio_dashboard(
     if not specs:
         # fail_fast=False: a sheet that failed to compile is a warning and an
         # empty box, so the message lives in warnings, not errors.
-        return None, (data["warnings"][0] if data["warnings"] else None)
+        if not data["warnings"]:
+            return None, None
+        w0 = data["warnings"][0]
+        return None, (w0["msg"] if isinstance(w0, dict) else str(w0))
     return _sheet_y_field(specs, "swap_a"), None
 
 
@@ -630,7 +633,10 @@ class TestStudioWatcherSurfaces:
         )
         msg = captured[-1]
         assert msg["html"] is None
-        assert "type 'field' needs field references, not literal values." in msg["errors"][0]
+        # Same structured runtime_error shape the dashboard route produces (SHE-105).
+        err = msg["errors"][0]
+        assert isinstance(err, dict)
+        assert "type 'field' needs field references, not literal values." in err["msg"]
 
     def test_chart_watcher_honors_a_non_default_parameters_path(self, tmp_path: Path):
         """Proves `parameters_path` is threaded, not silently defaulted.

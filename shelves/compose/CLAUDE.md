@@ -26,7 +26,7 @@ Per-surface presentation is the only difference:
 |---|---|---|
 | `fail_fast` | `True` — missing file raises `FileNotFoundError`, compile error raises `RuntimeError` | `False` — both become warnings; the sheet renders as an empty box |
 | `restrict_links` | `False` — local dashboards may reference charts outside `--chart-dir` via `../` | `True` — links resolving outside `charts_dir` (absolute or `../`) are skipped with a warning (mirrors `resolve_safe`) |
-| returned warnings | re-emitted via `warnings.warn` | returned in the `warnings: [...]` payload |
+| returned warnings | re-emitted via `warnings.warn` (as `PositionedWarning` carrying `code`/`sheet`/`child_loc`, so MCP capture keeps structure) | positioned & returned in the `warnings: [...]` payload (sheet-tagged items anchored on the sheet node) |
 
 Warning messages show the link as written in the YAML; only the fail-fast
 exceptions include the resolved absolute path (never surfaced to Studio
@@ -43,9 +43,16 @@ Invariants the loop guarantees (do not break):
 - **SHE-27 lock-step:** the resolver is built before `chart_specs`/`resolvers`
   are published, so legend linking never dereferences a resolver that was
   never built.
-- **Python warnings are captured** (via `shelves.diagnostics.capture_warnings`)
-  into the returned warnings list, prefixed with the sheet name, so Studio
-  users see KPI/tooltip notices too.
+- **`compile_dashboard_charts` returns structured warning dicts** (SHE-105):
+  `{msg, code, sheet, child_loc}`, not bare strings. Python warnings emitted
+  during a sheet's compile are captured (via
+  `shelves.diagnostics.capture_structured_warnings`) with the sheet name
+  prefixed into `msg`, `code` carried from the `PositionedWarning`, `sheet` set
+  to the sheet dom_id, and `child_loc` = the loc into the *child* chart file
+  (informational — never resolved against the dashboard text). Both surfaces
+  re-emit `msg` verbatim: `compose_dashboard` via `warnings.warn`, the Studio
+  route by positioning the item on the sheet node. So Studio users still see
+  KPI/tooltip notices, now anchored inline.
 - **One `ParameterSet` per dashboard.** `parameters` is built by the surface and
   passed in; the loop never builds one. Every sheet compiles against the same
   resolved values, so two sheets in one dashboard can never disagree about

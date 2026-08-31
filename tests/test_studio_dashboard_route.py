@@ -142,10 +142,12 @@ class TestStudioMissingChart:
         assert result["html"] is not None
         assert result["errors"] == []
         assert "Still here" in result["html"]
-        assert any("Chart file not found" in w and "ghost" in w for w in result["warnings"])
+        assert any(
+            "Chart file not found" in w["msg"] and "ghost" in w["msg"] for w in result["warnings"]
+        )
         # The warning shows the link the user typed, not the server's absolute
         # path (PR #58 review: don't leak filesystem paths to Studio users).
-        assert not any(str(tmp_path) in w for w in result["warnings"])
+        assert not any(str(tmp_path) in w["msg"] for w in result["warnings"])
 
     def test_traversal_link_is_rejected_with_warning(self, tmp_path: Path):
         """A link that escapes charts_dir (../ or absolute) is skipped with a
@@ -184,7 +186,8 @@ class TestStudioMissingChart:
             assert result["html"] is not None
             assert result["errors"] == []
             assert any(
-                "outside the charts directory" in w and "sneaky" in w for w in result["warnings"]
+                "outside the charts directory" in w["msg"] and "sneaky" in w["msg"]
+                for w in result["warnings"]
             ), f"no traversal warning for link {link!r}: {result['warnings']}"
             # The chart must NOT have been compiled/embedded.
             assert "Outside" not in result["html"]
@@ -258,7 +261,7 @@ class TestStudioDashboardLegends:
 
         # scatter.yaml also color-encodes `country` with no legend element → one
         # warning, surfaced in the Studio warnings list (NOT a Python warning).
-        assert any("color" in w and "scatter_chart" in w for w in result["warnings"])
+        assert any("color" in w["msg"] and "scatter_chart" in w["msg"] for w in result["warnings"])
 
     def test_labeled_chart_emits_channel_not_namespaced_scale(self):
         """Studio path: a legend on a labeled chart (name: mark_0) emits only the
@@ -306,7 +309,7 @@ class TestStudioDashboardLegends:
 
         # Warning surfaced in the Studio warnings panel, NOT via warnings.warn.
         assert any(
-            "sales_chart" in w and "color" in w and "no dashboard legend" in w
+            "sales_chart" in w["msg"] and "color" in w["msg"] and "no dashboard legend" in w["msg"]
             for w in result["warnings"]
         )
 
@@ -330,7 +333,7 @@ class TestStudioDashboardLegends:
         )
         result = _pipeline(yaml_body)
         assert result["html"] is None
-        assert any(re.search(r"heatmap\.yaml.*no sheet", e) for e in result["errors"])
+        assert any(re.search(r"heatmap\.yaml.*no sheet", e["msg"]) for e in result["errors"])
 
     def test_field_not_encoded_returns_error(self):
         yaml_body = (
@@ -349,7 +352,7 @@ class TestStudioDashboardLegends:
         )
         result = _pipeline(yaml_body)
         assert result["html"] is None
-        assert any(re.search(r"revenue.*not encoded", e) for e in result["errors"])
+        assert any(re.search(r"revenue.*not encoded", e["msg"]) for e in result["errors"])
 
     def test_layered_sheet_returns_error(self):
         yaml_body = (
@@ -368,7 +371,7 @@ class TestStudioDashboardLegends:
         )
         result = _pipeline(yaml_body)
         assert result["html"] is None
-        assert any(re.search(r"not supported yet", e) for e in result["errors"])
+        assert any(re.search(r"not supported yet", e["msg"]) for e in result["errors"])
 
     def test_legend_for_sheet_with_failed_model_load_does_not_crash(self, monkeypatch):
         """#1: a chart that COMPILES but whose model load fails afterward must not
@@ -408,7 +411,7 @@ class TestStudioDashboardLegends:
         assert result["html"] is not None
         assert result["errors"] == []
         # The sheet whose resolver failed produced a warning:
-        assert any("sales_chart" in w for w in result["warnings"])
+        assert any("sales_chart" in w["msg"] for w in result["warnings"])
         # Its legend rendered as an empty box: no resolved data attributes.
         attrs = _legend_attrs(result["html"])
         assert "data-source" not in attrs
@@ -448,11 +451,199 @@ class TestStudioDashboardLegends:
         assert result["html"] is not None
         assert result["errors"] == []
         # The broken chart produced a warning:
-        assert any("broken_chart" in w for w in result["warnings"])
+        assert any("broken_chart" in w["msg"] for w in result["warnings"])
         # The legend rendered as an empty box: no resolved data attributes.
         attrs = _legend_attrs(result["html"])
         assert "data-source" not in attrs
         assert "data-scale" not in attrs
+
+
+class TestDashboardDiagnosticsPositioning:
+    """SHE-105 — dashboard warnings and errors are positioned structured objects,
+    at parity with the chart route."""
+
+    def _no_params(self):
+        return FIXTURES_DIR / "no_such_parameters.yaml"
+
+    def test_sheet_warning_anchors_on_sheet_node(self):
+        """A child chart's tooltip-disaggregation warning is returned as a
+        positioned object anchored on that sheet's `sheet:` line in the DASHBOARD
+        YAML (not line 1, not the child file), with the message intact."""
+        yaml_body = (
+            'dashboard: "Sheet Warn"\n'
+            "canvas: { width: 800, height: 600 }\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - sheet: tooltip_disaggregation.yaml\n"
+            "      name: c1\n"
+        )
+        result = _pipeline(yaml_body, parameters_path=self._no_params())
+        assert result["errors"] == []
+        warns = [w for w in result["warnings"] if w.get("code") == "tooltip_disaggregation"]
+        assert len(warns) == 1
+        w = warns[0]
+        assert w["source"] == "warning"
+        assert "Sheet 'c1'" in w["msg"]
+        assert "region" in w["msg"]
+        # Anchored on the `sheet:` line (6) in the dashboard YAML, not line 1.
+        assert w["line"] == 6
+
+    def test_missing_sheet_warning_anchors_on_sheet_node(self):
+        """A missing sheet stays a warning (dashboard still renders) but is now
+        anchored on its `sheet:` node instead of line 1."""
+        yaml_body = (
+            'dashboard: "Missing"\n'
+            "canvas: { width: 800, height: 600 }\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - sheet: does_not_exist.yaml\n"
+            "      name: ghost\n"
+        )
+        result = _pipeline(yaml_body, parameters_path=self._no_params())
+        assert result["html"] is not None
+        assert result["errors"] == []
+        warns = [w for w in result["warnings"] if "Chart file not found" in w["msg"]]
+        assert len(warns) == 1
+        assert warns[0]["line"] == 6
+
+    def test_schema_error_positioned_inline(self):
+        """A wrong-typed component field → a positioned [DSL] error object (from
+        the reused SHE-54 renderer), not a bare string, and no render."""
+        yaml_body = (
+            'dashboard: "Schema"\n'
+            'canvas: { width: "wide", height: 600 }\n'
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - sheet: simple_bar.yaml\n"
+            "      name: c1\n"
+        )
+        result = _pipeline(yaml_body, parameters_path=self._no_params())
+        assert result["html"] is None
+        assert len(result["errors"]) >= 1
+        err = result["errors"][0]
+        assert isinstance(err, dict)
+        assert err["source"] == "dsl"
+        assert err["line"] == 2
+
+    def test_yaml_syntax_error_positioned(self):
+        yaml_body = 'dashboard: "X"\nroot: [unclosed\n'
+        result = _pipeline(yaml_body, parameters_path=self._no_params())
+        assert result["html"] is None
+        assert len(result["errors"]) == 1
+        err = result["errors"][0]
+        assert err["source"] == "yaml"
+        assert err["type"] == "yaml_syntax"
+        assert err["line"] == 3
+
+    def test_filter_validation_error_is_structured(self):
+        """A filter on an unknown field → a structured error object (best-effort
+        locless), not a bare string."""
+        yaml_body = (
+            'dashboard: "Filter Err"\n'
+            "canvas: { width: 800, height: 600 }\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - filter: nonesuch_field\n"
+            "      model: orders\n"
+            "      mode: multi\n"
+            "    - sheet: simple_bar.yaml\n"
+            "      name: c1\n"
+        )
+        result = _pipeline(yaml_body, parameters_path=self._no_params())
+        assert result["html"] is None
+        assert len(result["errors"]) >= 1
+        err = result["errors"][0]
+        assert isinstance(err, dict)
+        assert "nonesuch_field" in err["msg"]
+        assert err["type"] == "filter_error"
+
+    def test_duplicate_link_warning_stays_top_of_file(self):
+        """A link referenced by two sheets is ambiguous — raw-document order and
+        flatten-discovery order need not agree — so its per-sheet warnings are
+        left unanchored (line None) rather than risk the wrong node."""
+        yaml_body = (
+            'dashboard: "Dup"\n'
+            "canvas: { width: 800, height: 600 }\n"
+            "root:\n"
+            "  orientation: vertical\n"
+            "  contains:\n"
+            "    - sheet: tooltip_disaggregation.yaml\n"
+            "      name: a\n"
+            "    - sheet: tooltip_disaggregation.yaml\n"
+            "      name: b\n"
+        )
+        result = _pipeline(yaml_body, parameters_path=self._no_params())
+        assert result["errors"] == []
+        warns = [w for w in result["warnings"] if w.get("code") == "tooltip_disaggregation"]
+        assert len(warns) == 2
+        # Ambiguous link → neither warning is anchored on a (possibly wrong) node.
+        assert all(w["line"] is None for w in warns)
+
+
+class TestDashboardRouteStructuredErrors:
+    """SHE-105 review — the router short-circuits return structured error
+    objects, not bare strings (a bare string is silently dropped by the Studio
+    marker pass)."""
+
+    def _fake_request(self, body: bytes):
+        class _Req:
+            def __init__(self, body: bytes):
+                self._body = body
+                self.headers: dict[str, str] = {}
+
+            async def body(self) -> bytes:
+                return self._body
+
+        return _Req(body)
+
+    def _assert_structured(self, err) -> None:
+        assert isinstance(err, dict)
+        for key in ("loc", "display_loc", "msg", "friendly_msg", "source", "type"):
+            assert key in err
+
+    def test_empty_body_error_is_structured(self):
+        from shelves.studio.routes.dashboard import compile_dashboard_yaml
+
+        resp = _run(compile_dashboard_yaml(self._fake_request(b"   ")))  # type: ignore[arg-type]
+        payload = json.loads(bytes(resp.body))
+        assert payload["html"] is None
+        assert len(payload["errors"]) == 1
+        self._assert_structured(payload["errors"][0])
+        assert payload["errors"][0]["msg"] == "Empty YAML body"
+
+    def test_not_a_dashboard_error_is_structured(self):
+        from shelves.studio.routes.dashboard import compile_dashboard_yaml
+
+        resp = _run(compile_dashboard_yaml(self._fake_request(b"sheet: Foo\ndata: orders\n")))  # type: ignore[arg-type]
+        payload = json.loads(bytes(resp.body))
+        assert payload["html"] is None
+        assert len(payload["errors"]) == 1
+        self._assert_structured(payload["errors"][0])
+        assert payload["errors"][0]["msg"] == "Not a dashboard YAML"
+
+    def test_build_sheet_loc_map_skips_duplicate_links(self):
+        import yaml as _yaml
+
+        from shelves.studio.routes.dashboard import _build_sheet_loc_map
+
+        raw = _yaml.safe_load(
+            'dashboard: "M"\n'
+            "root:\n"
+            "  contains:\n"
+            "    - sheet: dup.yaml\n"
+            "    - sheet: dup.yaml\n"
+            "    - sheet: unique.yaml\n"
+        )
+        sheets = {"a": "dup.yaml", "b": "dup.yaml", "c": "unique.yaml"}
+        loc_map = _build_sheet_loc_map(raw, sheets)
+        # The duplicated link is left out entirely; the unique one is anchored.
+        assert "a" not in loc_map
+        assert "b" not in loc_map
+        assert loc_map["c"][-1] == "sheet"
 
 
 class TestVendoredVegaSources:
@@ -576,7 +767,10 @@ class TestStudioDashboardControls:
         )
         result = _pipeline(yaml_body)
         assert result["html"] is None
-        assert any("nonexistent" in e and "not a declared parameter" in e for e in result["errors"])
+        assert any(
+            "nonexistent" in e["msg"] and "not a declared parameter" in e["msg"]
+            for e in result["errors"]
+        )
 
     def test_control_render_js_inlined(self):
         """When controls are present, control_render.js is inlined in the HTML."""
