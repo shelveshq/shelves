@@ -65,12 +65,36 @@ class ValidationErrorItem(BaseModel):
     fix_hint: str | None = None
 
 
+class ValidationWarningItem(BaseModel):
+    """One structured runtime warning (SHE-105).
+
+    Mirrors `ValidationErrorItem`'s vocabulary for shape parity across surfaces.
+    Runtime warnings (tooltip disaggregation, KPI-shelf conflict, filter-domain
+    notices) exist only once something compiles/resolves data, so `validate_*`
+    always leaves the `warnings` channel empty (decision (b)); the compile/render
+    surfaces populate it. `sheet` names the dashboard sheet dom_id when the
+    warning is sheet-scoped, else None.
+    """
+
+    path: str = ""
+    line: int | None = None
+    col: int | None = None
+    code: str | None = None
+    source: Literal["warning"] = "warning"
+    message: str
+    sheet: str | None = None
+
+
 class ValidationResult(BaseModel):
     """The result of validating one spec.
 
     `errors` is empty on success. `normalized` is the canonical YAML echo, set
     only when valid. `model_checked` is False when no models dir was available,
     so a consumer knows semantic checks were skipped rather than passed.
+
+    `warnings` is the runtime-warning channel for shape parity with the
+    compile/render surfaces; `validate_*` always leaves it empty (decision (b),
+    SHE-105) — runtime warnings surface only through the tools that compile.
     """
 
     valid: bool
@@ -78,6 +102,7 @@ class ValidationResult(BaseModel):
     errors: list[ValidationErrorItem]
     normalized: str | None = None
     model_checked: bool = False
+    warnings: list[ValidationWarningItem] = []
 
 
 # ─── Friendly-message table (shared with the studio route) ─────────
@@ -516,6 +541,29 @@ def _dashboard_sheet_refs(
     elif isinstance(raw, list):
         for i, item in enumerate(raw):
             pairs.extend(_dashboard_sheet_refs(item, (*loc, i)))
+    return pairs
+
+
+def _dashboard_filter_refs(
+    raw: object, loc: tuple[str | int, ...] = ()
+) -> list[tuple[str, str | None, tuple[str | int, ...]]]:
+    """Collect (field, model, loc) for every filter component in a dashboard.
+
+    A filter leaf is a mapping with a ``filter:`` key (its value is the field);
+    the sibling ``model:`` disambiguates two filters on the same field name
+    across different models. `loc` points at the ``filter:`` key so a
+    filter-scoped warning can anchor on that node in the dashboard YAML (SHE-105).
+    """
+    pairs: list[tuple[str, str | None, tuple[str | int, ...]]] = []
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            if key == "filter" and isinstance(value, str) and value:
+                model = raw.get("model") if isinstance(raw.get("model"), str) else None
+                pairs.append((value, model, (*loc, "filter")))
+            pairs.extend(_dashboard_filter_refs(value, (*loc, key)))
+    elif isinstance(raw, list):
+        for i, item in enumerate(raw):
+            pairs.extend(_dashboard_filter_refs(item, (*loc, i)))
     return pairs
 
 

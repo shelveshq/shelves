@@ -961,9 +961,63 @@ class TestStudioWarningSurfacing:
         result = self._pipeline(tmp_path)
 
         assert result["errors"] == [], result["errors"]
-        matched = [w for w in result["warnings"] if "could not be resolved" in w]
+        matched = [w for w in result["warnings"] if "could not be resolved" in w["msg"]]
         assert len(matched) == 1, result["warnings"]
-        assert "id" in matched[0]
+        assert "id" in matched[0]["msg"]
+        assert matched[0]["code"] == "filter_options_unresolved"
+        # SHE-105: anchored on the filter node in the dashboard YAML, not line 1.
+        assert matched[0]["line"] is not None
+        line_text = (tmp_path / "dash.yaml").read_text().splitlines()[matched[0]["line"] - 1]
+        assert "filter:" in line_text and "id" in line_text
+
+    def test_data_layer_shelveserror_degrades_to_warning(self, tmp_path: Path, monkeypatch):
+        """A data-layer failure that raises a bare ShelvesError (a Cube/DuckDB
+        backend error — NOT a ValueError) during option resolution must degrade
+        to a warning, not abort the whole dashboard compile (review finding)."""
+        import shelves.compose.dashboard as compose_mod
+        from shelves.errors import ShelvesError
+
+        (tmp_path / "orders.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "model": "orders",
+                    "label": "Orders",
+                    "source": {"type": "file", "path": "orders.csv"},
+                    "dimensions": {"id": {"label": "Id"}, "region": {"label": "Region"}},
+                    "measures": {"m": {"label": "M", "agg": "sum", "column": "amount"}},
+                }
+            )
+        )
+        _write_chart(tmp_path, "chart.yaml", "orders")
+        _write_dashboard(
+            tmp_path,
+            "dash.yaml",
+            {
+                "dashboard": "Backend Boom",
+                "canvas": {"width": 800, "height": 600},
+                "root": {
+                    "orientation": "vertical",
+                    "contains": [
+                        {"filter": "region", "model": "orders", "mode": "multi", "height": 48},
+                        {"sheet": "chart.yaml", "name": "s1"},
+                    ],
+                },
+            },
+        )
+
+        def _boom(*_a, **_k):
+            raise ShelvesError("cube backend unreachable")
+
+        monkeypatch.setattr(compose_mod, "_resolve_filter_options", _boom)
+
+        result = self._pipeline(tmp_path)
+
+        # Still renders — the backend failure did not abort the pipeline.
+        assert result["html"] is not None
+        assert result["errors"] == [], result["errors"]
+        matched = [w for w in result["warnings"] if w.get("code") == "filter_options_unresolved"]
+        assert len(matched) == 1, result["warnings"]
+        assert "cube backend unreachable" in matched[0]["msg"]
 
     def test_truncation_and_unchecked_default_reach_payload(self, tmp_path: Path):
         rows = [{"id": f"v{i:04d}"} for i in range(MAX_DOMAIN_CARDINALITY + 1)]
@@ -993,8 +1047,14 @@ class TestStudioWarningSurfacing:
         result = self._pipeline(tmp_path)
 
         assert result["errors"] == [], result["errors"]
-        assert [w for w in result["warnings"] if "distinct values" in w], result["warnings"]
-        assert [w for w in result["warnings"] if "was not checked" in w], result["warnings"]
+        assert [w for w in result["warnings"] if "distinct values" in w["msg"]], result["warnings"]
+        unchecked = [w for w in result["warnings"] if "was not checked" in w["msg"]]
+        assert unchecked, result["warnings"]
+        # SHE-105: the truncated-default warning anchors on the filter node.
+        assert unchecked[0]["code"] == "filter_default_unchecked"
+        assert unchecked[0]["line"] is not None
+        line_text = (tmp_path / "dash.yaml").read_text().splitlines()[unchecked[0]["line"] - 1]
+        assert "filter:" in line_text and "id" in line_text
 
     def test_clean_dashboard_reports_no_warnings(self, tmp_path: Path):
         """Guard against the capture turning every compile noisy."""

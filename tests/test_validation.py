@@ -342,4 +342,28 @@ def test_dashboard_no_project_dir_skips_sheet_check():
     result = validate_dashboard_yaml(_DASHBOARD_YAML, project_dir=None)
 
     assert result.model_checked is False
+
+
+# ─── warnings channel (SHE-105) ───────────────────────────────────
+
+
+def test_validate_chart_warnings_channel_present_and_empty():
+    """`validate_*` is compile-free (decision (b)): the warnings channel exists
+    for shape parity with the compile/render surfaces but is always empty."""
+    result = validate_chart_yaml(
+        "sheet: X\ndata: orders\ncols: country\nrows: revenue\nmarks: bar\n",
+        models_dir=MODELS_DIR,
+    )
+    assert result.valid is True
+    assert result.warnings == []
+    assert "warnings" in result.model_dump()
+
+
+def test_validate_dashboard_warnings_channel_empty(tmp_path):
+    charts = tmp_path / "charts"
+    charts.mkdir()
+    for name in ("present.yaml", "missing.yaml"):
+        (charts / name).write_text("sheet: p\ndata: orders\ncols: country\nrows: revenue\n")
+    result = validate_dashboard_yaml(_DASHBOARD_YAML, project_dir=tmp_path)
+    assert result.warnings == []
     assert [e for e in result.errors if e.code == "missing_sheet"] == []

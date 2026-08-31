@@ -50,10 +50,13 @@ _PROJECT_FILES = [
     "yaml/facet_wrap.yaml",
     "yaml/param_field_swap.yaml",
     "yaml/param_undeclared_ref.yaml",
+    "yaml/tooltip_disaggregation.yaml",
     "layout/mcp_mini_dashboard.yaml",
     "layout/mcp_param_dashboard.yaml",
     "layout/mcp_param_undeclared_dashboard.yaml",
+    "layout/mcp_tooltip_dashboard.yaml",
     "data/orders.json",
+    "data/orders.csv",
 ]
 
 
@@ -90,6 +93,16 @@ def test_validate_spec_passthrough_matches_library():
     assert out["kind"] == "chart"
     assert out["model_checked"] is True
     assert out["errors"] == []
+
+
+def test_validate_spec_warnings_channel_empty():
+    """Decision (b): validate_spec is compile-free, so its warnings channel is
+    always empty even for a spec that WOULD warn on render (tooltip disaggregation)."""
+    from shelves.mcp.tools import validate_spec
+
+    text = _text("tooltip_disaggregation.yaml")
+    out = validate_spec(_ctx(), yaml_text=text)
+    assert out["warnings"] == []
 
 
 def test_validate_spec_broken_returns_structured_errors():
@@ -163,6 +176,20 @@ def test_compile_chart_matches_pipeline():
 
     assert out["vega_lite"] == expected_vl
     assert out["sheet"] == expected_spec.sheet
+
+
+def test_compile_chart_returns_runtime_warnings():
+    """A KPI-shelf conflict warns at compile time; compile_chart returns it as a
+    structured warning (SHE-105), sheet=None."""
+    from shelves.mcp.tools import compile_chart
+
+    text = 'sheet: KPI\ndata: orders\ncols: country\nkpi:\n  value: revenue\n  format: "$,.0f"\n'
+    out = compile_chart(_ctx(), yaml_text=text)
+    assert "error" not in out, out
+    warns = [w for w in out["warnings"] if w["code"] == "kpi_shelves_ignored"]
+    assert len(warns) == 1
+    assert warns[0]["source"] == "warning"
+    assert warns[0]["sheet"] is None
 
 
 def test_compile_chart_invalid_returns_validation_payload():
@@ -277,6 +304,19 @@ def test_render_chart_html(project):
     from pathlib import Path
 
     assert "vegaEmbed" in Path(out["path"]).read_text()
+
+
+def test_render_chart_returns_runtime_warnings(project):
+    """A tooltip-disaggregation warning fires during render data resolution;
+    render_chart returns it structured (SHE-105)."""
+    from shelves.mcp.tools import render_chart
+
+    out = render_chart(project, path="yaml/tooltip_disaggregation.yaml", format="html")
+    assert "error" not in out, out
+    warns = [w for w in out["warnings"] if w["code"] == "tooltip_disaggregation"]
+    assert len(warns) == 1
+    assert "region" in warns[0]["message"]
+    assert warns[0]["sheet"] is None
 
 
 def test_render_chart_invalid_returns_validation_payload():
@@ -418,6 +458,21 @@ def test_render_dashboard_returns_warnings_list(project):
 
     out = render_dashboard(project, path="layout/mcp_mini_dashboard.yaml")
     assert isinstance(out["warnings"], list)
+
+
+def test_render_dashboard_returns_structured_sheet_tagged_warnings(project):
+    """SHE-105: render_dashboard returns structured, sheet-tagged warning items
+    (code + sheet + message), not bare strings."""
+    from shelves.mcp.tools import render_dashboard
+
+    out = render_dashboard(project, path="layout/mcp_tooltip_dashboard.yaml")
+    assert "error" not in out, out
+    warns = [w for w in out["warnings"] if w["code"] == "tooltip_disaggregation"]
+    assert len(warns) == 1
+    w = warns[0]
+    assert w["sheet"] == "tt_chart"
+    assert w["source"] == "warning"
+    assert "region" in w["message"]
 
 
 def test_render_dashboard_missing_chart_link_is_structured(project):

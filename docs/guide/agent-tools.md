@@ -51,6 +51,14 @@ The correction loop — write → validate → fix → render → look:
 Every tool accepts inline `yaml_text` or a project `path`. Paths must stay
 inside the project root.
 
+`compile_chart`, `render_chart`, and `render_dashboard` also return a
+`warnings` list — non-fatal runtime notices (tooltip disaggregation, KPI-shelf
+conflicts, filter-domain issues) that fire only once a spec compiles or resolves
+data. Each warning carries a `message`, a stable `code`, and `line`/`col`;
+`render_dashboard` additionally tags each with the `sheet` it concerns. Read it
+alongside `errors` — a spec can be valid yet still warn. (`validate_spec` never
+compiles, so its `warnings` list is always empty.)
+
 ### PNG limitations
 
 `render_chart` produces PNG through vl-convert, with no browser. Data labels

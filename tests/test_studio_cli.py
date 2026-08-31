@@ -757,7 +757,9 @@ root:
         body = response.json()
         assert body["html"] is not None
         assert body["errors"] == []
-        assert any("not found" in w.lower() and "bad_sheet" in w for w in body["warnings"])
+        assert any(
+            "not found" in w["msg"].lower() and "bad_sheet" in w["msg"] for w in body["warnings"]
+        )
         assert len(body["component_tree"]) > 0
 
 

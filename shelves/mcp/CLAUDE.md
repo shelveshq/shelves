@@ -89,6 +89,18 @@ undeclared `$ref` inside a dashboard is wrapped by compose as a
 `invalid_parameters` (via `__cause__`), matching the chart tools, while keeping
 compose's "which sheet" context in the message.
 
+## Runtime warnings (SHE-105)
+
+Runtime warnings (tooltip disaggregation, KPI-shelf conflict, filter-domain
+notices) exist only once something compiles/resolves data, so they surface only
+through the tools that do that work: `compile_chart`, `render_chart`, and
+`render_dashboard` return a `warnings: [...]` list of `ValidationWarningItem`
+dicts (`{path, line, col, code, source, message, sheet}`). `render_dashboard`
+sets `sheet` to the dashboard sheet dom_id the warning concerns; the chart tools
+leave `sheet=None`. **Decision (b): `validate_spec` stays compile-free** — it
+never compiles child sheets, so its `warnings` channel is always `[]` (present
+for shape parity only).
+
 ## Key Rules
 
 - **Any DSL change touches the card.** New field/enum/mark/operator → update

@@ -74,13 +74,15 @@ class TestPositionedWarning:
                 PositionedWarning("tooltip disaggregates", loc=("tooltip", 0), code="tt"),
                 stacklevel=2,
             )
-        assert out == [{"msg": "tooltip disaggregates", "loc": ("tooltip", 0), "code": "tt"}]
+        assert out == [
+            {"msg": "tooltip disaggregates", "loc": ("tooltip", 0), "code": "tt", "sheet": None}
+        ]
 
     def test_structured_capture_plain_warning_has_null_loc(self):
         out: list[dict] = []
         with capture_structured_warnings(out):
             warnings.warn("just a string", UserWarning, stacklevel=2)
-        assert out == [{"msg": "just a string", "loc": None, "code": None}]
+        assert out == [{"msg": "just a string", "loc": None, "code": None, "sheet": None}]
 
     def test_structured_capture_prefix_is_prepended(self):
         out: list[dict] = []

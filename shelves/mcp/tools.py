@@ -32,6 +32,7 @@ from shelves.params.loader import load_parameters
 from shelves.params.schema import FieldRef
 from shelves.schema.chart_schema import DSL_VERSION
 from shelves.validation import (
+    ValidationWarningItem,
     _did_you_mean,
     detect_kind,
     validate_chart_yaml,
@@ -98,6 +99,25 @@ def _first_pydantic_error(exc: Any, fallback: str) -> str:
     loc = ".".join(str(p) for p in first.get("loc", ()))
     msg = first.get("msg", fallback)
     return f"{loc}: {msg}" if loc else msg
+
+
+def _warning_items(records: list[dict]) -> list[dict]:
+    """Map captured warning records → `ValidationWarningItem` dicts (SHE-105).
+
+    Records come from `capture_structured_warnings` (`{msg, loc, code, sheet}`).
+    Runtime warnings surface through the compile/render tools in the same
+    vocabulary the errors use; `sheet` carries the dashboard sheet the warning
+    concerns (None for chart-level warnings). Positions stay null — these are
+    the no-loc runtime notices, not schema errors.
+    """
+    return [
+        ValidationWarningItem(
+            code=r.get("code"),
+            message=r["msg"],
+            sheet=r.get("sheet"),
+        ).model_dump()
+        for r in records
+    ]
 
 
 def _iso(value: Any) -> Any:
@@ -545,16 +565,26 @@ def compile_chart(
     if perr is not None:
         return perr
 
+    from shelves.diagnostics import capture_structured_warnings
     from shelves.pipeline import compile_chart as _compile
 
+    # Runtime warnings emitted during compile (KPI-shelf conflict, ...) are
+    # returned structured so an agent sees them (SHE-105).
+    warn_records: list[dict] = []
     try:
-        vl_spec, spec = _compile(
-            text, models_dir=ctx.models_dir, theme_path=theme_path, parameters=params_set
-        )
+        with capture_structured_warnings(warn_records):
+            vl_spec, spec = _compile(
+                text, models_dir=ctx.models_dir, theme_path=theme_path, parameters=params_set
+            )
     except ValueError as e:
         # An undeclared, misplaced, or mistyped $ref (ParameterReferenceError).
         return _error("invalid_parameters", str(e).splitlines()[0])
-    return {"vega_lite": vl_spec, "sheet": spec.sheet, "dsl_version": DSL_VERSION}
+    return {
+        "vega_lite": vl_spec,
+        "sheet": spec.sheet,
+        "warnings": _warning_items(warn_records),
+        "dsl_version": DSL_VERSION,
+    }
 
 
 def _has_label(spec: Any) -> bool:
@@ -648,12 +678,18 @@ def render_chart(
     if perr is not None:
         return perr
 
+    from shelves.diagnostics import capture_structured_warnings
     from shelves.errors import ShelvesError
     from shelves.pipeline import compile_chart as _compile
     from shelves.pipeline import resolve_model_data
 
+    # Runtime warnings (tooltip disaggregation on data resolution, KPI-shelf
+    # conflict on compile, ...) are returned structured so an agent sees them
+    # (SHE-105).
+    warn_records: list[dict] = []
     try:
-        vl_spec, spec = _compile(text, models_dir=ctx.models_dir, parameters=params_set)
+        with capture_structured_warnings(warn_records):
+            vl_spec, spec = _compile(text, models_dir=ctx.models_dir, parameters=params_set)
     except ValueError as e:
         return _error("invalid_parameters", str(e).splitlines()[0])
 
@@ -666,13 +702,14 @@ def render_chart(
         return inline_err
 
     try:
-        bound = resolve_model_data(
-            vl_spec,
-            spec,
-            models_dir=ctx.models_dir,
-            data_base_dir=ctx.project_dir,
-            parameters=params_set,
-        )
+        with capture_structured_warnings(warn_records):
+            bound = resolve_model_data(
+                vl_spec,
+                spec,
+                models_dir=ctx.models_dir,
+                data_base_dir=ctx.project_dir,
+                parameters=params_set,
+            )
     except ShelvesError as e:
         return _error(
             "data_unavailable",
@@ -691,7 +728,12 @@ def render_chart(
 
         out_path = out_dir / f"{slug}.html"
         out_path.write_text(render_html(bound, title=spec.sheet))
-        return {"format": "html", "path": str(out_path), "dsl_version": DSL_VERSION}
+        return {
+            "format": "html",
+            "path": str(out_path),
+            "warnings": _warning_items(warn_records),
+            "dsl_version": DSL_VERSION,
+        }
 
     try:
         from shelves.render.to_png import render_png
@@ -717,6 +759,7 @@ def render_chart(
         "width": width,
         "height": height,
         "limitations": _render_limitations(spec, bound),
+        "warnings": _warning_items(warn_records),
         "dsl_version": DSL_VERSION,
     }
 
@@ -755,16 +798,16 @@ def render_dashboard(
     from pydantic import ValidationError
 
     from shelves.compose.dashboard import compose_dashboard
-    from shelves.diagnostics import capture_warnings
+    from shelves.diagnostics import capture_structured_warnings
     from shelves.errors import ShelvesError
     from shelves.params.substitute import ParameterReferenceError
 
     # compose_dashboard reports per-sheet data/layout problems via warnings.warn
-    # (the panel Studio surfaces); capture them so this surface returns them too
-    # rather than discarding them into a clean-looking payload.
-    compose_warnings: list[str] = []
+    # (the panel Studio surfaces); capture them structured (SHE-105) so this
+    # surface returns sheet-tagged items rather than bare strings.
+    compose_records: list[dict] = []
     try:
-        with capture_warnings(compose_warnings):
+        with capture_structured_warnings(compose_records):
             html = compose_dashboard(
                 resolved,
                 chart_base_dir=ctx.project_dir,
@@ -799,7 +842,7 @@ def render_dashboard(
     return {
         "format": "html",
         "path": str(out_path),
-        "warnings": compose_warnings,
+        "warnings": _warning_items(compose_records),
         "dsl_version": DSL_VERSION,
     }
 

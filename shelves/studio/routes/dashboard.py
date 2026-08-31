@@ -11,30 +11,35 @@ async def compile_dashboard_yaml(request: Request) -> JSONResponse:
     """POST /compile-dashboard — compile dashboard YAML body to HTML + component tree."""
     yaml_body = (await request.body()).decode("utf-8")
 
+    from shelves.studio.routes._diagnostics import runtime_error_item
+
     if not yaml_body.strip():
-        return JSONResponse(
-            {"html": None, "errors": ["Empty YAML body"], "warnings": [], "component_tree": []}
-        )
-
-    import yaml as _yaml
-
-    try:
-        raw = _yaml.safe_load(yaml_body)
-    except Exception:
         return JSONResponse(
             {
                 "html": None,
-                "errors": ["Failed to parse YAML"],
+                "errors": [runtime_error_item("Empty YAML body", source="yaml")],
                 "warnings": [],
                 "component_tree": [],
             }
         )
 
-    if not isinstance(raw, dict) or "dashboard" not in raw:
+    import yaml as _yaml
+
+    # Malformed YAML falls through to run_dashboard_pipeline so its SHE-54
+    # validator can return one *positioned* yaml_syntax error (SHE-105) rather
+    # than a bare unanchored string. Only a well-formed non-dashboard mapping is
+    # short-circuited here (a router mismatch, not a user diagnostic to place).
+    try:
+        raw = _yaml.safe_load(yaml_body)
+        parse_ok = True
+    except Exception:
+        parse_ok = False
+
+    if parse_ok and (not isinstance(raw, dict) or "dashboard" not in raw):
         return JSONResponse(
             {
                 "html": None,
-                "errors": ["Not a dashboard YAML"],
+                "errors": [runtime_error_item("Not a dashboard YAML", source="yaml")],
                 "warnings": [],
                 "component_tree": [],
             }
@@ -78,30 +83,79 @@ async def run_dashboard_pipeline(
     overrides: dict[str, str] | None = None,
     filter_overrides: dict[str, object] | None = None,
 ) -> dict:
-    """Run the dashboard compilation pipeline and return a result dict."""
-    from shelves.diagnostics import capture_warnings
+    """Run the dashboard compilation pipeline and return a result dict.
+
+    Errors and warnings are returned as **positioned structured objects**
+    (SHE-105), matching the chart route: schema / YAML-syntax errors are placed
+    inline by the SHE-54 renderer (`validate_dashboard_yaml`, the same one MCP
+    `validate_spec` uses); sheet-level warnings anchor on the sheet node in the
+    dashboard YAML; deeper runtime errors and dashboard-level warnings degrade
+    to top-of-file (null line/col) when no clean loc is expressible.
+    """
+    import yaml as _yaml
+
+    from shelves.diagnostics import capture_structured_warnings
+    from shelves.errors import ShelvesError
     from shelves.params.resolve import load_parameter_set
     from shelves.schema.layout_schema import parse_dashboard
+    from shelves.studio.routes._diagnostics import (
+        _format_warnings,
+        format_validation_items,
+        runtime_error_item,
+    )
     from shelves.theme.merge import load_theme
     from shelves.translator.layout import translate_dashboard
     from shelves.translator.layout_flatten import flatten_dashboard
+    from shelves.validation import validate_dashboard_yaml
 
     # Resolve a models_dir usable for both chart compile and the per-sheet
     # resolver AND data resolution — one value, threaded everywhere, so the two
     # halves of a compile can never read different model directories.
     effective_models_dir = models_dir if models_dir and models_dir.exists() else None
 
-    # Python warnings emitted BEFORE the per-sheet loop (parameter-domain
-    # truncation, unverifiable defaults, filter options that would not resolve)
-    # are invisible to Studio unless captured — the chart route and the watcher
-    # already wrap their equivalents. Collected here and prepended to the loop's
-    # own warnings so the payload stays chronological.
-    pre_warnings: list[str] = []
+    # ─ Errors (SHE-105) ────────────────────────────────────────────────
+    # Schema + YAML-syntax errors are positioned by the SHE-54 renderer BEFORE
+    # the compile pipeline — the identical renderer MCP validate_spec uses, so
+    # the two surfaces agree. project_dir is intentionally NOT passed: a missing
+    # sheet stays a per-sheet warning (the dashboard still renders the rest),
+    # not a hard error.
+    schema_result = validate_dashboard_yaml(yaml_body, models_dir=effective_models_dir)
+    if schema_result.errors:
+        return {
+            "html": None,
+            "errors": format_validation_items(schema_result.errors),
+            "warnings": [],
+            "component_tree": [],
+        }
+
+    # ─ Warnings (SHE-105) ──────────────────────────────────────────────
+    # All warnings accumulate as structured records ({msg, loc, code, sheet})
+    # and go through the shared _format_warnings resolver at the end. Sheet-
+    # scoped records are re-anchored on the sheet node in the dashboard YAML via
+    # `sheet_loc_map`; dashboard-level / legend / pre-loop records stay locless
+    # (top-of-file fallback) — never a misleading anchor.
+    raw = _yaml.safe_load(yaml_body)
+    sheet_loc_map: dict[str, tuple] = {}
+
+    def _finish(records: list[dict]) -> list[dict]:
+        for r in records:
+            if r.get("sheet") and not r.get("loc"):
+                loc = sheet_loc_map.get(r["sheet"])
+                if loc is not None:
+                    r["loc"] = loc
+        return _format_warnings(records, yaml_body)
+
+    def _runtime_error(msg: str, *, source: str = "runtime", type_: str = "runtime_error") -> dict:
+        return runtime_error_item(msg, source=source, type_=type_)
+
+    # Records emitted before the per-sheet loop (parameter-domain truncation,
+    # unverifiable defaults, filter options that would not resolve).
+    pre_records: list[dict] = []
 
     # SHE-96: parameters must be loaded BEFORE parse_dashboard so ${name}
     # references in text components are substituted before model_validate.
     try:
-        with capture_warnings(pre_warnings):
+        with capture_structured_warnings(pre_records):
             parameters = load_parameter_set(
                 parameters_path,
                 models_dir=effective_models_dir,
@@ -111,8 +165,8 @@ async def run_dashboard_pipeline(
     except ValueError as e:
         return {
             "html": None,
-            "errors": [str(e)],
-            "warnings": pre_warnings,
+            "errors": [_runtime_error(str(e))],
+            "warnings": _finish(pre_records),
             "component_tree": [],
         }
 
@@ -121,8 +175,8 @@ async def run_dashboard_pipeline(
     except Exception as e:
         return {
             "html": None,
-            "errors": [str(e)],
-            "warnings": pre_warnings,
+            "errors": [_runtime_error(str(e))],
+            "warnings": _finish(pre_records),
             "component_tree": [],
         }
 
@@ -144,6 +198,8 @@ async def run_dashboard_pipeline(
     )
 
     sheets = _discover_sheets(flat_root)
+    sheet_loc_map = _build_sheet_loc_map(raw, sheets)
+    filter_loc_map = _build_filter_loc_map(raw)
 
     # SHE-79: validate filter declarations against models and sheets.
     filters = _discover_filters(flat_root)
@@ -159,8 +215,10 @@ async def run_dashboard_pipeline(
         if filter_errors:
             return {
                 "html": None,
-                "errors": filter_errors,
-                "warnings": pre_warnings,
+                "errors": [
+                    _runtime_error(e, source="dsl", type_="filter_error") for e in filter_errors
+                ],
+                "warnings": _finish(pre_records),
                 "component_tree": component_tree,
             }
 
@@ -168,7 +226,7 @@ async def run_dashboard_pipeline(
     # warns (unresolvable options, truncated domains, unchecked defaults)
     # instead of raising, so capture or those notices never reach the client.
     try:
-        with capture_warnings(pre_warnings):
+        with capture_structured_warnings(pre_records):
             filter_injections = (
                 _build_filter_injections(
                     filters,
@@ -188,15 +246,19 @@ async def run_dashboard_pipeline(
                     effective_models_dir,
                     data_base_dir=project_dir,
                     filter_overrides=filter_overrides,
+                    field_loc_map=filter_loc_map,
                 )
                 if filters
                 else {}
             )
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, ShelvesError) as exc:
+        # ShelvesError catches a data-layer failure (Cube/DuckDB) raised outside
+        # _build_filter_control_meta's own option-resolution guard, so it becomes
+        # a positioned error instead of a 500.
         return {
             "html": None,
-            "errors": [f"Filter injection failed: {exc}"],
-            "warnings": pre_warnings,
+            "errors": [_runtime_error(f"Filter injection failed: {exc}")],
+            "warnings": _finish(pre_records),
             "component_tree": component_tree,
         }
 
@@ -214,7 +276,7 @@ async def run_dashboard_pipeline(
     # sheet box; the rest of the dashboard still renders.
     # restrict_links=True: YAML posted to the server must not read files
     # outside charts_dir (absolute or ../ links are skipped with a warning).
-    chart_specs, resolvers, warnings = compile_dashboard_charts(
+    chart_specs, resolvers, chart_records = compile_dashboard_charts(
         sheets,
         charts_dir,
         theme,
@@ -226,7 +288,7 @@ async def run_dashboard_pipeline(
         filter_injections=filter_injections,
     )
     # Chronological: everything resolved before the per-sheet loop ran first.
-    warnings[:0] = pre_warnings
+    records: list[dict] = [*pre_records, *chart_records]
 
     # SHE-27: link legends to sheet scales + suppress in-sheet legends via the
     # shared helper (same path as compose_dashboard), routing the bad-source
@@ -236,12 +298,13 @@ async def run_dashboard_pipeline(
     except ValueError as le:
         return {
             "html": None,
-            "errors": [str(le)],
-            "warnings": warnings,
+            "errors": [_runtime_error(str(le))],
+            "warnings": _finish(records),
             "component_tree": component_tree,
             "canvas": {"width": spec.canvas.width, "height": spec.canvas.height},
         }
-    warnings.extend(legend_warnings)
+    # Legend warnings name a sheet in prose but carry no clean YAML loc → locless.
+    records.extend({"msg": w, "loc": None, "code": None, "sheet": None} for w in legend_warnings)
 
     # SHE-92: discover controls and build metadata from the ParameterSet.
     controls = _discover_controls(flat_root)
@@ -250,8 +313,8 @@ async def run_dashboard_pipeline(
     except ValueError as ce:
         return {
             "html": None,
-            "errors": [str(ce)],
-            "warnings": warnings,
+            "errors": [_runtime_error(str(ce))],
+            "warnings": _finish(records),
             "component_tree": component_tree,
             "canvas": {"width": spec.canvas.width, "height": spec.canvas.height},
         }
@@ -274,10 +337,58 @@ async def run_dashboard_pipeline(
     return {
         "html": html,
         "errors": [],
-        "warnings": warnings,
+        "warnings": _finish(records),
         "component_tree": component_tree,
         "canvas": {"width": spec.canvas.width, "height": spec.canvas.height},
     }
+
+
+def _build_sheet_loc_map(raw: object, sheets: dict[str, str]) -> dict[str, tuple]:
+    """Map each sheet dom_id → the loc of its `sheet:` node in the dashboard YAML.
+
+    Correlates by link: `_dashboard_sheet_refs` yields `(link, loc)` pairs from
+    the raw dashboard dict, `sheets` gives dom_id → link. Only links that appear
+    **exactly once** in the raw dict are anchored — those map unambiguously to
+    their sole `sheet:` node.
+
+    A repeated link is left unanchored (its warnings fall back to top-of-file).
+    Raw-document order (which includes the `components:` block, whose entries may
+    be unreferenced) and flatten-discovery order (referenced nodes only) need
+    not agree, so zipping duplicates by index can land a warning on the wrong
+    node — better no anchor than a misleading one. A dom_id whose link has no
+    ref at all (named-component indirection) is likewise absent.
+    """
+    from collections import defaultdict
+
+    from shelves.validation import _dashboard_sheet_refs
+
+    locs_by_link: dict[str, list[tuple]] = defaultdict(list)
+    for link, loc in _dashboard_sheet_refs(raw):
+        locs_by_link[link].append(loc)
+
+    loc_map: dict[str, tuple] = {}
+    for dom_id, link in sheets.items():
+        locs = locs_by_link.get(link, [])
+        if len(locs) == 1:
+            loc_map[dom_id] = locs[0]
+    return loc_map
+
+
+def _build_filter_loc_map(raw: object) -> dict[tuple[str, str], tuple]:
+    """Map each filter's ``(model, field)`` → the loc of its `filter:` node.
+
+    Lets a filter-domain warning (unresolvable options, unchecked truncated
+    default) anchor on the filter component in the dashboard YAML (SHE-105).
+    First occurrence wins for a repeated ``(model, field)`` (best-effort). The
+    schema pass runs first and `model` is required, so it is always present here.
+    """
+    from shelves.validation import _dashboard_filter_refs
+
+    loc_map: dict[tuple[str, str], tuple] = {}
+    for field, model, loc in _dashboard_filter_refs(raw):
+        if model is not None:
+            loc_map.setdefault((model, field), loc)
+    return loc_map
 
 
 def _parse_override_header(raw: str) -> dict[str, str] | None:
