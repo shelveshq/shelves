@@ -223,6 +223,28 @@ async function renderChart(result) {
   }
 }
 
+// ─── Resize Re-fit (SHE-100) ──────────────────────────────
+// A bare view.resize() does NOT re-measure a width/height:'container' +
+// autosize:'fit' spec, so on a pane/window resize the canvas keeps its old
+// size and the card clips it. Set width/height from the container's current
+// box, then resize. Compound specs render at natural size and scroll
+// (KAN-298) — there's nothing to re-fit.
+function refitChart() {
+  if (!state.lastCompileResult) return;
+  const spec = state.lastCompileResult.vega_lite_spec;
+  if (!spec || isCompoundSpec(spec)) return;
+  if (!state.vegaView) { renderChart(state.lastCompileResult); return; }
+  try {
+    state.vegaView
+      .width(elChartContainer.clientWidth)
+      .height(elChartContainer.clientHeight)
+      .resize()
+      .run();
+  } catch (_) {
+    renderChart(state.lastCompileResult);
+  }
+}
+
 // ─── Data View (SHE-43) ───────────────────────────────────
 // The resolved rows behind the current chart, straight from
 // vega_lite_spec.data.values (every backend inlines rows via bind_data).
@@ -410,13 +432,8 @@ export function initPreview() {
   new ResizeObserver(() => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      if (state.lastCompileResult && !state.dashboardMode && state.currentView === 'chart') {
-        if (state.vegaView) {
-          try { state.vegaView.resize().run(); } catch (_) { renderChart(state.lastCompileResult); }
-        } else {
-          renderChart(state.lastCompileResult);
-        }
-      }
+      if (state.dashboardMode || state.currentView !== 'chart') return;
+      refitChart();
     }, 200);
   }).observe(elChartContainer);
 }

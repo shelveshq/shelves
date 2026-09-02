@@ -135,7 +135,11 @@ not a second compiler. Launch with `python -m shelves.studio.cli` (see root
   - `preview.js` — chart render via `vegaEmbed` (with the shared label patch),
     Data view (SHE-43: resolved-rows table from `vega_lite_spec.data.values` —
     model-name header, 500-row cap, skipped/empty states; replaced the old
-    JSON view), error overlay, `ResizeObserver` re-fit.
+    JSON view), error overlay, `ResizeObserver` re-fit. The re-fit
+    (`refitChart`, SHE-100) re-measures the container and sets the view's
+    width/height before `resize()` — a bare `view.resize()` does NOT re-fit a
+    `container`-sized/`autosize:fit` spec, so the chart would keep its old size
+    and clip; compound (scroll) specs are left at natural size.
   - `dashboard.js` — dashboard compile + iframe preview, canvas scaling / zoom.
   - `sidebar.js` — file tree fetch/render, collapse state, sidebar show/hide,
     and file management (SHE-42): group-header `+`, right-click context menu
